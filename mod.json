@@ -1,0 +1,12 @@
+{
+  "name": "仙逆自动盘",
+  "author": "康康",
+  "version": "0.1.0",
+  "description": "0.51 仙逆自动盘测试模组，支持玩家前端指令、金币系统与可选 AI 决策",
+  "targetGameBuild": 115,
+  "GUID": "XIANNI_AUTOPAN_MOD",
+  "Dependencies": [
+    "XIAN_NI_MOD"
+  ],
+  "OptionalDependencies": []
+}

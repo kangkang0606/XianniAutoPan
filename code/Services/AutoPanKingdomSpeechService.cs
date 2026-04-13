@@ -1,0 +1,503 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace XianniAutoPan.Services
+{
+    /// <summary>
+    /// 在国家铭牌位置显示玩家聊天与指令气泡，并复用原版聊天提示图标。
+    /// </summary>
+    internal static class AutoPanKingdomSpeechService
+    {
+        private sealed class SpeechLine
+        {
+            /// <summary>
+            /// 显示文本。
+            /// </summary>
+            public string Text;
+
+            /// <summary>
+            /// 到期时间。
+            /// </summary>
+            public float ExpireAt;
+
+            /// <summary>
+            /// 是否为指令。
+            /// </summary>
+            public bool IsCommand;
+        }
+
+        private sealed class SpeechAnchor
+        {
+            /// <summary>
+            /// 最近一次铭牌屏幕坐标。
+            /// </summary>
+            public Vector2 ScreenPosition;
+
+            /// <summary>
+            /// 最近刷新时间。
+            /// </summary>
+            public float LastSeenAt;
+        }
+
+        private sealed class SpeechVisual
+        {
+            /// <summary>
+            /// 对应国家 ID。
+            /// </summary>
+            public long KingdomId;
+
+            /// <summary>
+            /// 当前 UI 根对象。
+            /// </summary>
+            public GameObject Root;
+
+            /// <summary>
+            /// 根 RectTransform。
+            /// </summary>
+            public RectTransform RootRect;
+
+            /// <summary>
+            /// 气泡背景。
+            /// </summary>
+            public Image BubbleImage;
+
+            /// <summary>
+            /// 气泡文本。
+            /// </summary>
+            public Text Text;
+
+            /// <summary>
+            /// 文本容器。
+            /// </summary>
+            public RectTransform TextRect;
+
+            /// <summary>
+            /// 最近使用的图标锚点。
+            /// </summary>
+            public Actor BubbleActor;
+
+            /// <summary>
+            /// 最近一次刷新气泡的时间。
+            /// </summary>
+            public float LastBubbleRefreshTime;
+
+            /// <summary>
+            /// 当前文本条目。
+            /// </summary>
+            public List<SpeechLine> Lines = new List<SpeechLine>();
+        }
+
+        private const float SpeechLifetimeSeconds = 18f;
+        private const float BubbleRefreshIntervalSeconds = 0.8f;
+        private const float AnchorFreshSeconds = 1.6f;
+        private const float BubbleYOffset = 76f;
+        private const float BubbleMinWidth = 220f;
+        private const float BubbleMaxWidth = 460f;
+        private const float BubbleMinHeight = 88f;
+        private const int MaxSpeechEntries = 3;
+        private const int MaxLineLength = 56;
+        private static readonly Dictionary<long, SpeechAnchor> Anchors = new Dictionary<long, SpeechAnchor>();
+        private static readonly Dictionary<long, SpeechVisual> Visuals = new Dictionary<long, SpeechVisual>();
+
+        /// <summary>
+        /// 记录国家铭牌的屏幕坐标，供气泡锚定使用。
+        /// </summary>
+        public static void RecordNameplatePosition(Kingdom kingdom, Vector2 screenPosition)
+        {
+            if (kingdom == null || !kingdom.isAlive())
+            {
+                return;
+            }
+
+            Anchors[kingdom.getID()] = new SpeechAnchor
+            {
+                ScreenPosition = screenPosition,
+                LastSeenAt = Time.unscaledTime
+            };
+        }
+
+        /// <summary>
+        /// 在指定国家铭牌位置显示一条聊天或指令文本。
+        /// </summary>
+        public static void ShowSpeech(Kingdom kingdom, string speakerName, string content, bool isCommand)
+        {
+            if (kingdom == null || !kingdom.isAlive() || string.IsNullOrWhiteSpace(content))
+            {
+                return;
+            }
+
+            SpeechVisual visual = GetOrCreateVisual(kingdom);
+            if (visual == null)
+            {
+                return;
+            }
+
+            visual.Lines.RemoveAll(item => item == null || item.ExpireAt <= Time.unscaledTime);
+            visual.Lines.Add(new SpeechLine
+            {
+                Text = FormatLine(speakerName, content, isCommand),
+                ExpireAt = Time.unscaledTime + SpeechLifetimeSeconds,
+                IsCommand = isCommand
+            });
+            if (visual.Lines.Count > MaxSpeechEntries)
+            {
+                visual.Lines.RemoveRange(0, visual.Lines.Count - MaxSpeechEntries);
+            }
+
+            RefreshVisual(kingdom, visual);
+        }
+
+        /// <summary>
+        /// 每帧更新气泡位置与到期状态。
+        /// </summary>
+        public static void Update()
+        {
+            if (Visuals.Count == 0)
+            {
+                return;
+            }
+
+            List<long> toRemove = new List<long>();
+            foreach (KeyValuePair<long, SpeechVisual> pair in Visuals)
+            {
+                Kingdom kingdom = World.world?.kingdoms?.get(pair.Key);
+                SpeechVisual visual = pair.Value;
+                if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+                {
+                    DestroyVisual(visual);
+                    toRemove.Add(pair.Key);
+                    continue;
+                }
+
+                visual.Lines.RemoveAll(item => item == null || item.ExpireAt <= Time.unscaledTime);
+                if (visual.Lines.Count == 0)
+                {
+                    DestroyVisual(visual);
+                    toRemove.Add(pair.Key);
+                    continue;
+                }
+
+                RefreshVisual(kingdom, visual);
+            }
+
+            foreach (long kingdomId in toRemove)
+            {
+                Visuals.Remove(kingdomId);
+                Anchors.Remove(kingdomId);
+            }
+        }
+
+        /// <summary>
+        /// 清理所有国家聊天显示。
+        /// </summary>
+        public static void ClearAll()
+        {
+            foreach (SpeechVisual visual in Visuals.Values)
+            {
+                DestroyVisual(visual);
+            }
+
+            Visuals.Clear();
+            Anchors.Clear();
+        }
+
+        /// <summary>
+        /// 销毁服务持有的气泡对象。
+        /// </summary>
+        public static void Dispose()
+        {
+            ClearAll();
+        }
+
+        private static SpeechVisual GetOrCreateVisual(Kingdom kingdom)
+        {
+            if (Visuals.TryGetValue(kingdom.getID(), out SpeechVisual existing))
+            {
+                if (existing.Root == null)
+                {
+                    Visuals.Remove(kingdom.getID());
+                }
+                else
+                {
+                    EnsureParent(existing.Root.transform);
+                    return existing;
+                }
+            }
+
+            Transform parent = ResolveUiParent();
+            if (parent == null)
+            {
+                return null;
+            }
+
+            SpeechVisual visual = new SpeechVisual
+            {
+                KingdomId = kingdom.getID()
+            };
+
+            GameObject root = new GameObject($"XianniAutoPanSpeech_{kingdom.getID()}", typeof(RectTransform));
+            root.hideFlags = HideFlags.DontSave;
+            root.transform.SetParent(parent, worldPositionStays: false);
+            RectTransform rootRect = root.GetComponent<RectTransform>();
+            rootRect.anchorMin = new Vector2(0.5f, 0.5f);
+            rootRect.anchorMax = new Vector2(0.5f, 0.5f);
+            rootRect.pivot = new Vector2(0.5f, 0.5f);
+            Image bubbleImage = root.AddComponent<Image>();
+            bubbleImage.sprite = CommunicationLibrary.normal?.getSpriteBubble();
+            bubbleImage.type = Image.Type.Simple;
+            bubbleImage.color = new Color(1f, 1f, 1f, 0.96f);
+            bubbleImage.raycastTarget = false;
+
+            GameObject textObject = new GameObject("Text", typeof(RectTransform));
+            textObject.hideFlags = HideFlags.DontSave;
+            textObject.transform.SetParent(root.transform, worldPositionStays: false);
+            RectTransform textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.5f, 0.5f);
+            textRect.anchorMax = new Vector2(0.5f, 0.5f);
+            textRect.pivot = new Vector2(0.5f, 0.5f);
+
+            Text text = textObject.AddComponent<Text>();
+            text.font = ResolveFont();
+            text.fontSize = 20;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.lineSpacing = 1f;
+            text.supportRichText = false;
+            text.raycastTarget = false;
+
+            Outline outline = textObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.5f);
+            outline.effectDistance = new Vector2(1f, -1f);
+
+            visual.Root = root;
+            visual.RootRect = rootRect;
+            visual.BubbleImage = bubbleImage;
+            visual.Text = text;
+            visual.TextRect = textRect;
+            Visuals[kingdom.getID()] = visual;
+            return visual;
+        }
+
+        private static void EnsureParent(Transform child)
+        {
+            Transform parent = ResolveUiParent();
+            if (child == null || parent == null || child.parent == parent)
+            {
+                return;
+            }
+
+            child.SetParent(parent, worldPositionStays: false);
+        }
+
+        private static Transform ResolveUiParent()
+        {
+            return MapBox.instance?.nameplate_manager?.transform;
+        }
+
+        private static Font ResolveFont()
+        {
+            Text source = MapBox.instance?.nameplate_manager?.prefab?._text_name;
+            if (source != null && source.font != null)
+            {
+                return source.font;
+            }
+
+            return Resources.GetBuiltinResource<Font>("Arial.ttf");
+        }
+
+        private static void RefreshVisual(Kingdom kingdom, SpeechVisual visual)
+        {
+            if (visual?.Root == null || visual.Text == null || visual.RootRect == null)
+            {
+                return;
+            }
+
+            EnsureParent(visual.Root.transform);
+            if (!TryGetAnchorScreenPosition(kingdom.getID(), out Vector2 anchorPosition))
+            {
+                if (visual.Root.activeSelf)
+                {
+                    visual.Root.SetActive(false);
+                }
+                return;
+            }
+
+            if (!visual.Root.activeSelf)
+            {
+                visual.Root.SetActive(true);
+            }
+
+            visual.Root.transform.SetAsLastSibling();
+            visual.Root.transform.position = new Vector3(anchorPosition.x, anchorPosition.y + BubbleYOffset, 0f);
+
+            string text = string.Join("\n", visual.Lines.Select(item => item.Text).ToArray());
+            visual.Text.text = text;
+            visual.Text.color = BuildReadableTextColor(kingdom);
+
+            float bubbleWidth = BubbleMaxWidth;
+            float textWidth = bubbleWidth - 96f;
+            visual.TextRect.sizeDelta = new Vector2(textWidth, 0f);
+            float bubbleHeight = Mathf.Max(BubbleMinHeight, visual.Text.preferredHeight + 38f);
+            visual.RootRect.sizeDelta = new Vector2(Mathf.Max(BubbleMinWidth, bubbleWidth), bubbleHeight);
+            visual.TextRect.sizeDelta = new Vector2(textWidth, bubbleHeight - 26f);
+
+            visual.BubbleImage.sprite = CommunicationLibrary.normal?.getSpriteBubble();
+            visual.BubbleImage.color = BuildBubbleColor(kingdom, visual.Lines.Any(item => item.IsCommand));
+
+            Actor anchorActor = FindAnchorActor(kingdom);
+            RefreshBubbleIcon(visual, anchorActor, visual.Lines.Any(item => item.IsCommand));
+        }
+
+        private static bool TryGetAnchorScreenPosition(long kingdomId, out Vector2 screenPosition)
+        {
+            screenPosition = default;
+            if (!Anchors.TryGetValue(kingdomId, out SpeechAnchor anchor))
+            {
+                return false;
+            }
+
+            if (Time.unscaledTime - anchor.LastSeenAt > AnchorFreshSeconds)
+            {
+                return false;
+            }
+
+            screenPosition = anchor.ScreenPosition;
+            return true;
+        }
+
+        private static Color BuildBubbleColor(Kingdom kingdom, bool hasCommand)
+        {
+            Color baseColor = kingdom?.getColor().getColorMain() ?? Color.white;
+            Color tinted = Color.Lerp(Color.white, baseColor, hasCommand ? 0.42f : 0.26f);
+            tinted.a = hasCommand ? 0.98f : 0.94f;
+            return tinted;
+        }
+
+        private static Color BuildReadableTextColor(Kingdom kingdom)
+        {
+            Color source = kingdom?.getColor().getColorText() ?? Color.black;
+            float luminance = source.r * 0.299f + source.g * 0.587f + source.b * 0.114f;
+            if (luminance > 0.7f)
+            {
+                return Color.black;
+            }
+
+            return Color.Lerp(source, Color.black, 0.3f);
+        }
+
+        private static void RefreshBubbleIcon(SpeechVisual visual, Actor anchorActor, bool isCommand)
+        {
+            if (anchorActor == null || !anchorActor.isAlive())
+            {
+                ReleaseBubbleIcon(visual);
+                return;
+            }
+
+            if (visual.BubbleActor != anchorActor)
+            {
+                ReleaseBubbleIcon(visual);
+                visual.BubbleActor = anchorActor;
+            }
+
+            if (Time.unscaledTime - visual.LastBubbleRefreshTime < BubbleRefreshIntervalSeconds)
+            {
+                return;
+            }
+
+            visual.LastBubbleRefreshTime = Time.unscaledTime;
+            visual.BubbleActor.is_forced_socialize_icon = true;
+            visual.BubbleActor.forceSocializeTopic(isCommand ? "speech/speech_03" : "speech/speech_bubble");
+            visual.BubbleActor.timestamp_tween_session_social = World.world.getCurSessionTime();
+        }
+
+        private static void ReleaseBubbleIcon(SpeechVisual visual)
+        {
+            if (visual?.BubbleActor != null && visual.BubbleActor.isAlive())
+            {
+                visual.BubbleActor.is_forced_socialize_icon = false;
+            }
+
+            if (visual != null)
+            {
+                visual.BubbleActor = null;
+            }
+        }
+
+        private static void DestroyVisual(SpeechVisual visual)
+        {
+            if (visual == null)
+            {
+                return;
+            }
+
+            ReleaseBubbleIcon(visual);
+            if (visual.Root != null)
+            {
+                UnityEngine.Object.Destroy(visual.Root);
+                visual.Root = null;
+            }
+        }
+
+        private static Actor FindAnchorActor(Kingdom kingdom)
+        {
+            if (kingdom == null)
+            {
+                return null;
+            }
+
+            if (kingdom.king != null && kingdom.king.isAlive())
+            {
+                return kingdom.king;
+            }
+
+            City capital = kingdom.capital;
+            if (capital != null && capital.isAlive())
+            {
+                if (capital.hasLeader())
+                {
+                    return capital.leader;
+                }
+
+                foreach (Actor actor in capital.units)
+                {
+                    if (actor != null && actor.isAlive())
+                    {
+                        return actor;
+                    }
+                }
+            }
+
+            foreach (Actor actor in kingdom.units)
+            {
+                if (actor != null && actor.isAlive())
+                {
+                    return actor;
+                }
+            }
+
+            return null;
+        }
+
+        private static string FormatLine(string speakerName, string content, bool isCommand)
+        {
+            string name = string.IsNullOrWhiteSpace(speakerName) ? "国家" : speakerName.Trim();
+            string prefix = isCommand ? $"{name}> " : $"{name}：";
+            return prefix + SanitizeContent(content);
+        }
+
+        private static string SanitizeContent(string content)
+        {
+            string text = (content ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (text.Length > MaxLineLength)
+            {
+                text = text.Substring(0, MaxLineLength) + "…";
+            }
+
+            return text;
+        }
+    }
+}

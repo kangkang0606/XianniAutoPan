@@ -1,0 +1,22 @@
+{
+  "autopan_config_basic": "基础设置",
+  "autopan_config_ai": "AI 设置",
+
+  "autopan_enable_llm_ai": "启用 AI 决策",
+  "autopan_enable_llm_ai Description": "开启后，自动盘将通过 LLM 接口为玩家生成 AI 决策建议。",
+
+  "autopan_http_port": "网页端口",
+  "autopan_http_port Description": "本地网页前端监听端口，默认 19051。修改后自动重启服务。",
+
+  "autopan_bind_host": "监听主机",
+  "autopan_bind_host Description": "填 * 监听所有网卡（局域网可访问），填具体 IP 则只监听该地址。",
+
+  "autopan_llm_api_url": "API 地址",
+  "autopan_llm_api_url Description": "OpenAI 兼容接口地址，例如 https://api.deepseek.com/v1。",
+
+  "autopan_llm_model": "模型名称",
+  "autopan_llm_model Description": "调用的模型名，例如 deepseek-chat。",
+
+  "autopan_llm_api_key": "API 密钥",
+  "autopan_llm_api_key Description": "接口鉴权密钥，留空则使用默认配置。"
+}
