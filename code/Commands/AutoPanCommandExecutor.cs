@@ -137,6 +137,12 @@ namespace XianniAutoPan.Commands
                     return ExecuteUpgradeNation(kingdom, operatorName, isAi, result);
                 case AutoPanCommandType.GatherSpirit:
                     return ExecuteGatherSpirit(kingdom, operatorName, isAi, result);
+                case AutoPanCommandType.AddPopulation:
+                    return ExecuteAddPopulation(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.PlaceRuins:
+                    return ExecutePlaceRuins(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.TransferTreasury:
+                    return ExecuteTransferTreasury(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.DeclareWar:
                     return ExecuteDeclareWar(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.SeekPeace:
@@ -192,6 +198,13 @@ namespace XianniAutoPan.Commands
 
         private static AutoPanCommandResult ExecuteCityInfo(Kingdom kingdom, AutoPanParsedCommand command, AutoPanCommandResult result)
         {
+            if (string.IsNullOrWhiteSpace(command.TargetName))
+            {
+                result.Success = true;
+                result.Text = AutoPanCityService.BuildAllCityInfoText(kingdom);
+                return result;
+            }
+
             if (!AutoPanCityService.TryResolveOwnedCity(kingdom, command.TargetName, out City city, out string error))
             {
                 result.Text = error;
@@ -200,6 +213,66 @@ namespace XianniAutoPan.Commands
 
             result.Success = true;
             result.Text = AutoPanCityService.BuildCityInfoText(city);
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteAddPopulation(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanKingdomService.TryAddPopulation(kingdom, command.NumericValue, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 增加了 {Math.Max(1, command.NumericValue)} 名同种族成年人口");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 增加人数：{kingdom.name} / {command.NumericValue}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecutePlaceRuins(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            int requestedCount = command.NumericValue <= 0 ? 1 : command.NumericValue;
+            int totalCost = requestedCount * AutoPanConstants.PlaceRuinCost;
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, totalCost, out string spendError))
+            {
+                result.Text = spendError;
+                return result;
+            }
+
+            if (!XianniAutoPanApi.TryPlaceRuinsInKingdom(kingdom, requestedCount, out int placedCount) || placedCount <= 0)
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, totalCost);
+                result.Text = "当前王国内没有可放置遗迹的合法区域。";
+                return result;
+            }
+
+            int refund = totalCost - placedCount * AutoPanConstants.PlaceRuinCost;
+            if (refund > 0)
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, refund);
+            }
+
+            result.Success = true;
+            result.Text = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 已放置 {placedCount} 座遗迹，消耗 {placedCount * AutoPanConstants.PlaceRuinCost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 在本国区域放置了 {placedCount} 座遗迹");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 放置遗迹：{kingdom.name} / 请求{requestedCount} / 成功{placedCount}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteTransferTreasury(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            if (!AutoPanKingdomService.TryResolveKingdom(command.TargetName, out Kingdom target, out string resolveError))
+            {
+                result.Text = resolveError;
+                return result;
+            }
+
+            result.Success = AutoPanKingdomService.TryTransferTreasury(kingdom, target, command.NumericValue, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 转账 {command.NumericValue} 金币");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 转账：{kingdom.name} -> {target.name} / {command.NumericValue}");
+            }
             return result;
         }
 
@@ -301,7 +374,7 @@ namespace XianniAutoPan.Commands
                 result.Text = $"你与 {target.name} 当前处于同一联盟，不能直接宣战。";
                 return result;
             }
-            if (World.world.wars.getWar(kingdom, target, pOnlyMain: false) != null)
+            if (AutoPanKingdomService.TryFindWarWith(kingdom, target, out _))
             {
                 result.Text = $"你与 {target.name} 已处于战争状态。";
                 return result;
@@ -335,8 +408,7 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            War war = World.world.wars.getWar(kingdom, target, pOnlyMain: false);
-            if (war == null)
+            if (!AutoPanKingdomService.TryFindWarWith(kingdom, target, out War war))
             {
                 result.Text = $"当前与 {target.name} 没有正在进行的战争。";
                 return result;

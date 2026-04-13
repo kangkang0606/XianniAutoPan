@@ -153,6 +153,7 @@ function renderKingdoms(kingdoms) {
     actions.appendChild(createMiniButton("查看金币", "mini-btn-admin", () => sendCommand(`#查看国家金币 ${kingdomLabel}`)));
     actions.appendChild(createMiniButton("+500", "mini-btn-admin", () => sendCommand(`#增加国家金币 ${kingdomLabel} 500`)));
     actions.appendChild(createMiniButton("+1000", "mini-btn-admin", () => sendCommand(`#增加国家金币 ${kingdomLabel} 1000`)));
+    actions.appendChild(createMiniButton("转账1000", "mini-btn-admin", () => sendCommand(`转账 ${kingdomLabel} 1000`), isCurrent));
     actions.appendChild(createMiniButton("宣战", "mini-btn-danger", () => sendCommand(`宣战 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("求和", "mini-btn-neutral", () => sendCommand(`求和 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("结盟", "mini-btn-ok", () => sendCommand(`结盟 ${kingdomLabel}`), isCurrent));

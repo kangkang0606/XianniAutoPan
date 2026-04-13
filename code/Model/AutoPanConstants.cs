@@ -151,9 +151,19 @@ namespace XianniAutoPan.Model
         public const int FastAdultCostPerUnit = 20;
 
         /// <summary>
+        /// 增加人口每名单位的价格。
+        /// </summary>
+        public const int AddPopulationCostPerUnit = 55;
+
+        /// <summary>
         /// 征集军队每名单位的价格。
         /// </summary>
         public const int ConscriptCostPerUnit = 35;
+
+        /// <summary>
+        /// 放置遗迹每座价格。
+        /// </summary>
+        public const int PlaceRuinCost = 260;
 
         /// <summary>
         /// 移交城市固定价格。

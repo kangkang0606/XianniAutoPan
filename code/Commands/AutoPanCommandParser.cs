@@ -17,6 +17,9 @@ namespace XianniAutoPan.Commands
         private static readonly Regex CurseEnemyRegex = new Regex(@"^诅咒\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex KingdomBlessingRegex = new Regex(@"^国家祝福\s+(全员|\d+)$", RegexOptions.Compiled);
         private static readonly Regex CultivatorSuppressRegex = new Regex(@"^修士降境\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AddPopulationRegex = new Regex(@"^(增加人数|增加人口)\s+([1-9]\d*)$", RegexOptions.Compiled);
+        private static readonly Regex PlaceRuinsRegex = new Regex(@"^放置遗迹(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
+        private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s+(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex FastAdultRegex = new Regex(@"^快速成年\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队\s+(.+?)\s+(全部|\d+)$", RegexOptions.Compiled);
@@ -69,6 +72,10 @@ namespace XianniAutoPan.Commands
                 case "国家信息":
                     command.CommandType = AutoPanCommandType.KingdomInfo;
                     return command;
+                case "城市信息":
+                    command.CommandType = AutoPanCommandType.CityInfo;
+                    command.TargetName = string.Empty;
+                    return command;
                 case "血脉创立":
                     command.CommandType = AutoPanCommandType.BloodlineCreate;
                     return command;
@@ -80,6 +87,10 @@ namespace XianniAutoPan.Commands
                     return command;
                 case "国策 聚灵":
                     command.CommandType = AutoPanCommandType.GatherSpirit;
+                    return command;
+                case "放置遗迹":
+                    command.CommandType = AutoPanCommandType.PlaceRuins;
+                    command.NumericValue = 1;
                     return command;
                 case "修士榜":
                     command.CommandType = AutoPanCommandType.CultivatorBoard;
@@ -98,7 +109,32 @@ namespace XianniAutoPan.Commands
                     return command;
             }
 
-            Match match = AuraSabotageRegex.Match(text);
+            Match match = AddPopulationRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[2].Value, out int addPopulationCount))
+            {
+                command.CommandType = AutoPanCommandType.AddPopulation;
+                command.NumericValue = addPopulationCount;
+                return command;
+            }
+
+            match = PlaceRuinsRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.PlaceRuins;
+                command.NumericValue = string.IsNullOrWhiteSpace(match.Groups[1].Value) ? 1 : int.Parse(match.Groups[1].Value);
+                return command;
+            }
+
+            match = TransferTreasuryRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[2].Value, out int transferAmount))
+            {
+                command.CommandType = AutoPanCommandType.TransferTreasury;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.NumericValue = transferAmount;
+                return command;
+            }
+
+            match = AuraSabotageRegex.Match(text);
             if (match.Success && int.TryParse(match.Groups[2].Value, out int auraAmount))
             {
                 command.CommandType = AutoPanCommandType.AuraSabotage;

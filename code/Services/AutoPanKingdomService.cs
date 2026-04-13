@@ -368,7 +368,7 @@ namespace XianniAutoPan.Services
                     AutoPanCommandType.BeastBoard => $"{item.StageValue} 阶",
                     _ => item.StageValue.ToString()
                 };
-                lines.Add($"{i + 1}. {item.ActorName}，{stageLabel}，数值 {item.PowerValue}");
+                lines.Add($"{i + 1}. {item.ActorName} [id={item.ActorId}]，{stageLabel}，数值 {item.PowerValue}");
             }
             return string.Join("\n", lines);
         }
@@ -554,6 +554,133 @@ namespace XianniAutoPan.Services
 
             error = "找不到目标国家。当前可选国家：" + string.Join("，", aliveKingdoms.Select(FormatKingdomLabel).Take(10).ToArray());
             return false;
+        }
+
+        /// <summary>
+        /// 查找当前国家与目标国家之间的战争关系，兼容攻守双方任意方向。
+        /// </summary>
+        public static bool TryFindWarWith(Kingdom kingdom, Kingdom target, out War war)
+        {
+            war = null;
+            if (kingdom == null || target == null)
+            {
+                return false;
+            }
+
+            foreach (War item in kingdom.getWars())
+            {
+                if (item != null && !item.hasEnded() && item.isInWarWith(kingdom, target))
+                {
+                    war = item;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 为当前国家增加指定数量的同种族成年人口。
+        /// </summary>
+        public static bool TryAddPopulation(Kingdom kingdom, int count, out string message)
+        {
+            message = string.Empty;
+            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            {
+                message = "当前国家状态无效。";
+                return false;
+            }
+
+            if (count <= 0)
+            {
+                message = "增加人数的数量必须大于 0。";
+                return false;
+            }
+
+            int safeCount = count;
+            int totalCost = safeCount * AutoPanConstants.AddPopulationCostPerUnit;
+            if (!TrySpendTreasury(kingdom, totalCost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            string actorAssetId = GetSpawnActorAssetId(kingdom);
+            List<City> cities = kingdom.getCities()
+                .Where(city => city != null && city.isAlive())
+                .OrderByDescending(city => city.isCapitalCity())
+                .ThenBy(city => city.getID())
+                .ToList();
+            if (cities.Count == 0)
+            {
+                AddTreasury(kingdom, totalCost);
+                message = "当前国家没有可放置新人口的城市。";
+                return false;
+            }
+
+            int created = 0;
+            for (int index = 0; index < safeCount; index++)
+            {
+                City city = cities[index % cities.Count];
+                if (!TrySpawnCitizenForCity(kingdom, city, actorAssetId))
+                {
+                    continue;
+                }
+
+                created++;
+            }
+
+            if (created == 0)
+            {
+                AddTreasury(kingdom, totalCost);
+                message = "本次没有成功增加任何人口，请稍后再试。";
+                return false;
+            }
+
+            int refund = totalCost - created * AutoPanConstants.AddPopulationCostPerUnit;
+            if (refund > 0)
+            {
+                AddTreasury(kingdom, refund);
+            }
+
+            ClearSnapshotCache(kingdom.getID());
+            message = $"{FormatKingdomLabel(kingdom)} 已增加 {created} 名成年人口，消耗 {created * AutoPanConstants.AddPopulationCostPerUnit} 金币。";
+            return true;
+        }
+
+        /// <summary>
+        /// 向目标国家转账国家金币。
+        /// </summary>
+        public static bool TryTransferTreasury(Kingdom source, Kingdom target, int amount, out string message)
+        {
+            message = string.Empty;
+            if (source == null || target == null || !source.isAlive() || !target.isAlive())
+            {
+                message = "转账目标无效。";
+                return false;
+            }
+
+            if (source == target)
+            {
+                message = "不能向自己的国家转账。";
+                return false;
+            }
+
+            if (amount <= 0)
+            {
+                message = "转账金额必须大于 0。";
+                return false;
+            }
+
+            if (!TrySpendTreasury(source, amount, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            AddTreasury(target, amount);
+            message = $"{FormatKingdomLabel(source)} 已向 {FormatKingdomLabel(target)} 转账 {amount} 金币。";
+            return true;
         }
 
         /// <summary>
@@ -793,6 +920,75 @@ namespace XianniAutoPan.Services
             return false;
         }
 
+        private static bool TrySpawnCitizenForCity(Kingdom kingdom, City city, string actorAssetId)
+        {
+            if (city == null || !city.isAlive())
+            {
+                return false;
+            }
+
+            foreach (WorldTile tile in CollectCityGroundTiles(city))
+            {
+                Actor actor = SpawnAdult(actorAssetId, tile);
+                if (actor == null)
+                {
+                    continue;
+                }
+
+                actor.joinKingdom(kingdom);
+                actor.joinCity(city);
+                actor.data.age_overgrowth = AutoPanConstants.FixedAdultAge;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static List<WorldTile> CollectCityGroundTiles(City city)
+        {
+            List<WorldTile> tiles = new List<WorldTile>();
+            if (city == null)
+            {
+                return tiles;
+            }
+
+            WorldTile centerTile = city.getTile();
+            if (centerTile != null)
+            {
+                AddTileIfValid(centerTile.zone, centerTile, tiles);
+                WorldTile[] chunkTiles = centerTile.chunk?.tiles;
+                if (chunkTiles != null)
+                {
+                    for (int i = 0; i < chunkTiles.Length; i++)
+                    {
+                        AddTileIfValid(centerTile.zone, chunkTiles[i], tiles);
+                    }
+                }
+            }
+
+            foreach (TileZone zone in city.zones)
+            {
+                if (zone?.centerTile == null)
+                {
+                    continue;
+                }
+
+                AddTileIfValid(zone, zone.centerTile, tiles);
+                WorldTile[] chunkTiles = zone.centerTile.chunk?.tiles;
+                if (chunkTiles == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < chunkTiles.Length; i++)
+                {
+                    AddTileIfValid(zone, chunkTiles[i], tiles);
+                }
+            }
+
+            return tiles;
+        }
+
         private static bool CanFounderStartCivilization(Actor founder)
         {
             if (founder == null || founder.current_tile == null || founder.current_zone == null)
@@ -904,6 +1100,17 @@ namespace XianniAutoPan.Services
                 AutoPanCommandType.JoinDwarf => "dwarf",
                 _ => null
             };
+        }
+
+        private static string GetSpawnActorAssetId(Kingdom kingdom)
+        {
+            if (!string.IsNullOrWhiteSpace(kingdom?.data?.original_actor_asset))
+            {
+                return kingdom.data.original_actor_asset;
+            }
+
+            ActorAsset founderSpecies = kingdom?.getFounderSpecies();
+            return founderSpecies?.id ?? "human";
         }
 
         private static string GetRaceId(AutoPanCommandType joinType)

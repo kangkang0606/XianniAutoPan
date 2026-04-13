@@ -53,6 +53,26 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 构建当前国家全部城市的详细信息。
+        /// </summary>
+        public static string BuildAllCityInfoText(Kingdom kingdom)
+        {
+            List<City> cities = GetOwnedCities(kingdom);
+            if (cities.Count == 0)
+            {
+                return "当前国家没有可管理的城市。";
+            }
+
+            List<string> lines = new List<string> { $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 城市详情：" };
+            foreach (City city in cities)
+            {
+                lines.Add(BuildCityInfoText(city));
+            }
+
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>
         /// 解析当前国家名下的城市，支持“城市名 [cityId]”稳定定位。
         /// </summary>
         public static bool TryResolveOwnedCity(Kingdom kingdom, string rawCityName, out City city, out string error)
