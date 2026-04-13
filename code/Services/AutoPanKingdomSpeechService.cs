@@ -93,10 +93,12 @@ namespace XianniAutoPan.Services
         private const float SpeechLifetimeSeconds = 18f;
         private const float BubbleRefreshIntervalSeconds = 0.8f;
         private const float AnchorFreshSeconds = 1.6f;
-        private const float BubbleYOffset = 76f;
-        private const float BubbleMinWidth = 220f;
-        private const float BubbleMaxWidth = 460f;
-        private const float BubbleMinHeight = 88f;
+        private const float BubbleYOffset = 44f;
+        private const float BubbleMinWidth = 80f;
+        private const float BubbleMaxWidth = 300f;
+        private const float BubbleMinHeight = 32f;
+        private const float BubblePaddingH = 36f;
+        private const float BubblePaddingV = 16f;
         private const int MaxSpeechEntries = 3;
         private const int MaxLineLength = 56;
         private static readonly Dictionary<long, SpeechAnchor> Anchors = new Dictionary<long, SpeechAnchor>();
@@ -261,7 +263,7 @@ namespace XianniAutoPan.Services
 
             Text text = textObject.AddComponent<Text>();
             text.font = ResolveFont();
-            text.fontSize = 20;
+            text.fontSize = 13;
             text.alignment = TextAnchor.MiddleCenter;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
@@ -334,16 +336,23 @@ namespace XianniAutoPan.Services
             visual.Root.transform.SetAsLastSibling();
             visual.Root.transform.position = new Vector3(anchorPosition.x, anchorPosition.y + BubbleYOffset, 0f);
 
+            // 跟随铭牌缩放，远景自动缩小
+            float nameplateScale = MapBox.instance?.nameplate_manager?._tween_scale ?? 0.5f;
+            float bubbleScale = Mathf.Clamp(nameplateScale * 1.6f, 0.3f, 0.85f);
+            visual.Root.transform.localScale = new Vector3(bubbleScale, bubbleScale, 1f);
+
             string text = string.Join("\n", visual.Lines.Select(item => item.Text).ToArray());
             visual.Text.text = text;
-            visual.Text.color = BuildReadableTextColor(kingdom);
+            visual.Text.color = Color.black;
 
-            float bubbleWidth = BubbleMaxWidth;
-            float textWidth = bubbleWidth - 96f;
+            // 宽度根据文本内容自适应，不再固定撑满最大值
+            float preferredTextWidth = visual.Text.preferredWidth;
+            float bubbleWidth = Mathf.Clamp(preferredTextWidth + BubblePaddingH, BubbleMinWidth, BubbleMaxWidth);
+            float textWidth = bubbleWidth - BubblePaddingH;
             visual.TextRect.sizeDelta = new Vector2(textWidth, 0f);
-            float bubbleHeight = Mathf.Max(BubbleMinHeight, visual.Text.preferredHeight + 38f);
-            visual.RootRect.sizeDelta = new Vector2(Mathf.Max(BubbleMinWidth, bubbleWidth), bubbleHeight);
-            visual.TextRect.sizeDelta = new Vector2(textWidth, bubbleHeight - 26f);
+            float bubbleHeight = Mathf.Max(BubbleMinHeight, visual.Text.preferredHeight + BubblePaddingV);
+            visual.RootRect.sizeDelta = new Vector2(bubbleWidth, bubbleHeight);
+            visual.TextRect.sizeDelta = new Vector2(textWidth, bubbleHeight - BubblePaddingV);
 
             visual.BubbleImage.sprite = CommunicationLibrary.normal?.getSpriteBubble();
             visual.BubbleImage.color = BuildBubbleColor(kingdom, visual.Lines.Any(item => item.IsCommand));
@@ -484,9 +493,7 @@ namespace XianniAutoPan.Services
 
         private static string FormatLine(string speakerName, string content, bool isCommand)
         {
-            string name = string.IsNullOrWhiteSpace(speakerName) ? "国家" : speakerName.Trim();
-            string prefix = isCommand ? $"{name}> " : $"{name}：";
-            return prefix + SanitizeContent(content);
+            return SanitizeContent(content);
         }
 
         private static string SanitizeContent(string content)
