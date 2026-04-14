@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Linq;
 using HarmonyLib;
@@ -7,6 +8,7 @@ using XianniAutoPan.Commands;
 using XianniAutoPan.Frontend;
 using XianniAutoPan.Model;
 using XianniAutoPan.Services;
+using xn.api;
 
 namespace XianniAutoPan
 {
@@ -26,6 +28,7 @@ namespace XianniAutoPan
         {
             _modFolder = GetDeclaration().FolderPath;
             AutoPanConfigHooks.InitializeFromConfig(GetConfig());
+            AutoPanConfigHooks.InitializeBackendPolicy(_modFolder);
             ValidateCommandBook();
 
             _harmony = new Harmony("xianni.autopan.runtime");
@@ -47,6 +50,8 @@ namespace XianniAutoPan
             AutoPanLocalWebServer.Instance.UpdateConfiguration();
             ProcessFrontendMessages();
             AutoPanAiService.FlushCompletedResults();
+            AutoPanRequestService.Update();
+            AutoPanDuelService.Update();
             AutoPanKingdomSpeechService.Update();
 
             if (World.world == null || World.world.map_stats == null)
@@ -72,16 +77,54 @@ namespace XianniAutoPan
         public void OnDestroy()
         {
             AutoPanLocalWebServer.Instance.Stop();
+            AutoPanRequestService.ClearAll();
+            AutoPanDuelService.ClearAll();
             AutoPanKingdomSpeechService.Dispose();
         }
 
         private void OnWorldLoaded()
         {
             AutoPanStateRepository.LoadFromWorld();
+            ResetFreshWorldYearIfNeeded();
             AutoPanStateRepository.CleanupDeadBindings();
+            ClearLegacyXiuzhenguoOffsets();
+            AutoPanRequestService.ClearAll();
+            AutoPanDuelService.ClearAll();
             AutoPanKingdomSpeechService.ClearAll();
             _lastObservedYear = Date.getCurrentYear();
             AutoPanLogService.Info($"世界已加载，当前年份 {_lastObservedYear}，自动盘状态已恢复。");
+        }
+
+        private void ResetFreshWorldYearIfNeeded()
+        {
+            if (World.world?.map_stats == null)
+            {
+                return;
+            }
+
+            World.world.map_stats.world_time = 0.0;
+            World.world.map_stats.history_current_year = -1;
+            AutoPanLogService.Info("已将年份重置为 1 年。");
+            AutoPanStateRepository.MarkWorldInitialized();
+        }
+
+        private static void ClearLegacyXiuzhenguoOffsets()
+        {
+            if (World.world?.kingdoms == null)
+            {
+                return;
+            }
+
+            foreach (Kingdom kingdom in World.world.kingdoms)
+            {
+                if (kingdom == null || !kingdom.isAlive())
+                {
+                    continue;
+                }
+
+                XianniAutoPanApi.ClearXiuzhenguoManualOffset(kingdom);
+                XianniAutoPanApi.RefreshXiuzhenguoLevel(kingdom);
+            }
         }
 
         private void ProcessFrontendMessages()
@@ -90,7 +133,7 @@ namespace XianniAutoPan
             while (processed < AutoPanConstants.MaxMessagesPerFrame && AutoPanLocalWebServer.Instance.TryDequeueMessage(out FrontendInboundMessage message))
             {
                 AutoPanCommandResult result = AutoPanCommandExecutor.ExecutePlayerMessage(message);
-                AutoPanLocalWebServer.Instance.SendReply(message.SessionId, result);
+                AutoPanLocalWebServer.Instance.SendReply(message, result);
                 processed++;
             }
         }
@@ -111,16 +154,21 @@ namespace XianniAutoPan
                 "加入兽人",
                 "加入精灵",
                 "加入矮人",
+                "帮助",
                 "我的国家",
                 "国家信息",
-                "血脉创立",
+                "查看所有国家信息",
+                "国家改名",
+                "血脉创立 12345",
                 "城市列表",
                 "城市信息",
                 "升级国运",
+                "降低国运",
                 "国策 聚灵",
                 "增加人数",
                 "放置遗迹",
                 "转账",
+                "天榜",
                 "削灵",
                 "斩首",
                 "诅咒",
@@ -130,25 +178,34 @@ namespace XianniAutoPan
                 "征集军队",
                 "移交城市",
                 "军备",
+                "约斗",
                 "宣战",
                 "求和",
                 "结盟",
-                "解盟",
+                "同意结盟",
+                "拒绝结盟",
+                "同意约斗",
+                "拒绝约斗",
+                "退盟",
                 "修士榜",
                 "古神榜",
                 "妖兽榜",
-                "修士 1 闭关",
-                "修士 1 升境",
-                "古神 1 炼体",
-                "古神 1 升星",
-                "妖兽 1 养成",
-                "妖兽 1 升阶",
+                "修士 12345 闭关",
+                "修士 12345 升境",
+                "古神 12345 炼体",
+                "古神 12345 升星",
+                "妖兽 12345 养成",
+                "妖兽 12345 升阶",
                 "#增加国家金币",
                 "#设置国家金币",
                 "#查看国家金币",
                 "#全局AI 开",
                 "#全局AI 关",
-                "#查看绑定"
+                "#查看绑定",
+                "#查看政策",
+                "#设置政策",
+                "#设置AI开始决策年份",
+                "#设置玩家开始决策年份"
             };
 
             string[] missing = requiredKeywords.Where(keyword => !text.Contains(keyword)).ToArray();

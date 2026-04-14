@@ -1,12 +1,148 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
 using NeoModLoader.api;
+using XianniAutoPan.Model;
+using xn.api;
 
 namespace XianniAutoPan.Services
 {
     /// <summary>
-    /// 自动盘配置回调与缓存。
+    /// 自动盘配置回调、后端政策持久化与运行时缓存。
     /// </summary>
     public static class AutoPanConfigHooks
     {
+        private sealed class PolicyDefinition
+        {
+            /// <summary>
+            /// 模块稳定键。
+            /// </summary>
+            public string ModuleKey { get; set; }
+
+            /// <summary>
+            /// 模块显示名。
+            /// </summary>
+            public string ModuleName { get; set; }
+
+            /// <summary>
+            /// 模块说明。
+            /// </summary>
+            public string ModuleDescription { get; set; }
+
+            /// <summary>
+            /// 配置稳定键。
+            /// </summary>
+            public string Key { get; set; }
+
+            /// <summary>
+            /// 配置显示名。
+            /// </summary>
+            public string DisplayName { get; set; }
+
+            /// <summary>
+            /// 配置说明。
+            /// </summary>
+            public string Description { get; set; }
+
+            /// <summary>
+            /// 单位文本。
+            /// </summary>
+            public string UnitText { get; set; }
+
+            /// <summary>
+            /// 最小值。
+            /// </summary>
+            public int MinValue { get; set; }
+
+            /// <summary>
+            /// 最大值。
+            /// </summary>
+            public int MaxValue { get; set; }
+
+            /// <summary>
+            /// 读取当前值。
+            /// </summary>
+            public Func<int> Getter { get; set; }
+
+            /// <summary>
+            /// 写入当前值。
+            /// </summary>
+            public Action<int> Setter { get; set; }
+        }
+
+        private sealed class PersistedPolicyValues
+        {
+            /// <summary>
+            /// 稳定键到数值的映射。
+            /// </summary>
+            public Dictionary<string, int> Values { get; set; } = new Dictionary<string, int>();
+        }
+
+        private sealed class PersistedBackendSettings
+        {
+            /// <summary>
+            /// 是否启用 QQ 群接入。
+            /// </summary>
+            public bool QqAdapterEnabled { get; set; }
+
+            /// <summary>
+            /// OneBot 反向 WebSocket 路径。
+            /// </summary>
+            public string QqOneBotWsPath { get; set; }
+
+            /// <summary>
+            /// OneBot 访问令牌。
+            /// </summary>
+            public string QqOneBotAccessToken { get; set; }
+
+            /// <summary>
+            /// 机器人自身 QQ。
+            /// </summary>
+            public string QqBotSelfId { get; set; }
+
+            /// <summary>
+            /// 回包时是否 @ 发送者。
+            /// </summary>
+            public bool QqReplyAtSender { get; set; }
+
+            /// <summary>
+            /// 群白名单原始文本。
+            /// </summary>
+            public string QqGroupWhitelist { get; set; }
+
+            /// <summary>
+            /// QQ 管理员白名单原始文本。
+            /// </summary>
+            public string QqAdminWhitelist { get; set; }
+        }
+
+        private static readonly List<PolicyDefinition> PolicyDefinitions = new List<PolicyDefinition>();
+        private static readonly Dictionary<string, PolicyDefinition> PolicyLookup = new Dictionary<string, PolicyDefinition>(StringComparer.Ordinal);
+        private static readonly int[] XiuzhenguoAuraCaps =
+        {
+            40000,
+            100000,
+            300000,
+            500000,
+            800000,
+            1000000,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+        };
+
+        private static string _backendPolicyPath = string.Empty;
+        private static string _backendSettingsPath = string.Empty;
+
+        static AutoPanConfigHooks()
+        {
+            RegisterPolicyDefinitions();
+        }
+
         /// <summary>
         /// 是否启用 LLM AI。
         /// </summary>
@@ -38,7 +174,358 @@ namespace XianniAutoPan.Services
         public static string BindHost { get; private set; } = "*";
 
         /// <summary>
+        /// 是否启用 QQ 群 OneBot 接入。
+        /// </summary>
+        public static bool QqAdapterEnabled { get; private set; }
+
+        /// <summary>
+        /// OneBot 反向 WebSocket 路径。
+        /// </summary>
+        public static string QqOneBotWsPath { get; private set; } = "/onebot/ws";
+
+        /// <summary>
+        /// OneBot 访问令牌。
+        /// </summary>
+        public static string QqOneBotAccessToken { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 限制连接的机器人 QQ。
+        /// </summary>
+        public static string QqBotSelfId { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 回包时是否 @ 发送者。
+        /// </summary>
+        public static bool QqReplyAtSender { get; private set; } = true;
+
+        /// <summary>
+        /// 群白名单原始文本，逗号/换行/空格分隔。
+        /// </summary>
+        public static string QqGroupWhitelist { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// QQ 管理员白名单原始文本，逗号/换行/空格分隔。
+        /// </summary>
+        public static string QqAdminWhitelist { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 玩家加入时的初始国库。
+        /// </summary>
+        public static int InitialTreasury { get; private set; } = 200;
+
+        /// <summary>
+        /// 玩家加入时的初始国家等级。
+        /// </summary>
+        public static int InitialLevel { get; private set; } = 1;
+
+        /// <summary>
+        /// 升级国运每级倍率。
+        /// </summary>
+        public static int NationUpgradeCostPerLevel { get; private set; } = 200;
+
+        /// <summary>
+        /// 年收入基础值。
+        /// </summary>
+        public static int IncomeBase { get; private set; } = 10;
+
+        /// <summary>
+        /// 每座城市带来的年收入。
+        /// </summary>
+        public static int IncomePerCity { get; private set; } = 4;
+
+        /// <summary>
+        /// 人口收入除数。
+        /// </summary>
+        public static int IncomePopulationDivisor { get; private set; } = 20;
+
+        /// <summary>
+        /// 每级国运带来的年收入。
+        /// </summary>
+        public static int IncomePerLevel { get; private set; } = 3;
+
+        /// <summary>
+        /// 灵气收入除数。
+        /// </summary>
+        public static int IncomeAuraDivisor { get; private set; } = 200;
+
+        /// <summary>
+        /// 聚灵每城额外灵气。
+        /// </summary>
+        public static int GatherSpiritAuraBonusPerCity { get; private set; } = 500;
+
+        /// <summary>
+        /// 聚灵持续年数。
+        /// </summary>
+        public static int GatherSpiritDurationYears { get; private set; } = 5;
+
+        /// <summary>
+        /// 宣战成本。
+        /// </summary>
+        public static int DeclareWarCost { get; private set; } = 150;
+
+        /// <summary>
+        /// 求和成本。
+        /// </summary>
+        public static int SeekPeaceCost { get; private set; } = 100;
+
+        /// <summary>
+        /// 结盟请求成本。
+        /// </summary>
+        public static int AllianceRequestCost { get; private set; } = 130;
+
+        /// <summary>
+        /// 退盟成本。
+        /// </summary>
+        public static int LeaveAllianceCost { get; private set; } = 90;
+
+        /// <summary>
+        /// 国策聚灵成本。
+        /// </summary>
+        public static int GatherSpiritCost { get; private set; } = 120;
+
+        /// <summary>
+        /// 增加人数单价。
+        /// </summary>
+        public static int AddPopulationCostPerUnit { get; private set; } = 55;
+
+        /// <summary>
+        /// 放置遗迹单价。
+        /// </summary>
+        public static int PlaceRuinCost { get; private set; } = 260;
+
+        /// <summary>
+        /// 快速成年单价。
+        /// </summary>
+        public static int FastAdultCostPerUnit { get; private set; } = 20;
+
+        /// <summary>
+        /// 征集军队单价。
+        /// </summary>
+        public static int ConscriptCostPerUnit { get; private set; } = 35;
+
+        /// <summary>
+        /// 移交城市成本。
+        /// </summary>
+        public static int TransferCityCost { get; private set; } = 180;
+
+        /// <summary>
+        /// 国家改名成本。
+        /// </summary>
+        public static int RenameKingdomCost { get; private set; } = 120;
+
+        /// <summary>
+        /// 铜制军备单价。
+        /// </summary>
+        public static int EquipCopperCostPerUnit { get; private set; } = 30;
+
+        /// <summary>
+        /// 青铜军备单价。
+        /// </summary>
+        public static int EquipBronzeCostPerUnit { get; private set; } = 45;
+
+        /// <summary>
+        /// 白银军备单价。
+        /// </summary>
+        public static int EquipSilverCostPerUnit { get; private set; } = 60;
+
+        /// <summary>
+        /// 铁制军备单价。
+        /// </summary>
+        public static int EquipIronCostPerUnit { get; private set; } = 80;
+
+        /// <summary>
+        /// 钢制军备单价。
+        /// </summary>
+        public static int EquipSteelCostPerUnit { get; private set; } = 110;
+
+        /// <summary>
+        /// 秘银军备单价。
+        /// </summary>
+        public static int EquipMythrilCostPerUnit { get; private set; } = 160;
+
+        /// <summary>
+        /// 精金军备单价。
+        /// </summary>
+        public static int EquipAdamantineCostPerUnit { get; private set; } = 240;
+
+        /// <summary>
+        /// 修士闭关成本。
+        /// </summary>
+        public static int CultivatorRetreatCost { get; private set; } = 80;
+
+        /// <summary>
+        /// 修士闭关增加修为。
+        /// </summary>
+        public static int ClosedDoorXiuweiGain { get; private set; } = 10000;
+
+        /// <summary>
+        /// 修士直接升境基础成本。
+        /// </summary>
+        public static int CultivatorRealmUpBaseCost { get; private set; } = 180;
+
+        /// <summary>
+        /// 修士直接升境每层递增成本。
+        /// </summary>
+        public static int CultivatorRealmUpStepCost { get; private set; } = 90;
+
+        /// <summary>
+        /// 古神炼体成本。
+        /// </summary>
+        public static int AncientTrainCost { get; private set; } = 100;
+
+        /// <summary>
+        /// 古神炼体增加古神之力。
+        /// </summary>
+        public static int AncientTrainingGain { get; private set; } = 15000;
+
+        /// <summary>
+        /// 古神升星基础成本。
+        /// </summary>
+        public static int AncientStageUpBaseCost { get; private set; } = 170;
+
+        /// <summary>
+        /// 古神升星每星递增成本。
+        /// </summary>
+        public static int AncientStageUpStepCost { get; private set; } = 110;
+
+        /// <summary>
+        /// 妖兽养成成本。
+        /// </summary>
+        public static int BeastTrainCost { get; private set; } = 90;
+
+        /// <summary>
+        /// 妖兽养成增加妖力。
+        /// </summary>
+        public static int BeastTrainingGain { get; private set; } = 15000;
+
+        /// <summary>
+        /// 妖兽升阶基础成本。
+        /// </summary>
+        public static int BeastStageUpBaseCost { get; private set; } = 160;
+
+        /// <summary>
+        /// 妖兽升阶每阶递增成本。
+        /// </summary>
+        public static int BeastStageUpStepCost { get; private set; } = 100;
+
+        /// <summary>
+        /// 血脉创立基础成本。
+        /// </summary>
+        public static int BloodlineCreateBaseCost { get; private set; } = 320;
+
+        /// <summary>
+        /// 血脉创立按层级递增成本。
+        /// </summary>
+        public static int BloodlineCreateStageStepCost { get; private set; } = 140;
+
+        /// <summary>
+        /// 削灵最小成本。
+        /// </summary>
+        public static int AuraSabotageMinCost { get; private set; } = 80;
+
+        /// <summary>
+        /// 每 100 灵气的削灵成本。
+        /// </summary>
+        public static int AuraSabotageCostPer100Aura { get; private set; } = 35;
+
+        /// <summary>
+        /// 斩首基础成本。
+        /// </summary>
+        public static int AssassinateBaseCost { get; private set; } = 280;
+
+        /// <summary>
+        /// 斩首按层级递增成本。
+        /// </summary>
+        public static int AssassinateStageStepCost { get; private set; } = 120;
+
+        /// <summary>
+        /// 诅咒基础成本。
+        /// </summary>
+        public static int CurseBaseCost { get; private set; } = 60;
+
+        /// <summary>
+        /// 每个目标的诅咒成本。
+        /// </summary>
+        public static int CurseCostPerTarget { get; private set; } = 70;
+
+        /// <summary>
+        /// 祝福基础成本。
+        /// </summary>
+        public static int BlessBaseCost { get; private set; } = 40;
+
+        /// <summary>
+        /// 每个目标的祝福成本。
+        /// </summary>
+        public static int BlessCostPerTarget { get; private set; } = 50;
+
+        /// <summary>
+        /// 修士降境基础成本。
+        /// </summary>
+        public static int CultivatorSuppressBaseCost { get; private set; } = 90;
+
+        /// <summary>
+        /// 修士降境按层级与压制层数递增成本。
+        /// </summary>
+        public static int CultivatorSuppressStageStepCost { get; private set; } = 35;
+
+        /// <summary>
+        /// 约斗请求成本。
+        /// </summary>
+        public static int DuelRequestCost { get; private set; } = 180;
+
+        /// <summary>
+        /// 降低国运每级成本。
+        /// </summary>
+        public static int LowerNationCostPerLevel { get; private set; } = 180;
+
+        /// <summary>
+        /// 请求超时秒数。
+        /// </summary>
+        public static int RequestTimeoutSeconds { get; private set; } = 10;
+
+        /// <summary>
+        /// AI 从哪一年开始允许决策。
+        /// </summary>
+        public static int AiDecisionStartYear { get; private set; } = 1;
+
+        /// <summary>
+        /// 玩家从哪一年开始允许执行国家决策类指令。
+        /// </summary>
+        public static int PlayerDecisionStartYear { get; private set; } = 1;
+
+        /// <summary>
+        /// 天运惩罚成本。
+        /// </summary>
+        public static int HeavenPunishCost { get; private set; } = 150;
+
+        /// <summary>
+        /// 天运赐福成本。
+        /// </summary>
+        public static int HeavenBlessCost { get; private set; } = 120;
+
+        /// <summary>
+        /// 天运惩罚最大目标数。
+        /// </summary>
+        public static int HeavenPunishMaxTargets { get; private set; } = 20;
+
+        /// <summary>
+        /// 天运赐福最大目标数。
+        /// </summary>
+        public static int HeavenBlessMaxTargets { get; private set; } = 20;
+
+        /// <summary>
+        /// 扰动国家成本。
+        /// </summary>
+        public static int DisturbKingdomCost { get; private set; } = 200;
+
+        /// <summary>
+        /// 扰动国家成功概率（%）。
+        /// </summary>
+        public static int DisturbSuccessRate { get; private set; } = 30;
+
+        /// <summary>
         /// 从当前配置初始化静态缓存。
+        /// 这里只处理启动前必须可用的基础配置与旧版政策兼容导入。
         /// </summary>
         public static void InitializeFromConfig(ModConfig config)
         {
@@ -71,6 +558,272 @@ namespace XianniAutoPan.Services
             {
                 OnLlmApiKeyChanged(apiKey.TextVal);
             }
+
+            if (config["autopan_config_policy"].TryGetValue("autopan_initial_treasury", out ModConfigItem initialTreasury))
+            {
+                OnInitialTreasuryChanged(initialTreasury.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_initial_level", out ModConfigItem initialLevel))
+            {
+                OnInitialLevelChanged(initialLevel.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_income_base", out ModConfigItem incomeBase))
+            {
+                OnIncomeBaseChanged(incomeBase.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_income_per_city", out ModConfigItem incomePerCity))
+            {
+                OnIncomePerCityChanged(incomePerCity.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_income_population_divisor", out ModConfigItem incomePopulationDivisor))
+            {
+                OnIncomePopulationDivisorChanged(incomePopulationDivisor.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_income_per_level", out ModConfigItem incomePerLevel))
+            {
+                OnIncomePerLevelChanged(incomePerLevel.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_income_aura_divisor", out ModConfigItem incomeAuraDivisor))
+            {
+                OnIncomeAuraDivisorChanged(incomeAuraDivisor.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_gather_spirit_aura_bonus_per_city", out ModConfigItem gatherSpiritBonus))
+            {
+                OnGatherSpiritAuraBonusPerCityChanged(gatherSpiritBonus.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_declare_war_cost", out ModConfigItem declareWarCost))
+            {
+                OnDeclareWarCostChanged(declareWarCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_seek_peace_cost", out ModConfigItem seekPeaceCost))
+            {
+                OnSeekPeaceCostChanged(seekPeaceCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_alliance_request_cost", out ModConfigItem allianceCost))
+            {
+                OnAllianceRequestCostChanged(allianceCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_leave_alliance_cost", out ModConfigItem leaveAllianceCost))
+            {
+                OnLeaveAllianceCostChanged(leaveAllianceCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_gather_spirit_cost", out ModConfigItem gatherSpiritCost))
+            {
+                OnGatherSpiritCostChanged(gatherSpiritCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_add_population_cost_per_unit", out ModConfigItem addPopulationCost))
+            {
+                OnAddPopulationCostPerUnitChanged(addPopulationCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_place_ruin_cost", out ModConfigItem placeRuinCost))
+            {
+                OnPlaceRuinCostChanged(placeRuinCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_fast_adult_cost_per_unit", out ModConfigItem fastAdultCost))
+            {
+                OnFastAdultCostPerUnitChanged(fastAdultCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_conscript_cost_per_unit", out ModConfigItem conscriptCost))
+            {
+                OnConscriptCostPerUnitChanged(conscriptCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_duel_request_cost", out ModConfigItem duelCost))
+            {
+                OnDuelRequestCostChanged(duelCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_lower_nation_cost_per_level", out ModConfigItem lowerNationCost))
+            {
+                OnLowerNationCostPerLevelChanged(lowerNationCost.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_request_timeout_seconds", out ModConfigItem requestTimeout))
+            {
+                OnRequestTimeoutSecondsChanged(requestTimeout.TextVal);
+            }
+            if (config["autopan_config_policy"].TryGetValue("autopan_xiuzhenguo_aura_cap_override", out ModConfigItem legacyAuraCap))
+            {
+                OnXiuzhenguoAuraCapOverrideChanged(legacyAuraCap.TextVal);
+            }
+        }
+
+        /// <summary>
+        /// 初始化后端政策文件路径并载入配置。
+        /// </summary>
+        public static void InitializeBackendPolicy(string modFolder)
+        {
+            if (string.IsNullOrWhiteSpace(modFolder))
+            {
+                return;
+            }
+
+            _backendPolicyPath = Path.Combine(modFolder, "backend_policy.json");
+            _backendSettingsPath = Path.Combine(modFolder, "backend_settings.json");
+            LoadBackendSettings();
+            LoadBackendPolicy();
+            ApplyRuntimeBindings();
+            SaveBackendSettings();
+            SaveBackendPolicy();
+        }
+
+        /// <summary>
+        /// 构建前端显示用政策快照。
+        /// </summary>
+        public static AutoPanPolicySnapshot BuildPolicySnapshot()
+        {
+            AutoPanPolicySnapshot snapshot = new AutoPanPolicySnapshot();
+            foreach (IGrouping<string, PolicyDefinition> group in PolicyDefinitions.GroupBy(item => item.ModuleKey))
+            {
+                PolicyDefinition first = group.First();
+                AutoPanPolicyModuleSnapshot module = new AutoPanPolicyModuleSnapshot
+                {
+                    ModuleKey = first.ModuleKey,
+                    DisplayName = first.ModuleName,
+                    Description = first.ModuleDescription
+                };
+
+                foreach (PolicyDefinition item in group)
+                {
+                    module.Items.Add(new AutoPanPolicyItemSnapshot
+                    {
+                        Key = item.Key,
+                        DisplayName = item.DisplayName,
+                        Description = item.Description,
+                        Value = item.Getter(),
+                        MinValue = item.MinValue,
+                        MaxValue = item.MaxValue,
+                        UnitText = item.UnitText
+                    });
+                }
+
+                snapshot.Modules.Add(module);
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// 构建管理员查看用的政策文本。
+        /// </summary>
+        public static string BuildPolicyText()
+        {
+            AutoPanPolicySnapshot snapshot = BuildPolicySnapshot();
+            List<string> lines = new List<string> { "当前后端政策：" };
+            foreach (AutoPanPolicyModuleSnapshot module in snapshot.Modules)
+            {
+                lines.Add($"【{module.DisplayName}】{module.Description}");
+                foreach (AutoPanPolicyItemSnapshot item in module.Items)
+                {
+                    lines.Add($"- {item.DisplayName}({item.Key}) = {item.Value}{item.UnitText}");
+                }
+            }
+
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>
+        /// 构建 QQ 接入状态与配置快照。
+        /// </summary>
+        public static AutoPanQqDashboardSnapshot BuildQqDashboardSnapshot()
+        {
+            return new AutoPanQqDashboardSnapshot
+            {
+                Enabled = QqAdapterEnabled,
+                WsPath = QqOneBotWsPath,
+                HasAccessToken = !string.IsNullOrWhiteSpace(QqOneBotAccessToken),
+                BotSelfId = QqBotSelfId,
+                ReplyAtSender = QqReplyAtSender,
+                GroupWhitelist = QqGroupWhitelist,
+                AdminWhitelist = QqAdminWhitelist
+            };
+        }
+
+        /// <summary>
+        /// 通过管理员指令设置后端政策并立即持久化。
+        /// </summary>
+        public static bool TrySetPolicy(ModConfig config, string rawKey, string rawValue, out string message)
+        {
+            message = string.Empty;
+            if (!TryResolvePolicyDefinition(rawKey, out PolicyDefinition definition))
+            {
+                message = $"未知政策键：{rawKey}。";
+                return false;
+            }
+
+            if (!int.TryParse((rawValue ?? string.Empty).Trim(), out int parsed))
+            {
+                message = $"{definition.DisplayName} 只能设置为整数。";
+                return false;
+            }
+
+            parsed = ClampValue(parsed, definition.MinValue, definition.MaxValue);
+            definition.Setter(parsed);
+            ApplyRuntimeBindings();
+            SaveBackendPolicy();
+            message = $"{definition.DisplayName} 已更新为 {definition.Getter()}{definition.UnitText}。";
+            return true;
+        }
+
+        /// <summary>
+        /// 通过后端页面设置 QQ 接入配置并立即持久化。
+        /// </summary>
+        public static bool TrySetQqSetting(string rawKey, string rawValue, out string message)
+        {
+            message = string.Empty;
+            string key = NormalizePolicyKey(rawKey);
+            string value = (rawValue ?? string.Empty).Trim();
+            switch (key)
+            {
+                case "qqadapterenabled":
+                    QqAdapterEnabled = ParseBool(value, QqAdapterEnabled);
+                    message = $"QQ 群接入已{(QqAdapterEnabled ? "启用" : "关闭")}。";
+                    break;
+                case "qqonebotwspath":
+                    QqOneBotWsPath = NormalizeQqWsPath(value);
+                    message = $"QQ OneBot 路径已更新为 {QqOneBotWsPath}。";
+                    break;
+                case "qqonebotaccesstoken":
+                    QqOneBotAccessToken = value;
+                    message = string.IsNullOrWhiteSpace(QqOneBotAccessToken) ? "QQ OneBot 访问令牌已清空。" : "QQ OneBot 访问令牌已更新。";
+                    break;
+                case "qqbotselfid":
+                    QqBotSelfId = NormalizeDigitsOrEmpty(value);
+                    message = string.IsNullOrWhiteSpace(QqBotSelfId) ? "机器人 QQ 限制已清空。" : $"机器人 QQ 已更新为 {QqBotSelfId}。";
+                    break;
+                case "qqreplyatsender":
+                    QqReplyAtSender = ParseBool(value, QqReplyAtSender);
+                    message = $"QQ 回包 @发送者 已{(QqReplyAtSender ? "启用" : "关闭")}。";
+                    break;
+                case "qqgroupwhitelist":
+                    QqGroupWhitelist = NormalizeGroupWhitelist(value);
+                    message = string.IsNullOrWhiteSpace(QqGroupWhitelist) ? "QQ群白名单已清空，默认允许所有群。" : $"QQ群白名单已更新：{QqGroupWhitelist}";
+                    break;
+                case "qqadminwhitelist":
+                    QqAdminWhitelist = NormalizeGroupWhitelist(value);
+                    message = string.IsNullOrWhiteSpace(QqAdminWhitelist) ? "QQ 管理员白名单已清空，QQ群内管理员指令将全部拒绝。" : $"QQ 管理员白名单已更新：{QqAdminWhitelist}";
+                    break;
+                default:
+                    message = $"未知 QQ 配置键：{rawKey}。";
+                    return false;
+            }
+
+            SaveBackendSettings();
+            return true;
+        }
+
+        /// <summary>
+        /// 获取指定修真国等级的灵气上限配置。
+        /// </summary>
+        public static int GetXiuzhenguoAuraCap(int level)
+        {
+            int safeIndex = Math.Max(0, Math.Min(XiuzhenguoAuraCaps.Length - 1, level));
+            return XiuzhenguoAuraCaps[safeIndex];
+        }
+
+        /// <summary>
+        /// 获取修真国灵气上限配置快照。
+        /// </summary>
+        public static int[] GetXiuzhenguoAuraCapsSnapshot()
+        {
+            return XiuzhenguoAuraCaps.ToArray();
         }
 
         /// <summary>
@@ -115,16 +868,7 @@ namespace XianniAutoPan.Services
                 port = 19051;
             }
 
-            if (port < 1)
-            {
-                port = 1;
-            }
-            if (port > 65535)
-            {
-                port = 65535;
-            }
-
-            HttpPort = port;
+            HttpPort = ClampValue(port, 1, 65535);
         }
 
         /// <summary>
@@ -133,6 +877,570 @@ namespace XianniAutoPan.Services
         public static void OnBindHostChanged(string value)
         {
             BindHost = string.IsNullOrWhiteSpace(value) ? "*" : value.Trim();
+        }
+
+        /// <summary>
+        /// 旧版“修真国总灵气上限”配置回调。
+        /// 该项已被逐级灵气上限替代，保留空实现仅用于兼容旧配置文件。
+        /// </summary>
+        public static void OnXiuzhenguoAuraCapOverrideChanged(string value)
+        {
+        }
+
+        /// <summary>
+        /// 初始国库配置回调。
+        /// </summary>
+        public static void OnInitialTreasuryChanged(string value)
+        {
+            InitialTreasury = ParsePositive(value, InitialTreasury, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 初始等级配置回调。
+        /// </summary>
+        public static void OnInitialLevelChanged(string value)
+        {
+            InitialLevel = ParsePositive(value, InitialLevel, 1, 99);
+        }
+
+        /// <summary>
+        /// 年收入基础配置回调。
+        /// </summary>
+        public static void OnIncomeBaseChanged(string value)
+        {
+            IncomeBase = ParsePositive(value, IncomeBase, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 每城收入配置回调。
+        /// </summary>
+        public static void OnIncomePerCityChanged(string value)
+        {
+            IncomePerCity = ParsePositive(value, IncomePerCity, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 人口收入除数配置回调。
+        /// </summary>
+        public static void OnIncomePopulationDivisorChanged(string value)
+        {
+            IncomePopulationDivisor = ParsePositive(value, IncomePopulationDivisor, 1, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 等级收入配置回调。
+        /// </summary>
+        public static void OnIncomePerLevelChanged(string value)
+        {
+            IncomePerLevel = ParsePositive(value, IncomePerLevel, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 灵气收入除数配置回调。
+        /// </summary>
+        public static void OnIncomeAuraDivisorChanged(string value)
+        {
+            IncomeAuraDivisor = ParsePositive(value, IncomeAuraDivisor, 1, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 聚灵每城灵气配置回调。
+        /// </summary>
+        public static void OnGatherSpiritAuraBonusPerCityChanged(string value)
+        {
+            GatherSpiritAuraBonusPerCity = ParsePositive(value, GatherSpiritAuraBonusPerCity, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 宣战成本配置回调。
+        /// </summary>
+        public static void OnDeclareWarCostChanged(string value)
+        {
+            DeclareWarCost = ParsePositive(value, DeclareWarCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 求和成本配置回调。
+        /// </summary>
+        public static void OnSeekPeaceCostChanged(string value)
+        {
+            SeekPeaceCost = ParsePositive(value, SeekPeaceCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 结盟成本配置回调。
+        /// </summary>
+        public static void OnAllianceRequestCostChanged(string value)
+        {
+            AllianceRequestCost = ParsePositive(value, AllianceRequestCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 退盟成本配置回调。
+        /// </summary>
+        public static void OnLeaveAllianceCostChanged(string value)
+        {
+            LeaveAllianceCost = ParsePositive(value, LeaveAllianceCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 聚灵成本配置回调。
+        /// </summary>
+        public static void OnGatherSpiritCostChanged(string value)
+        {
+            GatherSpiritCost = ParsePositive(value, GatherSpiritCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 增员成本配置回调。
+        /// </summary>
+        public static void OnAddPopulationCostPerUnitChanged(string value)
+        {
+            AddPopulationCostPerUnit = ParsePositive(value, AddPopulationCostPerUnit, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 遗迹成本配置回调。
+        /// </summary>
+        public static void OnPlaceRuinCostChanged(string value)
+        {
+            PlaceRuinCost = ParsePositive(value, PlaceRuinCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 成年成本配置回调。
+        /// </summary>
+        public static void OnFastAdultCostPerUnitChanged(string value)
+        {
+            FastAdultCostPerUnit = ParsePositive(value, FastAdultCostPerUnit, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 征兵成本配置回调。
+        /// </summary>
+        public static void OnConscriptCostPerUnitChanged(string value)
+        {
+            ConscriptCostPerUnit = ParsePositive(value, ConscriptCostPerUnit, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 约斗成本配置回调。
+        /// </summary>
+        public static void OnDuelRequestCostChanged(string value)
+        {
+            DuelRequestCost = ParsePositive(value, DuelRequestCost, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 降低国运成本配置回调。
+        /// </summary>
+        public static void OnLowerNationCostPerLevelChanged(string value)
+        {
+            LowerNationCostPerLevel = ParsePositive(value, LowerNationCostPerLevel, 0, 1_000_000_000);
+        }
+
+        /// <summary>
+        /// 请求超时配置回调。
+        /// </summary>
+        public static void OnRequestTimeoutSecondsChanged(string value)
+        {
+            RequestTimeoutSeconds = ParsePositive(value, RequestTimeoutSeconds, 3, 300);
+        }
+
+        private static void RegisterPolicyDefinitions()
+        {
+            if (PolicyDefinitions.Count > 0)
+            {
+                return;
+            }
+
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "initialTreasury", "初始国库", "玩家加入国家后获得的初始金币。", "金币", 0, 1_000_000_000, () => InitialTreasury, value => InitialTreasury = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "initialLevel", "初始等级", "玩家加入国家后的自动盘国家等级。", "级", 1, 99, () => InitialLevel, value => InitialLevel = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "nationUpgradeCostPerLevel", "升级国运每级倍率", "升级国运的花费 = 当前国家等级 × 这个倍率。", "金币", 1, 1_000_000_000, () => NationUpgradeCostPerLevel, value => NationUpgradeCostPerLevel = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeBase", "年收入基础", "每个国家每年固定获得的基础金币。", "金币", 0, 1_000_000_000, () => IncomeBase, value => IncomeBase = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePerCity", "每城收入", "每座城市每年额外带来的金币。", "金币", 0, 1_000_000_000, () => IncomePerCity, value => IncomePerCity = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePopulationDivisor", "人口收入除数", "年收入中的人口项 = 总人口 / 该除数。数值越小，人口越值钱。", "", 1, 1_000_000_000, () => IncomePopulationDivisor, value => IncomePopulationDivisor = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePerLevel", "等级收入", "每级国家等级每年额外带来的金币。", "金币", 0, 1_000_000_000, () => IncomePerLevel, value => IncomePerLevel = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeAuraDivisor", "灵气收入除数", "年收入中的灵气项 = 总灵气 / 该除数。", "", 1, 1_000_000_000, () => IncomeAuraDivisor, value => IncomeAuraDivisor = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritAuraBonusPerCity", "聚灵每城灵气", "国策“聚灵”生效时，每座城市临时视作增加的灵气。", "灵气", 0, 1_000_000_000, () => GatherSpiritAuraBonusPerCity, value => GatherSpiritAuraBonusPerCity = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritDurationYears", "聚灵持续年数", "每次执行“国策 聚灵”后持续生效的年数。", "年", 1, 1000, () => GatherSpiritDurationYears, value => GatherSpiritDurationYears = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritCost", "聚灵成本", "执行“国策 聚灵”需要消耗的金币。", "金币", 0, 1_000_000_000, () => GatherSpiritCost, value => GatherSpiritCost = value);
+
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "declareWarCost", "宣战成本", "执行“宣战 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "seekPeaceCost", "求和成本", "执行“求和 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "allianceRequestCost", "结盟成本", "发出结盟请求时预扣的金币。", "金币", 0, 1_000_000_000, () => AllianceRequestCost, value => AllianceRequestCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "leaveAllianceCost", "退盟成本", "主动退出联盟时消耗的金币。", "金币", 0, 1_000_000_000, () => LeaveAllianceCost, value => LeaveAllianceCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "duelRequestCost", "约斗成本", "发起最强者约斗请求时预扣的金币。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "requestTimeoutSeconds", "请求超时", "结盟和约斗请求在前端等待同意的秒数。", "秒", 3, 300, () => RequestTimeoutSeconds, value => RequestTimeoutSeconds = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "lowerNationCostPerLevel", "降低国运成本", "每降低敌国 1 级国运时需要消耗的金币。", "金币", 0, 1_000_000_000, () => LowerNationCostPerLevel, value => LowerNationCostPerLevel = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "bloodlineCreateBaseCost", "血脉创立基础成本", "血脉创立成本 = 基础成本 + 单位层级 × 层级加价。", "金币", 0, 1_000_000_000, () => BloodlineCreateBaseCost, value => BloodlineCreateBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "bloodlineCreateStageStepCost", "血脉创立层级加价", "血脉创立每提升一层战力阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => BloodlineCreateStageStepCost, value => BloodlineCreateStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "auraSabotageMinCost", "削灵最小成本", "削灵实际成本不会低于这个数值。", "金币", 0, 1_000_000_000, () => AuraSabotageMinCost, value => AuraSabotageMinCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "auraSabotageCostPer100Aura", "削灵每百灵气成本", "削灵成本 = max(最小成本, ceil(削减灵气 × 本值 / 100))。", "金币", 0, 1_000_000_000, () => AuraSabotageCostPer100Aura, value => AuraSabotageCostPer100Aura = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "assassinateBaseCost", "斩首基础成本", "斩首成本 = 基础成本 + 目标层级 × 层级加价。", "金币", 0, 1_000_000_000, () => AssassinateBaseCost, value => AssassinateBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "assassinateStageStepCost", "斩首层级加价", "斩首每提升一层目标阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => AssassinateStageStepCost, value => AssassinateStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "curseBaseCost", "诅咒基础成本", "诅咒成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => CurseBaseCost, value => CurseBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "curseCostPerTarget", "诅咒单人加价", "每多诅咒 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => CurseCostPerTarget, value => CurseCostPerTarget = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "blessBaseCost", "祝福基础成本", "祝福成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => BlessBaseCost, value => BlessBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "blessCostPerTarget", "祝福单人加价", "每多祝福 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => BlessCostPerTarget, value => BlessCostPerTarget = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "cultivatorSuppressBaseCost", "修士降境基础成本", "修士降境成本 = 基础成本 + (目标境界层级 × 压制层数 × 阶梯值)。", "金币", 0, 1_000_000_000, () => CultivatorSuppressBaseCost, value => CultivatorSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "cultivatorSuppressStageStepCost", "修士降境阶梯值", "修士降境每提升一层单位阶段和压制层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorSuppressStageStepCost, value => CultivatorSuppressStageStepCost = value);
+
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "“增加人数”每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "“放置遗迹”每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "“快速成年”每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "conscriptCostPerUnit", "征兵成本", "“征集军队”每名平民转为士兵需要消耗的金币。", "金币", 0, 1_000_000_000, () => ConscriptCostPerUnit, value => ConscriptCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "transferCityCost", "移交城市成本", "“移交城市”每次成功转交分城需要消耗的金币。", "金币", 0, 1_000_000_000, () => TransferCityCost, value => TransferCityCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "renameKingdomCost", "国家改名成本", "执行“国家改名 新名字”时需要消耗的金币。若重名会自动追加后缀。", "金币", 0, 1_000_000_000, () => RenameKingdomCost, value => RenameKingdomCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipCopperCostPerUnit", "铜制军备单价", "给军队发 1 套铜制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipCopperCostPerUnit, value => EquipCopperCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipBronzeCostPerUnit", "青铜军备单价", "给军队发 1 套青铜装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipBronzeCostPerUnit, value => EquipBronzeCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipSilverCostPerUnit", "白银军备单价", "给军队发 1 套白银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSilverCostPerUnit, value => EquipSilverCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipIronCostPerUnit", "铁制军备单价", "给军队发 1 套铁制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipIronCostPerUnit, value => EquipIronCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipSteelCostPerUnit", "钢制军备单价", "给军队发 1 套钢制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSteelCostPerUnit, value => EquipSteelCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipMythrilCostPerUnit", "秘银军备单价", "给军队发 1 套秘银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipMythrilCostPerUnit, value => EquipMythrilCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipAdamantineCostPerUnit", "精金军备单价", "给军队发 1 套精金装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipAdamantineCostPerUnit, value => EquipAdamantineCostPerUnit = value);
+
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRetreatCost", "修士闭关成本", "执行“修士 序号 闭关”时消耗的金币。", "金币", 0, 1_000_000_000, () => CultivatorRetreatCost, value => CultivatorRetreatCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "closedDoorXiuweiGain", "修士闭关修为", "每次修士闭关直接增加的修为。", "修为", 0, int.MaxValue, () => ClosedDoorXiuweiGain, value => ClosedDoorXiuweiGain = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpBaseCost", "修士升境基础成本", "修士升境成本 = 基础成本 + 当前境界层数 × 递增值。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpBaseCost, value => CultivatorRealmUpBaseCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpStepCost", "修士升境递增值", "修士每高一层境界，直接升境额外增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpStepCost, value => CultivatorRealmUpStepCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainCost", "古神炼体成本", "执行“古神 序号 炼体”时消耗的金币。", "金币", 0, 1_000_000_000, () => AncientTrainCost, value => AncientTrainCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainingGain", "古神炼体成长", "每次古神炼体直接增加的古神之力。", "古神之力", 0, int.MaxValue, () => AncientTrainingGain, value => AncientTrainingGain = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpBaseCost", "古神升星基础成本", "古神升星成本 = 基础成本 + 当前星级 × 递增值。", "金币", 0, 1_000_000_000, () => AncientStageUpBaseCost, value => AncientStageUpBaseCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpStepCost", "古神升星递增值", "古神每高一星，直接升星额外增加的金币。", "金币", 0, 1_000_000_000, () => AncientStageUpStepCost, value => AncientStageUpStepCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainCost", "妖兽养成成本", "执行“妖兽 序号 养成”时消耗的金币。", "金币", 0, 1_000_000_000, () => BeastTrainCost, value => BeastTrainCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainingGain", "妖兽养成成长", "每次妖兽养成直接增加的妖力。", "妖力", 0, int.MaxValue, () => BeastTrainingGain, value => BeastTrainingGain = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpBaseCost", "妖兽升阶基础成本", "妖兽升阶成本 = 基础成本 + 当前阶级 × 递增值。", "金币", 0, 1_000_000_000, () => BeastStageUpBaseCost, value => BeastStageUpBaseCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
+
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家开始决策年份", "世界年份达到该值后，玩家国家才允许执行加入和信息查看之外的国家指令。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
+
+            RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenPunishCost", "天运惩罚成本", "执行天运惩罚消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenPunishCost, value => HeavenPunishCost = value);
+            RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenBlessCost", "天运赐福成本", "执行天运赐福消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenBlessCost, value => HeavenBlessCost = value);
+            RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenPunishMaxTargets", "天运惩罚最大目标数", "天运惩罚随机影响的最大单位数量。", "人", 0, 100, () => HeavenPunishMaxTargets, value => HeavenPunishMaxTargets = value);
+            RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenBlessMaxTargets", "天运赐福最大目标数", "天运赐福随机影响的最大单位数量。", "人", 0, 100, () => HeavenBlessMaxTargets, value => HeavenBlessMaxTargets = value);
+
+            RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbKingdomCost", "扰动国家成本", "执行扰动国家消耗的金币（无论成功与否）。", "金币", 0, 1_000_000_000, () => DisturbKingdomCost, value => DisturbKingdomCost = value);
+            RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbSuccessRate", "扰动成功概率", "扰动国家成功夺取城市的概率。", "%", 0, 100, () => DisturbSuccessRate, value => DisturbSuccessRate = value);
+
+            RegisterXiuzhenguoAuraCapPolicy(0, "0级灵气上限", "凡人国度的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(1, "1级灵气上限", "一级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(2, "2级灵气上限", "二级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(3, "3级灵气上限", "三级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(4, "4级灵气上限", "四级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(5, "5级灵气上限", "五级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(6, "6级灵气上限", "六级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(7, "7级灵气上限", "七级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(8, "8级灵气上限", "八级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(9, "9级灵气上限", "九级修真国的单城灵气上限。-1 表示无限。");
+            RegisterXiuzhenguoAuraCapPolicy(10, "10级灵气上限", "顶级修真国的单城灵气上限。-1 表示无限。");
+        }
+
+        private static void RegisterXiuzhenguoAuraCapPolicy(int level, string displayName, string description)
+        {
+            RegisterPolicy("xiuzhenguo", "修真国", "逐级覆盖修真国灵气上限；仅自动盘运行时注入，不改变 xianni 单独运行的默认玩法。", $"xiuzhenguoAuraCapLevel{level}", displayName, description, "", -1, int.MaxValue, () => GetXiuzhenguoAuraCap(level), value => XiuzhenguoAuraCaps[level] = value);
+        }
+
+        private static void RegisterPolicy(string moduleKey, string moduleName, string moduleDescription, string key, string displayName, string description, string unitText, int minValue, int maxValue, Func<int> getter, Action<int> setter)
+        {
+            PolicyDefinition definition = new PolicyDefinition
+            {
+                ModuleKey = moduleKey,
+                ModuleName = moduleName,
+                ModuleDescription = moduleDescription,
+                Key = key,
+                DisplayName = displayName,
+                Description = description,
+                UnitText = unitText ?? string.Empty,
+                MinValue = minValue,
+                MaxValue = maxValue,
+                Getter = getter,
+                Setter = setter
+            };
+            PolicyDefinitions.Add(definition);
+            PolicyLookup[NormalizePolicyKey(key)] = definition;
+            PolicyLookup[NormalizePolicyKey(displayName)] = definition;
+        }
+
+        private static void ApplyRuntimeBindings()
+        {
+            XianniAutoPanApi.SetXiuzhenguoAuraCapOverrides(GetXiuzhenguoAuraCapsSnapshot());
+        }
+
+        private static void LoadBackendSettings()
+        {
+            if (string.IsNullOrWhiteSpace(_backendSettingsPath) || !File.Exists(_backendSettingsPath))
+            {
+                return;
+            }
+
+            try
+            {
+                PersistedBackendSettings persisted = JsonConvert.DeserializeObject<PersistedBackendSettings>(File.ReadAllText(_backendSettingsPath));
+                if (persisted == null)
+                {
+                    return;
+                }
+
+                QqAdapterEnabled = persisted.QqAdapterEnabled;
+                QqOneBotWsPath = NormalizeQqWsPath(persisted.QqOneBotWsPath);
+                QqOneBotAccessToken = (persisted.QqOneBotAccessToken ?? string.Empty).Trim();
+                QqBotSelfId = NormalizeDigitsOrEmpty(persisted.QqBotSelfId);
+                QqReplyAtSender = persisted.QqReplyAtSender;
+                QqGroupWhitelist = NormalizeGroupWhitelist(persisted.QqGroupWhitelist);
+                QqAdminWhitelist = NormalizeGroupWhitelist(persisted.QqAdminWhitelist);
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"读取后端接入配置失败：{ex.Message}");
+            }
+        }
+
+        private static void SaveBackendSettings()
+        {
+            if (string.IsNullOrWhiteSpace(_backendSettingsPath))
+            {
+                return;
+            }
+
+            try
+            {
+                string folder = Path.GetDirectoryName(_backendSettingsPath);
+                if (!string.IsNullOrWhiteSpace(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                }
+
+                PersistedBackendSettings persisted = new PersistedBackendSettings
+                {
+                    QqAdapterEnabled = QqAdapterEnabled,
+                    QqOneBotWsPath = QqOneBotWsPath,
+                    QqOneBotAccessToken = QqOneBotAccessToken,
+                    QqBotSelfId = QqBotSelfId,
+                    QqReplyAtSender = QqReplyAtSender,
+                    QqGroupWhitelist = QqGroupWhitelist,
+                    QqAdminWhitelist = QqAdminWhitelist
+                };
+                File.WriteAllText(_backendSettingsPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"保存后端接入配置失败：{ex.Message}");
+            }
+        }
+
+        private static void LoadBackendPolicy()
+        {
+            if (string.IsNullOrWhiteSpace(_backendPolicyPath) || !File.Exists(_backendPolicyPath))
+            {
+                return;
+            }
+
+            try
+            {
+                PersistedPolicyValues persisted = JsonConvert.DeserializeObject<PersistedPolicyValues>(File.ReadAllText(_backendPolicyPath));
+                if (persisted?.Values == null)
+                {
+                    return;
+                }
+
+                foreach (KeyValuePair<string, int> pair in persisted.Values)
+                {
+                    if (!TryResolvePolicyDefinition(pair.Key, out PolicyDefinition definition))
+                    {
+                        continue;
+                    }
+
+                    definition.Setter(ClampValue(pair.Value, definition.MinValue, definition.MaxValue));
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"读取后端政策文件失败：{ex.Message}");
+            }
+        }
+
+        private static void SaveBackendPolicy()
+        {
+            if (string.IsNullOrWhiteSpace(_backendPolicyPath))
+            {
+                return;
+            }
+
+            try
+            {
+                string folder = Path.GetDirectoryName(_backendPolicyPath);
+                if (!string.IsNullOrWhiteSpace(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                }
+
+                PersistedPolicyValues persisted = new PersistedPolicyValues();
+                foreach (PolicyDefinition definition in PolicyDefinitions)
+                {
+                    persisted.Values[definition.Key] = definition.Getter();
+                }
+
+                File.WriteAllText(_backendPolicyPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"保存后端政策文件失败：{ex.Message}");
+            }
+        }
+
+        private static bool TryResolvePolicyDefinition(string rawKey, out PolicyDefinition definition)
+        {
+            return PolicyLookup.TryGetValue(NormalizePolicyKey(rawKey), out definition);
+        }
+
+        private static string NormalizePolicyKey(string key)
+        {
+            return new string((key ?? string.Empty).Trim().Where(ch => !char.IsWhiteSpace(ch)).Select(char.ToLowerInvariant).ToArray());
+        }
+
+        private static int ParsePositive(string value, int defaultValue, int minValue = 0, int maxValue = int.MaxValue)
+        {
+            if (!int.TryParse(value, out int parsed))
+            {
+                parsed = defaultValue;
+            }
+
+            return ClampValue(parsed, minValue, maxValue);
+        }
+
+        private static bool ParseBool(string value, bool defaultValue)
+        {
+            string normalized = NormalizePolicyKey(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return defaultValue;
+            }
+
+            return normalized switch
+            {
+                "1" => true,
+                "true" => true,
+                "on" => true,
+                "yes" => true,
+                "enabled" => true,
+                "开" => true,
+                "启用" => true,
+                "0" => false,
+                "false" => false,
+                "off" => false,
+                "no" => false,
+                "disabled" => false,
+                "关" => false,
+                "关闭" => false,
+                _ => defaultValue
+            };
+        }
+
+        private static string NormalizeQqWsPath(string value)
+        {
+            string path = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return "/onebot/ws";
+            }
+
+            path = path.Replace('\\', '/');
+            if (!path.StartsWith("/", StringComparison.Ordinal))
+            {
+                path = "/" + path;
+            }
+
+            while (path.Contains("//"))
+            {
+                path = path.Replace("//", "/");
+            }
+
+            return path;
+        }
+
+        private static string NormalizeDigitsOrEmpty(string value)
+        {
+            string trimmed = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return string.Empty;
+            }
+
+            return new string(trimmed.Where(char.IsDigit).ToArray());
+        }
+
+        private static string NormalizeGroupWhitelist(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            List<string> groups = value
+                .Split(new[] { ',', '，', '\n', '\r', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => NormalizeDigitsOrEmpty(item))
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            return string.Join(",", groups);
+        }
+
+        /// <summary>
+        /// 判断指定群号是否允许接入自动盘。
+        /// </summary>
+        public static bool IsQqGroupAllowed(string groupId)
+        {
+            if (string.IsNullOrWhiteSpace(QqGroupWhitelist))
+            {
+                return true;
+            }
+
+            string normalized = NormalizeDigitsOrEmpty(groupId);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            return QqGroupWhitelist
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(item => string.Equals(item, normalized, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// 判断指定 QQ 号是否允许执行管理员类群指令。
+        /// </summary>
+        public static bool IsQqAdminAllowed(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(QqAdminWhitelist))
+            {
+                return false;
+            }
+
+            string normalized = NormalizeDigitsOrEmpty(userId);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            return QqAdminWhitelist
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(item => string.Equals(item, normalized, StringComparison.Ordinal));
+        }
+
+        private static int ClampValue(int value, int minValue, int maxValue)
+        {
+            if (value < minValue)
+            {
+                return minValue;
+            }
+            if (value > maxValue)
+            {
+                return maxValue;
+            }
+
+            return value;
         }
     }
 }

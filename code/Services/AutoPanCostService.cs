@@ -16,7 +16,7 @@ namespace XianniAutoPan.Services
         public static int GetCultivatorRealmUpCost(Actor actor)
         {
             int realmIndex = Math.Max(0, XianniAutoPanApi.GetCultivatorRealmIndex(actor));
-            return 180 + (realmIndex + 1) * 90;
+            return AutoPanConfigHooks.CultivatorRealmUpBaseCost + (realmIndex + 1) * AutoPanConfigHooks.CultivatorRealmUpStepCost;
         }
 
         /// <summary>
@@ -25,7 +25,7 @@ namespace XianniAutoPan.Services
         public static int GetAncientStageUpCost(Actor actor)
         {
             int stage = Math.Max(1, XianniAutoPanApi.GetAncientStage(actor));
-            return 170 + stage * 110;
+            return AutoPanConfigHooks.AncientStageUpBaseCost + stage * AutoPanConfigHooks.AncientStageUpStepCost;
         }
 
         /// <summary>
@@ -34,7 +34,7 @@ namespace XianniAutoPan.Services
         public static int GetBeastStageUpCost(Actor actor)
         {
             int stage = Math.Max(1, XianniAutoPanApi.GetBeastStage(actor));
-            return 160 + stage * 100;
+            return AutoPanConfigHooks.BeastStageUpBaseCost + stage * AutoPanConfigHooks.BeastStageUpStepCost;
         }
 
         /// <summary>
@@ -42,7 +42,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static int GetBloodlineCreateCost(Actor actor)
         {
-            return 320 + GetActorStageValue(actor) * 140;
+            return AutoPanConfigHooks.BloodlineCreateBaseCost + GetActorStageValue(actor) * AutoPanConfigHooks.BloodlineCreateStageStepCost;
         }
 
         /// <summary>
@@ -50,7 +50,8 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static int GetAuraSabotageCost(int amount)
         {
-            return Math.Max(80, (int)Math.Ceiling(Math.Max(1, amount) * 0.35f));
+            int scaled = (int)Math.Ceiling(Math.Max(1, amount) * AutoPanConfigHooks.AuraSabotageCostPer100Aura / 100f);
+            return Math.Max(AutoPanConfigHooks.AuraSabotageMinCost, scaled);
         }
 
         /// <summary>
@@ -58,7 +59,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static int GetAssassinateCost(Actor actor)
         {
-            return 280 + GetActorStageValue(actor) * 120;
+            return AutoPanConfigHooks.AssassinateBaseCost + GetActorStageValue(actor) * AutoPanConfigHooks.AssassinateStageStepCost;
         }
 
         /// <summary>
@@ -66,7 +67,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static int GetCurseCost(int targetCount)
         {
-            return Math.Max(60, Math.Max(1, targetCount) * 70);
+            return Math.Max(AutoPanConfigHooks.CurseBaseCost, AutoPanConfigHooks.CurseBaseCost + Math.Max(1, targetCount) * AutoPanConfigHooks.CurseCostPerTarget);
         }
 
         /// <summary>
@@ -74,7 +75,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static int GetBlessCost(int targetCount)
         {
-            return Math.Max(40, Math.Max(1, targetCount) * 50);
+            return Math.Max(AutoPanConfigHooks.BlessBaseCost, AutoPanConfigHooks.BlessBaseCost + Math.Max(1, targetCount) * AutoPanConfigHooks.BlessCostPerTarget);
         }
 
         /// <summary>
@@ -104,7 +105,7 @@ namespace XianniAutoPan.Services
         {
             int realmIndex = Math.Max(0, XianniAutoPanApi.GetCultivatorRealmIndex(actor));
             int safeLevels = Math.Max(1, levels);
-            return 90 + (realmIndex + 1) * 35 * safeLevels;
+            return AutoPanConfigHooks.CultivatorSuppressBaseCost + (realmIndex + 1) * AutoPanConfigHooks.CultivatorSuppressStageStepCost * safeLevels;
         }
 
         /// <summary>

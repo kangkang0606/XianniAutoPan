@@ -114,6 +114,32 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 直接将修士设置到指定境界。
+        /// </summary>
+        public static bool TrySetCultivatorRealm(Actor actor, int targetRealmIndex)
+        {
+            if (actor == null || !actor.isAlive())
+            {
+                return false;
+            }
+
+            if (targetRealmIndex < 0 || targetRealmIndex >= RealmIds.Length)
+            {
+                return false;
+            }
+
+            ReplaceTraitSet(actor, RealmIds, targetRealmIndex);
+            actor.data.set(KeyXiuwei, RealmThresholds[targetRealmIndex]);
+            actor.data.set(KeyCultivationStop, 0);
+            if (!actor.hasTrait("path_01_demonic") && !actor.hasTrait("path_02_immortal"))
+            {
+                actor.addTrait("path_02_immortal");
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// 直接将古神提升一星。
         /// </summary>
         public static bool TryPromoteAncientStage(Actor actor)

@@ -1,5 +1,8 @@
 using HarmonyLib;
 using UnityEngine;
+using XianniAutoPan.Commands;
+using XianniAutoPan.Frontend;
+using XianniAutoPan.Model;
 using XianniAutoPan.Services;
 
 namespace XianniAutoPan
@@ -19,6 +22,19 @@ namespace XianniAutoPan
             if (pKingdom == null)
             {
                 return;
+            }
+
+            foreach (AutoPanBindingRecord binding in AutoPanStateRepository.GetBindingsByKingdomId(pKingdom.getID()))
+            {
+                if (binding == null || string.IsNullOrWhiteSpace(binding.UserId))
+                {
+                    continue;
+                }
+
+                if (AutoPanStateRepository.TryGetLatestQqSessionForUser(binding.UserId, out AutoPanSessionInfo session))
+                {
+                    AutoPanLocalWebServer.Instance.SendQqNotice(session, binding.UserId, $"你绑定的国家 {AutoPanKingdomService.FormatKingdomLabel(pKingdom)} 已灭亡，绑定已自动解除。现在可以重新发送“加入人类/加入兽人/加入精灵/加入矮人”。");
+                }
             }
 
             AutoPanStateRepository.ClearBindingByKingdomId(pKingdom.getID());
@@ -74,6 +90,50 @@ namespace XianniAutoPan
             }
 
             AutoPanKingdomSpeechService.RecordNameplatePosition(pMetaObject, __instance.getLastScreenPosition());
+        }
+    }
+
+    /// <summary>
+    /// 兼容自动盘自定义倍速下的原生“加速一档”逻辑。
+    /// </summary>
+    [HarmonyPatch(typeof(WorldTimeScaleAsset), nameof(WorldTimeScaleAsset.getNext))]
+    internal static class AutoPanCustomWorldSpeedNextPatch
+    {
+        /// <summary>
+        /// 当当前速度为自动盘自定义速度时，返回最接近原生档位的下一档。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(WorldTimeScaleAsset __instance, bool pCycle, ref WorldTimeScaleAsset __result)
+        {
+            if (!AutoPanCommandExecutor.IsCustomWorldSpeedAsset(__instance))
+            {
+                return true;
+            }
+
+            __result = AutoPanCommandExecutor.GetAdjacentNativeWorldSpeedAsset(next: true, cycle: pCycle);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 兼容自动盘自定义倍速下的原生“减速一档”逻辑。
+    /// </summary>
+    [HarmonyPatch(typeof(WorldTimeScaleAsset), nameof(WorldTimeScaleAsset.getPrevious))]
+    internal static class AutoPanCustomWorldSpeedPreviousPatch
+    {
+        /// <summary>
+        /// 当当前速度为自动盘自定义速度时，返回最接近原生档位的上一档。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(WorldTimeScaleAsset __instance, bool pCycle, ref WorldTimeScaleAsset __result)
+        {
+            if (!AutoPanCommandExecutor.IsCustomWorldSpeedAsset(__instance))
+            {
+                return true;
+            }
+
+            __result = AutoPanCommandExecutor.GetAdjacentNativeWorldSpeedAsset(next: false, cycle: pCycle);
+            return false;
         }
     }
 }

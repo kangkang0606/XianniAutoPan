@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 using XianniAutoPan.Model;
 
@@ -72,6 +73,35 @@ namespace XianniAutoPan.Services
                 EnsureCustomDataReady();
                 World.world.map_stats.custom_data.set(AutoPanConstants.WorldStateKey, JsonConvert.SerializeObject(_state));
             }
+        }
+
+        /// <summary>
+        /// 判断当前世界是否已经完成自动盘初始化。
+        /// </summary>
+        public static bool IsWorldInitialized()
+        {
+            lock (Sync)
+            {
+                return _state.WorldInitialized;
+            }
+        }
+
+        /// <summary>
+        /// 将当前世界标记为已完成自动盘初始化。
+        /// </summary>
+        public static void MarkWorldInitialized()
+        {
+            lock (Sync)
+            {
+                if (_state.WorldInitialized)
+                {
+                    return;
+                }
+
+                _state.WorldInitialized = true;
+            }
+
+            SaveToWorld();
         }
 
         /// <summary>
@@ -240,7 +270,7 @@ namespace XianniAutoPan.Services
         /// <summary>
         /// 记录前端会话最近信息。
         /// </summary>
-        public static void RecordSession(string sessionId, string userId, string playerName, string remoteEndPoint)
+        public static void RecordSession(string sessionId, string userId, string playerName, string remoteEndPoint, AutoPanInputSourceType sourceType = AutoPanInputSourceType.FrontendWeb, string contextId = null, string botSelfId = null)
         {
             lock (Sync)
             {
@@ -251,7 +281,10 @@ namespace XianniAutoPan.Services
                     UserId = userId,
                     PlayerName = playerName,
                     RemoteEndPoint = remoteEndPoint,
-                    LastSeenUtc = DateTime.UtcNow.ToString("o")
+                    LastSeenUtc = DateTime.UtcNow.ToString("o"),
+                    SourceType = sourceType,
+                    ContextId = contextId,
+                    BotSelfId = botSelfId
                 });
                 if (_state.RecentSessions.Count > AutoPanConstants.SessionCapacity)
                 {
@@ -260,6 +293,112 @@ namespace XianniAutoPan.Services
             }
 
             SaveToWorld();
+        }
+
+        /// <summary>
+        /// 刷新玩家当前显示名到绑定记录，不改已创建国家名称。
+        /// </summary>
+        public static void RefreshPlayerProfile(string userId, string playerName)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(playerName))
+            {
+                return;
+            }
+
+            bool changed = false;
+            lock (Sync)
+            {
+                if (_state.Bindings.TryGetValue(userId, out AutoPanBindingRecord binding) && binding != null && !string.Equals(binding.PlayerName, playerName, StringComparison.Ordinal))
+                {
+                    binding.PlayerName = playerName;
+                    changed = true;
+                }
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            Kingdom kingdom = World.world?.kingdoms?.get(GetBindingSnapshot(userId)?.KingdomId ?? 0);
+            if (kingdom != null && kingdom.isAlive())
+            {
+                kingdom.data.set(AutoPanConstants.KeyOwnerName, playerName);
+            }
+
+            SaveToWorld();
+        }
+
+        /// <summary>
+        /// 获取绑定到指定国家的所有玩家快照。
+        /// </summary>
+        public static List<AutoPanBindingRecord> GetBindingsByKingdomId(long kingdomId)
+        {
+            lock (Sync)
+            {
+                return _state.Bindings.Values
+                    .Where(item => item != null && item.KingdomId == kingdomId)
+                    .Select(CloneBinding)
+                    .Where(item => item != null)
+                    .ToList();
+            }
+        }
+
+        /// <summary>
+        /// 获取指定用户最近一次 QQ 群会话路由。
+        /// </summary>
+        public static bool TryGetLatestQqSessionForUser(string userId, out AutoPanSessionInfo session)
+        {
+            session = null;
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return false;
+            }
+
+            lock (Sync)
+            {
+                session = _state.RecentSessions
+                    .Where(item => item != null
+                        && item.SourceType == AutoPanInputSourceType.QqGroup
+                        && string.Equals(item.UserId, userId, StringComparison.Ordinal)
+                        && !string.IsNullOrWhiteSpace(item.ContextId))
+                    .OrderByDescending(item => item.LastSeenUtc, StringComparer.Ordinal)
+                    .Select(CloneSession)
+                    .FirstOrDefault();
+            }
+
+            return session != null;
+        }
+
+        /// <summary>
+        /// 同步更新绑定记录中的国家名称。
+        /// </summary>
+        public static void UpdateBoundKingdomName(long kingdomId, string kingdomName)
+        {
+            if (kingdomId <= 0 || string.IsNullOrWhiteSpace(kingdomName))
+            {
+                return;
+            }
+
+            bool changed = false;
+            lock (Sync)
+            {
+                foreach (AutoPanBindingRecord binding in _state.Bindings.Values)
+                {
+                    if (binding == null || binding.KingdomId != kingdomId)
+                    {
+                        continue;
+                    }
+
+                    binding.KingdomName = kingdomName;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                SaveToWorld();
+            }
         }
 
         /// <summary>
@@ -300,7 +439,9 @@ namespace XianniAutoPan.Services
                 AiEnabled = AutoPanConfigHooks.EnableLlmAi,
                 CommandBookText = commandBookText,
                 RecentLogs = AutoPanLogService.GetRecentEntries(),
-                Kingdoms = AutoPanKingdomService.BuildDashboardKingdoms()
+                Kingdoms = AutoPanKingdomService.BuildDashboardKingdoms(),
+                Policy = AutoPanConfigHooks.BuildPolicySnapshot(),
+                QqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot()
             };
 
             if (addresses != null)
@@ -312,6 +453,12 @@ namespace XianniAutoPan.Services
             {
                 snapshot.Binding = GetBindingSnapshot(userId);
                 snapshot.RecentSessions = new List<AutoPanSessionInfo>(_state.RecentSessions);
+            }
+
+            if (snapshot.Binding != null && World.world?.kingdoms != null)
+            {
+                Kingdom boundKingdom = World.world.kingdoms.get(snapshot.Binding.KingdomId);
+                snapshot.PendingRequests = AutoPanRequestService.BuildPendingSnapshots(boundKingdom);
             }
 
             return snapshot;
@@ -339,6 +486,26 @@ namespace XianniAutoPan.Services
                 KingdomId = binding.KingdomId,
                 KingdomName = binding.KingdomName,
                 RaceId = binding.RaceId
+            };
+        }
+
+        private static AutoPanSessionInfo CloneSession(AutoPanSessionInfo session)
+        {
+            if (session == null)
+            {
+                return null;
+            }
+
+            return new AutoPanSessionInfo
+            {
+                SessionId = session.SessionId,
+                UserId = session.UserId,
+                PlayerName = session.PlayerName,
+                RemoteEndPoint = session.RemoteEndPoint,
+                LastSeenUtc = session.LastSeenUtc,
+                SourceType = session.SourceType,
+                ContextId = session.ContextId,
+                BotSelfId = session.BotSelfId
             };
         }
     }

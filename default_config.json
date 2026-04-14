@@ -38,5 +38,6 @@
       "TextVal": "",
       "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnLlmApiKeyChanged"
     }
-  ]
+  ],
+  "autopan_config_policy": []
 }

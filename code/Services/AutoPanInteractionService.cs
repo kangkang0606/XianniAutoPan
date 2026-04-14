@@ -34,13 +34,33 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 给本国最强可用单位创立血脉。
+        /// 给本国指定或最强可用单位创立血脉。
         /// </summary>
-        public static bool TryCreateFounderBloodline(Kingdom kingdom, out string message)
+        public static bool TryCreateFounderBloodline(Kingdom kingdom, long actorId, out string message)
         {
             message = string.Empty;
-            RankedActor ranked = GetRankedActors(kingdom)
-                .FirstOrDefault(item => XianniAutoPanApi.CanCreateFounderBloodline(item.Actor));
+            RankedActor ranked;
+            if (actorId > 0)
+            {
+                ranked = GetRankedActors(kingdom)
+                    .FirstOrDefault(item => item.Actor != null && item.Actor.getID() == actorId);
+                if (ranked == null)
+                {
+                    message = $"当前国家不存在 id={actorId} 的上榜强者。";
+                    return false;
+                }
+                if (!XianniAutoPanApi.CanCreateFounderBloodline(ranked.Actor))
+                {
+                    message = $"{ranked.Actor.getName()} 当前无法创立血脉，请确认该单位尚未拥有血脉且属于修士/古神/妖兽。";
+                    return false;
+                }
+            }
+            else
+            {
+                ranked = GetRankedActors(kingdom)
+                    .FirstOrDefault(item => XianniAutoPanApi.CanCreateFounderBloodline(item.Actor));
+            }
+
             if (ranked == null)
             {
                 message = "当前国家没有可创立血脉的强者，要求目标为修士、古神或妖兽且尚未拥有血脉。";
@@ -64,6 +84,72 @@ namespace XianniAutoPan.Services
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             message = $"{ranked.Actor.getName()} 已创立 {bloodlineName}，消耗 {cost} 金币。";
             return true;
+        }
+
+        /// <summary>
+        /// 获取当前国家的最强者。
+        /// </summary>
+        public static bool TryGetStrongestActor(Kingdom kingdom, out Actor actor, out string summary)
+        {
+            actor = null;
+            summary = string.Empty;
+            RankedActor ranked = GetRankedActors(kingdom).FirstOrDefault();
+            if (ranked == null)
+            {
+                summary = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 当前没有可用的最强者。";
+                return false;
+            }
+
+            actor = ranked.Actor;
+            summary = $"{ranked.Actor.getName()} [id={ranked.Actor.getID()}] / {ranked.CategoryText} / 战力 {ranked.Score}";
+            return true;
+        }
+
+        /// <summary>
+        /// 构建全图天榜前五。
+        /// </summary>
+        public static string BuildTopPowerBoardText()
+        {
+            List<(Actor Actor, Kingdom Kingdom, long Score)> topActors = new List<(Actor, Kingdom, long)>();
+            if (World.world?.units == null)
+            {
+                return "当前世界未加载，无法查看天榜。";
+            }
+
+            foreach (Actor actor in World.world.units)
+            {
+                if (actor == null || !actor.isAlive() || actor.kingdom == null || !actor.kingdom.isAlive() || !actor.kingdom.isCiv())
+                {
+                    continue;
+                }
+
+                long score = XianniAutoPanApi.GetPowerScore(actor);
+                if (score <= 0)
+                {
+                    continue;
+                }
+
+                topActors.Add((actor, actor.kingdom, score));
+            }
+
+            List<(Actor Actor, Kingdom Kingdom, long Score)> rankedList = topActors
+                .OrderByDescending(item => item.Score)
+                .ThenBy(item => item.Actor.getID())
+                .Take(5)
+                .ToList();
+            if (rankedList.Count == 0)
+            {
+                return "当前世界没有可上榜的强者。";
+            }
+
+            List<string> lines = new List<string> { "天榜前 5：" };
+            for (int index = 0; index < rankedList.Count; index++)
+            {
+                (Actor actor, Kingdom kingdom, long score) = rankedList[index];
+                lines.Add($"{index + 1}. {actor.getName()} [id={actor.getID()}]，所属 {AutoPanKingdomService.FormatKingdomLabel(kingdom)}，战力 {score}");
+            }
+
+            return string.Join("\n", lines);
         }
 
         /// <summary>
@@ -410,6 +496,128 @@ namespace XianniAutoPan.Services
                     CategoryText = categoryText
                 };
             }
+        }
+
+        /// <summary>
+        /// 天运惩罚：随机诅咒目标国家若干单位。
+        /// </summary>
+        public static bool TryHeavenPunish(string rawTargetKingdomName, out string message)
+        {
+            message = string.Empty;
+            if (!AutoPanKingdomService.TryResolveKingdom(rawTargetKingdomName, out Kingdom targetKingdom, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.HeavenPunishCost;
+            int maxTargets = AutoPanConfigHooks.HeavenPunishMaxTargets;
+            int count = maxTargets <= 0 ? 0 : Randy.randomInt(0, maxTargets + 1);
+
+            List<Actor> targets = targetKingdom.units
+                .Where(a => a != null && a.isAlive())
+                .OrderBy(_ => Randy.randomInt(0, 10000))
+                .Take(count)
+                .ToList();
+
+            int successCount = 0;
+            foreach (Actor actor in targets)
+            {
+                if (XianniAutoPanApi.TryApplyCurse(actor))
+                {
+                    successCount++;
+                }
+            }
+
+            message = successCount == 0
+                ? $"天运降临，{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 此次未受惩罚，消耗 {cost} 金币。"
+                : $"天运降临，{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 有 {successCount} 人受到惩罚，消耗 {cost} 金币。";
+            return true;
+        }
+
+        /// <summary>
+        /// 天运赐福：随机祝福目标国家若干单位。
+        /// </summary>
+        public static bool TryHeavenBless(string rawTargetKingdomName, out string message)
+        {
+            message = string.Empty;
+            if (!AutoPanKingdomService.TryResolveKingdom(rawTargetKingdomName, out Kingdom targetKingdom, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.HeavenBlessCost;
+            int maxTargets = AutoPanConfigHooks.HeavenBlessMaxTargets;
+            int count = maxTargets <= 0 ? 0 : Randy.randomInt(0, maxTargets + 1);
+
+            List<Actor> targets = targetKingdom.units
+                .Where(a => a != null && a.isAlive())
+                .OrderBy(_ => Randy.randomInt(0, 10000))
+                .Take(count)
+                .ToList();
+
+            int successCount = 0;
+            foreach (Actor actor in targets)
+            {
+                if (XianniAutoPanApi.TryApplyBlessing(actor))
+                {
+                    successCount++;
+                }
+            }
+
+            message = successCount == 0
+                ? $"天运降临，{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 此次未获赐福，消耗 {cost} 金币。"
+                : $"天运降临，{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 有 {successCount} 人获得赐福，消耗 {cost} 金币。";
+            return true;
+        }
+
+        /// <summary>
+        /// 扰动国家：按概率夺取目标国家一座非首都城市。
+        /// </summary>
+        public static bool TryDisturbKingdom(Kingdom sourceKingdom, string rawTargetKingdomName, out string message)
+        {
+            message = string.Empty;
+            if (!AutoPanKingdomService.TryResolveKingdom(rawTargetKingdomName, out Kingdom targetKingdom, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            if (targetKingdom.getID() == sourceKingdom.getID())
+            {
+                message = "不能扰动自己的国家。";
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.DisturbKingdomCost;
+            if (!AutoPanKingdomService.TrySpendTreasury(sourceKingdom, cost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            if (!Randy.randomChance(AutoPanConfigHooks.DisturbSuccessRate / 100f))
+            {
+                message = $"扰动 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 失败，消耗 {cost} 金币。";
+                return false;
+            }
+
+            List<City> nonCapitalCities = targetKingdom.cities
+                .Where(c => c != null && c.isAlive() && !c.isCapitalCity())
+                .ToList();
+
+            if (nonCapitalCities.Count == 0)
+            {
+                message = $"{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 没有可夺取的非首都城市，消耗 {cost} 金币。";
+                return false;
+            }
+
+            City city = nonCapitalCities[Randy.randomInt(0, nonCapitalCities.Count)];
+            string cityName = city.name;
+            city.joinAnotherKingdom(sourceKingdom);
+            message = $"扰动成功！{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 的城市 {cityName} 已归入 {AutoPanKingdomService.FormatKingdomLabel(sourceKingdom)}，消耗 {cost} 金币。";
+            return true;
         }
 
         private static string BuildNameList(List<string> names)

@@ -8,12 +8,15 @@ namespace XianniAutoPan.Model
     internal enum AutoPanCommandType
     {
         Unknown = 0,
+        Help,
         JoinHuman,
         JoinOrc,
         JoinElf,
         JoinDwarf,
         MyKingdom,
         KingdomInfo,
+        AllKingdomInfo,
+        RenameKingdom,
         UpgradeNation,
         GatherSpirit,
         AddPopulation,
@@ -22,13 +25,20 @@ namespace XianniAutoPan.Model
         DeclareWar,
         SeekPeace,
         Alliance,
-        BreakAlliance,
+        AcceptAlliance,
+        RejectAlliance,
+        LeaveAlliance,
+        ChallengeDuel,
+        AcceptDuel,
+        RejectDuel,
         BloodlineCreate,
+        PowerBoard,
         AuraSabotage,
         AssassinateStrongest,
         CurseEnemy,
         KingdomBlessing,
         CultivatorSuppress,
+        LowerNation,
         CityList,
         CityInfo,
         FastAdult,
@@ -49,7 +59,46 @@ namespace XianniAutoPan.Model
         AdminViewGold,
         AdminAiOn,
         AdminAiOff,
-        AdminViewBinding
+        AdminViewBinding,
+        AdminViewPolicy,
+        AdminSetPolicy,
+        AdminSetSpeed,
+        AdminSpawnKingdom,
+        HeavenPunish,
+        HeavenBless,
+        DisturbKingdom
+    }
+
+    /// <summary>
+    /// 外交请求类型。
+    /// </summary>
+    public enum AutoPanPendingRequestType
+    {
+        /// <summary>
+        /// 结盟申请。
+        /// </summary>
+        Alliance = 0,
+
+        /// <summary>
+        /// 最强者约斗。
+        /// </summary>
+        Duel = 1
+    }
+
+    /// <summary>
+    /// 自动盘入站消息来源类型。
+    /// </summary>
+    public enum AutoPanInputSourceType
+    {
+        /// <summary>
+        /// 本地网页前端。
+        /// </summary>
+        FrontendWeb = 0,
+
+        /// <summary>
+        /// QQ 群 OneBot 事件。
+        /// </summary>
+        QqGroup = 1
     }
 
     /// <summary>
@@ -112,6 +161,21 @@ namespace XianniAutoPan.Model
         /// 最后活跃时间，使用 UTC ISO 字符串以便直接写入 JSON。
         /// </summary>
         public string LastSeenUtc { get; set; }
+
+        /// <summary>
+        /// 当前会话消息来源。
+        /// </summary>
+        public AutoPanInputSourceType SourceType { get; set; }
+
+        /// <summary>
+        /// 回复上下文，例如 QQ 群号。
+        /// </summary>
+        public string ContextId { get; set; }
+
+        /// <summary>
+        /// 协议端机器人自身标识，例如 QQ 号。
+        /// </summary>
+        public string BotSelfId { get; set; }
     }
 
     /// <summary>
@@ -125,6 +189,11 @@ namespace XianniAutoPan.Model
         public long MessageSequence { get; set; }
 
         /// <summary>
+        /// 是否已完成当前世界的自动盘初始化。
+        /// </summary>
+        public bool WorldInitialized { get; set; }
+
+        /// <summary>
         /// 玩家绑定表。
         /// </summary>
         public Dictionary<string, AutoPanBindingRecord> Bindings { get; set; } = new Dictionary<string, AutoPanBindingRecord>();
@@ -133,6 +202,115 @@ namespace XianniAutoPan.Model
         /// 最近前端会话信息。
         /// </summary>
         public List<AutoPanSessionInfo> RecentSessions { get; set; } = new List<AutoPanSessionInfo>();
+    }
+
+    /// <summary>
+     /// 可持久化的自动盘后端政策快照。
+     /// </summary>
+    public sealed class AutoPanPolicySnapshot
+    {
+        /// <summary>
+        /// 政策模块列表。
+        /// </summary>
+        public List<AutoPanPolicyModuleSnapshot> Modules { get; set; } = new List<AutoPanPolicyModuleSnapshot>();
+    }
+
+    /// <summary>
+    /// 前端展示用政策模块。
+    /// </summary>
+    public sealed class AutoPanPolicyModuleSnapshot
+    {
+        /// <summary>
+        /// 模块稳定键。
+        /// </summary>
+        public string ModuleKey { get; set; }
+
+        /// <summary>
+        /// 模块显示名。
+        /// </summary>
+        public string DisplayName { get; set; }
+
+        /// <summary>
+        /// 模块说明。
+        /// </summary>
+        public string Description { get; set; }
+
+        /// <summary>
+        /// 当前模块内的配置项。
+        /// </summary>
+        public List<AutoPanPolicyItemSnapshot> Items { get; set; } = new List<AutoPanPolicyItemSnapshot>();
+    }
+
+    /// <summary>
+    /// 前端展示用政策配置项。
+    /// </summary>
+    public sealed class AutoPanPolicyItemSnapshot
+    {
+        /// <summary>
+        /// 配置稳定键。
+        /// </summary>
+        public string Key { get; set; }
+
+        /// <summary>
+        /// 配置显示名。
+        /// </summary>
+        public string DisplayName { get; set; }
+
+        /// <summary>
+        /// 配置说明。
+        /// </summary>
+        public string Description { get; set; }
+
+        /// <summary>
+        /// 当前值。
+        /// </summary>
+        public int Value { get; set; }
+
+        /// <summary>
+        /// 最小允许值。
+        /// </summary>
+        public int MinValue { get; set; }
+
+        /// <summary>
+        /// 最大允许值。
+        /// </summary>
+        public int MaxValue { get; set; }
+
+        /// <summary>
+        /// 单位文本，例如“金币”“年”。
+        /// </summary>
+        public string UnitText { get; set; }
+    }
+
+    /// <summary>
+    /// 外交/比武待处理请求快照。
+    /// </summary>
+    public sealed class AutoPanPendingRequestSnapshot
+    {
+        /// <summary>
+        /// 请求类型。
+        /// </summary>
+        public string RequestType { get; set; }
+
+        /// <summary>
+        /// 请求来源国家标签。
+        /// </summary>
+        public string SourceKingdomLabel { get; set; }
+
+        /// <summary>
+        /// 请求目标国家标签。
+        /// </summary>
+        public string TargetKingdomLabel { get; set; }
+
+        /// <summary>
+        /// 剩余秒数。
+        /// </summary>
+        public int SecondsRemaining { get; set; }
+
+        /// <summary>
+        /// 请求附加信息，例如赌注。
+        /// </summary>
+        public string DetailsText { get; set; }
     }
 
     /// <summary>
@@ -164,6 +342,26 @@ namespace XianniAutoPan.Model
         /// 远端地址。
         /// </summary>
         public string RemoteEndPoint { get; set; }
+
+        /// <summary>
+        /// 入站消息来源。
+        /// </summary>
+        public AutoPanInputSourceType SourceType { get; set; }
+
+        /// <summary>
+        /// 回复目标，例如群号。
+        /// </summary>
+        public string ReplyTargetId { get; set; }
+
+        /// <summary>
+        /// 上下文标识，例如群号。
+        /// </summary>
+        public string ContextId { get; set; }
+
+        /// <summary>
+        /// 机器人自身标识，例如 QQ 号。
+        /// </summary>
+        public string BotSelfId { get; set; }
     }
 
     /// <summary>
@@ -215,6 +413,16 @@ namespace XianniAutoPan.Model
         /// 可选第二数值参数。
         /// </summary>
         public int SecondaryNumericValue { get; set; }
+
+        /// <summary>
+        /// 可选对象 ID 参数。
+        /// </summary>
+        public long ObjectIdArg { get; set; }
+
+        /// <summary>
+        /// 可选赌注金额。
+        /// </summary>
+        public int BetAmount { get; set; }
     }
 
     /// <summary>
@@ -241,6 +449,11 @@ namespace XianniAutoPan.Model
         /// 本次回包对应的用户 ID。
         /// </summary>
         public string UserId { get; set; }
+
+        /// <summary>
+        /// 是否抑制 QQ 群自动回包。
+        /// </summary>
+        public bool SuppressQqReply { get; set; }
     }
 
     /// <summary>
@@ -303,6 +516,82 @@ namespace XianniAutoPan.Model
         /// 当前所有存活文明国家摘要。
         /// </summary>
         public List<AutoPanKingdomDashboardInfo> Kingdoms { get; set; } = new List<AutoPanKingdomDashboardInfo>();
+
+        /// <summary>
+        /// 当前后端政策配置。
+        /// </summary>
+        public AutoPanPolicySnapshot Policy { get; set; }
+
+        /// <summary>
+        /// 当前玩家国家收到的待处理请求。
+        /// </summary>
+        public List<AutoPanPendingRequestSnapshot> PendingRequests { get; set; } = new List<AutoPanPendingRequestSnapshot>();
+
+        /// <summary>
+        /// QQ 群接入状态与配置快照。
+        /// </summary>
+        public AutoPanQqDashboardSnapshot QqBridge { get; set; }
+    }
+
+    /// <summary>
+    /// QQ 群接入状态与配置快照。
+    /// </summary>
+    public sealed class AutoPanQqDashboardSnapshot
+    {
+        /// <summary>
+        /// 是否启用 QQ 接入。
+        /// </summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>
+        /// 当前是否存在存活连接。
+        /// </summary>
+        public bool Connected { get; set; }
+
+        /// <summary>
+        /// OneBot 反向 WebSocket 路径。
+        /// </summary>
+        public string WsPath { get; set; }
+
+        /// <summary>
+        /// 是否已经配置访问令牌。
+        /// </summary>
+        public bool HasAccessToken { get; set; }
+
+        /// <summary>
+        /// 机器人 QQ。
+        /// </summary>
+        public string BotSelfId { get; set; }
+
+        /// <summary>
+        /// 是否回包时 @ 发送者。
+        /// </summary>
+        public bool ReplyAtSender { get; set; }
+
+        /// <summary>
+        /// 群白名单原始文本。
+        /// </summary>
+        public string GroupWhitelist { get; set; }
+
+        /// <summary>
+        /// QQ 管理员白名单原始文本。
+        /// </summary>
+        public string AdminWhitelist { get; set; }
+
+        /// <summary>
+        /// 已连接的机器人 QQ 列表。
+        /// </summary>
+        public List<string> ConnectedBots { get; set; } = new List<string>();
+
+        /// <summary>
+        /// 最近收到消息的群号列表。
+        /// </summary>
+        public List<string> RecentGroups { get; set; } = new List<string>();
+
+        /// <summary>
+        /// 最近 QQ 消息摘要。
+        /// </summary>
+        public List<string> RecentMessages { get; set; } = new List<string>();
     }
 
     /// <summary>

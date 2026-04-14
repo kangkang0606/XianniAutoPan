@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using NeoModLoader.api;
 using XianniAutoPan.Model;
 using XianniAutoPan.Services;
@@ -12,6 +13,34 @@ namespace XianniAutoPan.Commands
     /// </summary>
     internal static class AutoPanCommandExecutor
     {
+        private const float MinAdminWorldSpeed = 0.1f;
+        private const float MaxAdminWorldSpeed = 200f;
+        private const string CustomWorldSpeedIdPrefix = "xianniautopan_speed_";
+        private const string DefaultWorldSpeedIconPath = "ui/Icons/iconClockX1";
+
+        private static readonly HashSet<AutoPanCommandType> InfoCommands = new HashSet<AutoPanCommandType>
+        {
+            AutoPanCommandType.Help,
+            AutoPanCommandType.MyKingdom,
+            AutoPanCommandType.KingdomInfo,
+            AutoPanCommandType.AllKingdomInfo,
+            AutoPanCommandType.CityList,
+            AutoPanCommandType.CityInfo,
+            AutoPanCommandType.PowerBoard,
+            AutoPanCommandType.CultivatorBoard,
+            AutoPanCommandType.AncientBoard,
+            AutoPanCommandType.BeastBoard
+        };
+
+        private static readonly WorldTimeScaleAsset CustomWorldSpeedAsset = new WorldTimeScaleAsset
+        {
+            id = CustomWorldSpeedIdPrefix + "1x",
+            multiplier = 1f,
+            ticks = 1,
+            conway_ticks = 1,
+            path_icon = DefaultWorldSpeedIconPath
+        };
+
         /// <summary>
         /// 执行玩家前端命令。
         /// </summary>
@@ -34,7 +63,8 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            AutoPanStateRepository.RecordSession(message.SessionId, userId, playerName, message.RemoteEndPoint);
+            AutoPanStateRepository.RecordSession(message.SessionId, userId, playerName, message.RemoteEndPoint, message.SourceType, message.ContextId, message.BotSelfId);
+            AutoPanStateRepository.RefreshPlayerProfile(userId, playerName);
             AutoPanStateRepository.EnsureBindingValidForUser(userId);
             AutoPanParsedCommand command = AutoPanCommandParser.Parse(message.Text);
             if (command.CommandType == AutoPanCommandType.Unknown)
@@ -45,6 +75,15 @@ namespace XianniAutoPan.Commands
                     AutoPanLogService.Info($"{playerName} 发送国家聊天：{chatKingdom.name} -> {command.RawText}");
                     result.Success = true;
                     result.Text = $"已在 {chatKingdom.name} 上方显示聊天内容。";
+                    result.SuppressQqReply = message.SourceType == AutoPanInputSourceType.QqGroup;
+                    return result;
+                }
+
+                if (message.SourceType == AutoPanInputSourceType.QqGroup && !command.RawText.StartsWith("#", StringComparison.Ordinal))
+                {
+                    result.Success = false;
+                    result.Text = string.Empty;
+                    result.SuppressQqReply = true;
                     return result;
                 }
 
@@ -52,8 +91,18 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
+            if (command.RawText.StartsWith("#", StringComparison.Ordinal) && message.SourceType == AutoPanInputSourceType.QqGroup && !AutoPanConfigHooks.IsQqAdminAllowed(userId))
+            {
+                result.Text = "你不在 QQ 管理员白名单中，无法执行管理员指令。";
+                return result;
+            }
+
             switch (command.CommandType)
             {
+                case AutoPanCommandType.Help:
+                    result.Success = true;
+                    result.Text = BuildPlayerHelpText();
+                    return result;
                 case AutoPanCommandType.JoinHuman:
                 case AutoPanCommandType.JoinOrc:
                 case AutoPanCommandType.JoinElf:
@@ -79,11 +128,29 @@ namespace XianniAutoPan.Commands
                     return ExecuteAdminToggleAi(false, playerName, result);
                 case AutoPanCommandType.AdminViewBinding:
                     return ExecuteAdminViewBinding(command, result);
+                case AutoPanCommandType.AdminViewPolicy:
+                    return ExecuteAdminViewPolicy(result);
+                case AutoPanCommandType.AdminSetPolicy:
+                    return ExecuteAdminSetPolicy(command, playerName, result);
+                case AutoPanCommandType.AdminSetSpeed:
+                    return ExecuteAdminSetSpeed(command, playerName, result);
+                case AutoPanCommandType.AdminSpawnKingdom:
+                    return ExecuteAdminSpawnKingdom(command, playerName, result);
+                case AutoPanCommandType.AllKingdomInfo:
+                    result.Success = true;
+                    result.Text = AutoPanKingdomService.BuildAllKingdomInfoText();
+                    return result;
             }
 
             if (!TryGetPlayerKingdom(userId, out Kingdom playerKingdom, out string kingdomError))
             {
                 result.Text = kingdomError;
+                return result;
+            }
+
+            if (IsPlayerCommandBlockedByYear(command, out string yearLimitText))
+            {
+                result.Text = yearLimitText;
                 return result;
             }
 
@@ -122,11 +189,21 @@ namespace XianniAutoPan.Commands
         {
             switch (command.CommandType)
             {
+                case AutoPanCommandType.Help:
+                    result.Success = true;
+                    result.Text = BuildPlayerHelpText();
+                    return result;
                 case AutoPanCommandType.MyKingdom:
                 case AutoPanCommandType.KingdomInfo:
                     result.Success = true;
                     result.Text = AutoPanKingdomService.BuildKingdomInfoText(kingdom);
                     return result;
+                case AutoPanCommandType.AllKingdomInfo:
+                    result.Success = true;
+                    result.Text = AutoPanKingdomService.BuildAllKingdomInfoText();
+                    return result;
+                case AutoPanCommandType.RenameKingdom:
+                    return ExecuteRenameKingdom(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CityList:
                     result.Success = true;
                     result.Text = AutoPanCityService.BuildCityListText(kingdom);
@@ -149,10 +226,24 @@ namespace XianniAutoPan.Commands
                     return ExecuteSeekPeace(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.Alliance:
                     return ExecuteAlliance(kingdom, command, operatorName, isAi, result);
-                case AutoPanCommandType.BreakAlliance:
-                    return ExecuteBreakAlliance(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.AcceptAlliance:
+                    return ExecuteAllianceResponse(kingdom, command, operatorName, isAi, result, accept: true);
+                case AutoPanCommandType.RejectAlliance:
+                    return ExecuteAllianceResponse(kingdom, command, operatorName, isAi, result, accept: false);
+                case AutoPanCommandType.LeaveAlliance:
+                    return ExecuteLeaveAlliance(kingdom, operatorName, isAi, result);
+                case AutoPanCommandType.ChallengeDuel:
+                    return ExecuteChallengeDuel(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.AcceptDuel:
+                    return ExecuteDuelResponse(kingdom, command, operatorName, isAi, result, accept: true);
+                case AutoPanCommandType.RejectDuel:
+                    return ExecuteDuelResponse(kingdom, command, operatorName, isAi, result, accept: false);
                 case AutoPanCommandType.BloodlineCreate:
-                    return ExecuteBloodlineCreate(kingdom, operatorName, isAi, result);
+                    return ExecuteBloodlineCreate(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.PowerBoard:
+                    result.Success = true;
+                    result.Text = AutoPanInteractionService.BuildTopPowerBoardText();
+                    return result;
                 case AutoPanCommandType.AuraSabotage:
                     return ExecuteAuraSabotage(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.AssassinateStrongest:
@@ -161,8 +252,16 @@ namespace XianniAutoPan.Commands
                     return ExecuteCurseEnemy(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.KingdomBlessing:
                     return ExecuteKingdomBlessing(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.HeavenPunish:
+                    return ExecuteHeavenPunish(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.HeavenBless:
+                    return ExecuteHeavenBless(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.DisturbKingdom:
+                    return ExecuteDisturbKingdom(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CultivatorSuppress:
                     return ExecuteCultivatorSuppress(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.LowerNation:
+                    return ExecuteLowerNation(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CultivatorBoard:
                 case AutoPanCommandType.AncientBoard:
                 case AutoPanCommandType.BeastBoard:
@@ -231,7 +330,7 @@ namespace XianniAutoPan.Commands
         private static AutoPanCommandResult ExecutePlaceRuins(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
             int requestedCount = command.NumericValue <= 0 ? 1 : command.NumericValue;
-            int totalCost = requestedCount * AutoPanConstants.PlaceRuinCost;
+            int totalCost = requestedCount * AutoPanConfigHooks.PlaceRuinCost;
             if (!AutoPanKingdomService.TrySpendTreasury(kingdom, totalCost, out string spendError))
             {
                 result.Text = spendError;
@@ -245,14 +344,14 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            int refund = totalCost - placedCount * AutoPanConstants.PlaceRuinCost;
+            int refund = totalCost - placedCount * AutoPanConfigHooks.PlaceRuinCost;
             if (refund > 0)
             {
                 AutoPanKingdomService.AddTreasury(kingdom, refund);
             }
 
             result.Success = true;
-            result.Text = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 已放置 {placedCount} 座遗迹，消耗 {placedCount * AutoPanConstants.PlaceRuinCost} 金币。";
+            result.Text = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 已放置 {placedCount} 座遗迹，消耗 {placedCount * AutoPanConfigHooks.PlaceRuinCost} 金币。";
             XianniAutoPanApi.Broadcast($"{kingdom.name} 在本国区域放置了 {placedCount} 座遗迹");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 放置遗迹：{kingdom.name} / 请求{requestedCount} / 成功{placedCount}");
             return result;
@@ -325,24 +424,63 @@ namespace XianniAutoPan.Commands
         private static AutoPanCommandResult ExecuteUpgradeNation(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
         {
             int level = AutoPanKingdomService.GetLevel(kingdom);
-            int cost = 200 * level;
+            int cost = AutoPanConfigHooks.NationUpgradeCostPerLevel * level;
             if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out string error))
             {
                 result.Text = error;
                 return result;
             }
 
-            AutoPanKingdomService.SetLevel(kingdom, level + 1);
+            if (!AutoPanKingdomService.TryAdjustNationLevel(kingdom, 1, out int newLevel, out error))
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, cost);
+                result.Text = error;
+                return result;
+            }
+
+            if (!AutoPanKingdomService.TryPromoteXiuzhenguoNaturally(kingdom, out int previousXiuzhenguoLevel, out _, out int spawnedCount, out error))
+            {
+                AutoPanKingdomService.TryAdjustNationLevel(kingdom, -1, out _, out _);
+                AutoPanKingdomService.AddTreasury(kingdom, cost);
+                result.Text = error;
+                return result;
+            }
+
+            int visibleXiuzhenguoLevel = XianniAutoPanApi.RefreshXiuzhenguoLevel(kingdom);
             result.Success = true;
-            result.Text = $"{kingdom.name} 升级国运成功，消耗 {cost} 金币，国家等级提升到 {level + 1}。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 国运提升至 {level + 1} 级");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 执行升级国运：{kingdom.name} -> Lv{level + 1}");
+            result.Text = $"{kingdom.name} 升级国运成功，消耗 {cost} 金币，国家等级提升到 {newLevel}，修真国由 {previousXiuzhenguoLevel} 自然达到 {visibleXiuzhenguoLevel} 级，本次召来 {spawnedCount} 名达标修士。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 国运提升至 {newLevel} 级");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 执行升级国运：{kingdom.name} -> Lv{newLevel}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteRenameKingdom(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            int cost = AutoPanConfigHooks.RenameKingdomCost;
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out string spendError))
+            {
+                result.Text = spendError;
+                return result;
+            }
+
+            string oldLabel = AutoPanKingdomService.FormatKingdomLabel(kingdom);
+            if (!AutoPanKingdomService.TryRenameKingdom(kingdom, command.TextArg, out string finalName, out string renameError))
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, cost);
+                result.Text = renameError;
+                return result;
+            }
+
+            result.Success = true;
+            result.Text = $"{oldLabel} 已改名为 {AutoPanKingdomService.FormatKingdomLabel(kingdom)}，消耗 {cost} 金币。";
+            XianniAutoPanApi.Broadcast($"{oldLabel} 已更名为 {finalName}");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 国家改名：{oldLabel} -> {finalName}");
             return result;
         }
 
         private static AutoPanCommandResult ExecuteGatherSpirit(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.GatherSpiritCost, out string error))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.GatherSpiritCost, out string error))
             {
                 result.Text = error;
                 return result;
@@ -352,7 +490,7 @@ namespace XianniAutoPan.Commands
             int untilYear = AutoPanKingdomService.GetGatherSpiritUntilYear(kingdom);
             result.Success = true;
             result.Text = $"{kingdom.name} 已开启聚灵国策，持续到第 {untilYear} 年。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 开启聚灵国策，灵气汇聚 5 年");
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 开启聚灵国策，灵气汇聚 {AutoPanConfigHooks.GatherSpiritDurationYears} 年");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 开启聚灵：{kingdom.name} -> {untilYear}");
             return result;
         }
@@ -379,7 +517,7 @@ namespace XianniAutoPan.Commands
                 result.Text = $"你与 {target.name} 已处于战争状态。";
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.DeclareWarCost, out string error))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.DeclareWarCost, out string error))
             {
                 result.Text = error;
                 return result;
@@ -388,13 +526,13 @@ namespace XianniAutoPan.Commands
             War war = World.world.diplomacy.startWar(kingdom, target, WarTypeLibrary.normal);
             if (war == null)
             {
-                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConstants.DeclareWarCost);
+                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.DeclareWarCost);
                 result.Text = $"对 {target.name} 宣战失败。";
                 return result;
             }
 
             result.Success = true;
-            result.Text = $"{kingdom.name} 已向 {target.name} 宣战，消耗 {AutoPanConstants.DeclareWarCost} 金币。";
+            result.Text = $"{kingdom.name} 已向 {target.name} 宣战，消耗 {AutoPanConfigHooks.DeclareWarCost} 金币。";
             XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 宣战");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 宣战：{kingdom.name} -> {target.name}");
             return result;
@@ -413,7 +551,7 @@ namespace XianniAutoPan.Commands
                 result.Text = $"当前与 {target.name} 没有正在进行的战争。";
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.SeekPeaceCost, out string error))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.SeekPeaceCost, out string error))
             {
                 result.Text = error;
                 return result;
@@ -421,7 +559,7 @@ namespace XianniAutoPan.Commands
 
             World.world.wars.endWar(war, WarWinner.Peace);
             result.Success = true;
-            result.Text = $"{kingdom.name} 已向 {target.name} 求和，消耗 {AutoPanConstants.SeekPeaceCost} 金币。";
+            result.Text = $"{kingdom.name} 已向 {target.name} 求和，消耗 {AutoPanConfigHooks.SeekPeaceCost} 金币。";
             XianniAutoPanApi.Broadcast($"{kingdom.name} 与 {target.name} 达成和平");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 求和：{kingdom.name} -> {target.name}");
             return result;
@@ -444,28 +582,55 @@ namespace XianniAutoPan.Commands
                 result.Text = $"你与 {target.name} 已经处于同一联盟。";
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.AllianceCost, out string error))
+            result.Success = AutoPanRequestService.TryCreateAllianceRequest(kingdom, target, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 发出结盟请求");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 发起结盟请求：{kingdom.name} -> {target.name}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteAllianceResponse(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result, bool accept)
+        {
+            result.Success = AutoPanRequestService.TryRespondAllianceRequest(kingdom, command.TargetName, accept, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} {(accept ? "同意" : "拒绝")}结盟请求：{kingdom.name} / {command.TargetName}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteLeaveAlliance(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            Alliance alliance = kingdom.getAlliance();
+            if (alliance == null)
+            {
+                result.Text = "当前国家并未加入任何联盟。";
+                return result;
+            }
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.LeaveAllianceCost, out string error))
             {
                 result.Text = error;
                 return result;
             }
-
-            World.world.alliances.forceAlliance(kingdom, target);
-            if (!Alliance.isSame(kingdom.getAlliance(), target.getAlliance()))
+            result.Success = AutoPanKingdomService.TryLeaveAlliance(kingdom, out string allianceName);
+            if (!result.Success)
             {
-                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConstants.AllianceCost);
-                result.Text = $"与 {target.name} 结盟失败。";
+                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.LeaveAllianceCost);
+                result.Text = "退盟失败，请稍后再试。";
                 return result;
             }
 
-            result.Success = true;
-            result.Text = $"{kingdom.name} 已与 {target.name} 结盟，消耗 {AutoPanConstants.AllianceCost} 金币。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 与 {target.name} 缔结联盟");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 结盟：{kingdom.name} <-> {target.name}");
+            result.Text = $"{kingdom.name} 已退出联盟 {allianceName}，消耗 {AutoPanConfigHooks.LeaveAllianceCost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 已退出联盟 {allianceName}");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 退盟：{kingdom.name} / {allianceName}");
             return result;
         }
 
-        private static AutoPanCommandResult ExecuteBreakAlliance(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        private static AutoPanCommandResult ExecuteChallengeDuel(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
             if (!AutoPanKingdomService.TryResolveKingdom(command.TargetName, out Kingdom target, out string resolveError))
             {
@@ -474,41 +639,34 @@ namespace XianniAutoPan.Commands
             }
             if (target == kingdom)
             {
-                result.Text = "请指定要解除结盟的其他国家。";
+                result.Text = "不能向自己的国家发起约斗。";
                 return result;
             }
 
-            Alliance alliance = kingdom.getAlliance();
-            if (alliance == null || !Alliance.isSame(alliance, target.getAlliance()))
+            result.Success = AutoPanRequestService.TryCreateDuelRequest(kingdom, target, command.BetAmount, out string message);
+            result.Text = message;
+            if (result.Success)
             {
-                result.Text = $"你与 {target.name} 当前不在同一联盟。";
-                return result;
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 发出最强者约斗请求{(command.BetAmount > 0 ? $"，赌注 {command.BetAmount} 金币" : string.Empty)}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 发起约斗：{kingdom.name} -> {target.name} / bet={command.BetAmount}");
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.BreakAllianceCost, out string error))
-            {
-                result.Text = error;
-                return result;
-            }
-
-            if (alliance.kingdoms_hashset.Count <= 2)
-            {
-                World.world.alliances.dissolveAlliance(alliance);
-            }
-            else
-            {
-                alliance.leave(target);
-            }
-
-            result.Success = true;
-            result.Text = $"{kingdom.name} 已与 {target.name} 解除结盟，消耗 {AutoPanConstants.BreakAllianceCost} 金币。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 与 {target.name} 解除联盟");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 解盟：{kingdom.name} x {target.name}");
             return result;
         }
 
-        private static AutoPanCommandResult ExecuteBloodlineCreate(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        private static AutoPanCommandResult ExecuteDuelResponse(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result, bool accept)
         {
-            result.Success = AutoPanInteractionService.TryCreateFounderBloodline(kingdom, out string message);
+            result.Success = AutoPanRequestService.TryRespondDuelRequest(kingdom, command.TargetName, accept, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} {(accept ? "同意" : "拒绝")}约斗：{kingdom.name} / {command.TargetName}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteBloodlineCreate(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanInteractionService.TryCreateFounderBloodline(kingdom, command.ObjectIdArg, out string message);
             result.Text = message;
             if (result.Success)
             {
@@ -578,35 +736,76 @@ namespace XianniAutoPan.Commands
             return result;
         }
 
+        private static AutoPanCommandResult ExecuteLowerNation(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            if (!AutoPanKingdomService.TryResolveKingdom(command.TargetName, out Kingdom target, out string resolveError))
+            {
+                result.Text = resolveError;
+                return result;
+            }
+
+            if (target == kingdom)
+            {
+                result.Text = "不能对自己的国家降低国运。";
+                return result;
+            }
+
+            int levels = Math.Max(1, command.NumericValue);
+            int totalCost = AutoPanConfigHooks.LowerNationCostPerLevel * levels;
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, totalCost, out string spendError))
+            {
+                result.Text = spendError;
+                return result;
+            }
+
+            bool nationAdjusted = AutoPanKingdomService.TryAdjustNationLevel(target, -levels, out int newNationLevel, out _);
+            bool xiuzhenguoAdjusted = AutoPanKingdomService.TryLowerXiuzhenguoNaturally(target, levels, out int previousXiuzhenguoLevel, out int newXiuzhenguoLevel, out int killedCount, out string lowerError);
+            if (!nationAdjusted && !xiuzhenguoAdjusted)
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, totalCost);
+                result.Text = string.IsNullOrWhiteSpace(lowerError)
+                    ? $"{AutoPanKingdomService.FormatKingdomLabel(target)} 的国运与修真国等级都已降到最低，无法继续降低。"
+                    : lowerError;
+                return result;
+            }
+
+            AutoPanKingdomService.ClearSnapshotCache(target.getID());
+            result.Success = true;
+            result.Text = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 已压制 {AutoPanKingdomService.FormatKingdomLabel(target)} {levels} 级，国家等级现为 {AutoPanKingdomService.GetLevel(target)}，修真国由 {previousXiuzhenguoLevel} 级自然降到 {XianniAutoPanApi.GetKingdomSnapshot(target, 0, 0, 0).XiuzhenguoLevel} 级，本次斩首 {killedCount} 名达标修士，消耗 {totalCost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 对 {target.name} 发动国运压制");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 降低国运：{kingdom.name} -> {target.name} / {levels} / nationLv={newNationLevel} / xzgLv={newXiuzhenguoLevel} / killed={killedCount}");
+            return result;
+        }
+
         private static AutoPanCommandResult ExecuteCultivatorRetreat(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TryGetBoardActor(kingdom, AutoPanCommandType.CultivatorBoard, command.SlotIndex, out Actor actor, out string error))
+            if (!AutoPanKingdomService.TryGetBoardActorById(kingdom, AutoPanCommandType.CultivatorBoard, command.ObjectIdArg, out Actor actor, out string error))
             {
                 result.Text = error;
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.CultivatorRetreatCost, out error))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.CultivatorRetreatCost, out error))
             {
                 result.Text = error;
                 return result;
             }
-            if (!XianniAutoPanApi.TryAddXiuwei(actor, AutoPanConstants.ClosedDoorXiuweiGain))
+            if (!XianniAutoPanApi.TryAddXiuwei(actor, AutoPanConfigHooks.ClosedDoorXiuweiGain))
             {
-                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConstants.CultivatorRetreatCost);
+                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.CultivatorRetreatCost);
                 result.Text = "闭关失败，未能为修士增加修为。";
                 return result;
             }
             XianniAutoPanApi.TryTriggerBreakthrough(actor);
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 闭关成功，获得 {AutoPanConstants.ClosedDoorXiuweiGain} 修为。";
+            result.Text = $"{actor.getName()} 闭关成功，获得 {AutoPanConfigHooks.ClosedDoorXiuweiGain} 修为。";
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士闭关：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
         private static AutoPanCommandResult ExecuteCultivatorRealmUp(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TryGetBoardActor(kingdom, AutoPanCommandType.CultivatorBoard, command.SlotIndex, out Actor actor, out string error))
+            if (!AutoPanKingdomService.TryGetBoardActorById(kingdom, AutoPanCommandType.CultivatorBoard, command.ObjectIdArg, out Actor actor, out string error))
             {
                 result.Text = error;
                 return result;
@@ -634,32 +833,32 @@ namespace XianniAutoPan.Commands
 
         private static AutoPanCommandResult ExecuteAncientTraining(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TryGetBoardActor(kingdom, AutoPanCommandType.AncientBoard, command.SlotIndex, out Actor actor, out string error))
+            if (!AutoPanKingdomService.TryGetBoardActorById(kingdom, AutoPanCommandType.AncientBoard, command.ObjectIdArg, out Actor actor, out string error))
             {
                 result.Text = error;
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.AncientTrainCost, out error))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.AncientTrainCost, out error))
             {
                 result.Text = error;
                 return result;
             }
-            if (!XianniAutoPanApi.TryAddAncientPower(actor, AutoPanConstants.AncientTrainingGain))
+            if (!XianniAutoPanApi.TryAddAncientPower(actor, AutoPanConfigHooks.AncientTrainingGain))
             {
-                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConstants.AncientTrainCost);
+                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.AncientTrainCost);
                 result.Text = "炼体失败，未能增加古神之力。";
                 return result;
             }
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 炼体成功，获得 {AutoPanConstants.AncientTrainingGain} 古神之力。";
+            result.Text = $"{actor.getName()} 炼体成功，获得 {AutoPanConfigHooks.AncientTrainingGain} 古神之力。";
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神炼体：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
         private static AutoPanCommandResult ExecuteAncientStarUp(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TryGetBoardActor(kingdom, AutoPanCommandType.AncientBoard, command.SlotIndex, out Actor actor, out string error))
+            if (!AutoPanKingdomService.TryGetBoardActorById(kingdom, AutoPanCommandType.AncientBoard, command.ObjectIdArg, out Actor actor, out string error))
             {
                 result.Text = error;
                 return result;
@@ -687,32 +886,32 @@ namespace XianniAutoPan.Commands
 
         private static AutoPanCommandResult ExecuteBeastTraining(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TryGetBoardActor(kingdom, AutoPanCommandType.BeastBoard, command.SlotIndex, out Actor actor, out string error))
+            if (!AutoPanKingdomService.TryGetBoardActorById(kingdom, AutoPanCommandType.BeastBoard, command.ObjectIdArg, out Actor actor, out string error))
             {
                 result.Text = error;
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.BeastTrainCost, out error))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.BeastTrainCost, out error))
             {
                 result.Text = error;
                 return result;
             }
-            if (!XianniAutoPanApi.TryAddBeastPower(actor, AutoPanConstants.BeastTrainingGain))
+            if (!XianniAutoPanApi.TryAddBeastPower(actor, AutoPanConfigHooks.BeastTrainingGain))
             {
-                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConstants.BeastTrainCost);
+                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.BeastTrainCost);
                 result.Text = "养成失败，未能增加妖力。";
                 return result;
             }
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 养成成功，获得 {AutoPanConstants.BeastTrainingGain} 妖力。";
+            result.Text = $"{actor.getName()} 养成成功，获得 {AutoPanConfigHooks.BeastTrainingGain} 妖力。";
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 妖兽养成：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
         private static AutoPanCommandResult ExecuteBeastStageUp(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            if (!AutoPanKingdomService.TryGetBoardActor(kingdom, AutoPanCommandType.BeastBoard, command.SlotIndex, out Actor actor, out string error))
+            if (!AutoPanKingdomService.TryGetBoardActorById(kingdom, AutoPanCommandType.BeastBoard, command.ObjectIdArg, out Actor actor, out string error))
             {
                 result.Text = error;
                 return result;
@@ -816,6 +1015,49 @@ namespace XianniAutoPan.Commands
             return result;
         }
 
+        private static AutoPanCommandResult ExecuteAdminViewPolicy(AutoPanCommandResult result)
+        {
+            result.Success = true;
+            result.Text = AutoPanConfigHooks.BuildPolicyText();
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteAdminSetPolicy(AutoPanParsedCommand command, string operatorName, AutoPanCommandResult result)
+        {
+            ModConfig config = XianniAutoPanMain.Instance.GetConfig();
+            result.Success = AutoPanConfigHooks.TrySetPolicy(config, command.TargetName, command.NumericValue.ToString(), out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                AutoPanLogService.Info($"{operatorName} 使用管理员指令：设置政策 {command.TargetName}={command.NumericValue}");
+            }
+            return result;
+        }
+
+        private static bool IsPlayerCommandBlockedByYear(AutoPanParsedCommand command, out string message)
+        {
+            message = string.Empty;
+            if (IsInfoCommand(command.CommandType))
+            {
+                return false;
+            }
+
+            int currentYear = Date.getCurrentYear();
+            int startYear = AutoPanConfigHooks.PlayerDecisionStartYear;
+            if (currentYear >= startYear)
+            {
+                return false;
+            }
+
+            message = $"当前为第 {currentYear} 年，玩家国家需到第 {startYear} 年后才能执行该指令；加入类、信息查看类与普通聊天不受限制。";
+            return true;
+        }
+
+        private static bool IsInfoCommand(AutoPanCommandType commandType)
+        {
+            return InfoCommands.Contains(commandType);
+        }
+
         private static bool TryGetPlayerKingdom(string userId, out Kingdom kingdom, out string error)
         {
             error = string.Empty;
@@ -832,6 +1074,203 @@ namespace XianniAutoPan.Commands
                 return false;
             }
             return true;
+        }
+
+        private static AutoPanCommandResult ExecuteAdminSetSpeed(AutoPanParsedCommand command, string operatorName, AutoPanCommandResult result)
+        {
+            if (!float.TryParse(command.TextArg, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed) &&
+                !float.TryParse(command.TextArg, out parsed))
+            {
+                result.Text = "无法解析倍速值。";
+                return result;
+            }
+
+            float speed = Math.Max(MinAdminWorldSpeed, Math.Min(MaxAdminWorldSpeed, parsed));
+            if (Config.time_scale_asset == null)
+            {
+                result.Text = "当前世界未加载，无法设置倍速。";
+                return result;
+            }
+
+            ApplyCustomWorldSpeed(speed);
+            string speedText = FormatSpeedValue(speed);
+            result.Success = true;
+            result.Text = $"游戏倍速已设置为 {speedText}x。";
+            AutoPanLogService.Info($"{operatorName} 设置游戏倍速为 {speedText}x");
+            return result;
+        }
+
+        /// <summary>
+        /// 应用自动盘自定义世界速度资产，避免污染原生预设速度资源。
+        /// </summary>
+        private static void ApplyCustomWorldSpeed(float speed)
+        {
+            WorldTimeScaleAsset referenceAsset = ResolveReferenceWorldSpeedAsset(speed);
+            CustomWorldSpeedAsset.id = CustomWorldSpeedIdPrefix + FormatSpeedValue(speed) + "x";
+            CustomWorldSpeedAsset.locale_key = null;
+            CustomWorldSpeedAsset.multiplier = speed;
+            CustomWorldSpeedAsset.ticks = 1;
+            CustomWorldSpeedAsset.conway_ticks = 1;
+            CustomWorldSpeedAsset.sonic = false;
+            CustomWorldSpeedAsset.render_skip = false;
+            // 借用最接近原生速度的图标，避免自定义速度下时钟按钮显示为空。
+            CustomWorldSpeedAsset.path_icon = string.IsNullOrWhiteSpace(referenceAsset?.path_icon)
+                ? DefaultWorldSpeedIconPath
+                : referenceAsset.path_icon;
+            Config.setWorldSpeed(CustomWorldSpeedAsset, pUpdateDebug: false);
+        }
+
+        /// <summary>
+        /// 判断指定速度资产是否为自动盘的自定义速度资产。
+        /// </summary>
+        internal static bool IsCustomWorldSpeedAsset(WorldTimeScaleAsset asset)
+        {
+            return ReferenceEquals(asset, CustomWorldSpeedAsset);
+        }
+
+        /// <summary>
+        /// 为原生滚轮与热键切速提供自定义速度资产的邻接原生档位。
+        /// </summary>
+        internal static WorldTimeScaleAsset GetAdjacentNativeWorldSpeedAsset(bool next, bool cycle)
+        {
+            WorldTimeScaleAsset referenceAsset = ResolveReferenceWorldSpeedAsset(CustomWorldSpeedAsset.multiplier);
+            if (referenceAsset == null)
+            {
+                return CustomWorldSpeedAsset;
+            }
+
+            return next ? referenceAsset.getNext(cycle) : referenceAsset.getPrevious(cycle);
+        }
+
+        /// <summary>
+        /// 为自定义速度选择最接近的原生速度资产，仅用于复用图标。
+        /// </summary>
+        private static WorldTimeScaleAsset ResolveReferenceWorldSpeedAsset(float speed)
+        {
+            if (AssetManager.time_scales == null)
+            {
+                return Config.time_scale_asset;
+            }
+
+            WorldTimeScaleAsset bestAsset = null;
+            float bestDistance = float.MaxValue;
+            string[] candidateIds = { "slow_mo", "x1", "x2", "x3", "x4", "x5", "x10", "x15", "x20" };
+            foreach (string candidateId in candidateIds)
+            {
+                WorldTimeScaleAsset candidate = AssetManager.time_scales.get(candidateId);
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                float distance = Math.Abs(candidate.multiplier - speed);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestAsset = candidate;
+                }
+            }
+
+            return bestAsset ?? Config.time_scale_asset;
+        }
+
+        /// <summary>
+        /// 统一格式化倍速文本，避免日志、提示与自定义资产标识出现多余尾零。
+        /// </summary>
+        private static string FormatSpeedValue(float speed)
+        {
+            return speed.ToString("0.#####", CultureInfo.InvariantCulture);
+        }
+
+        private static AutoPanCommandResult ExecuteAdminSpawnKingdom(AutoPanParsedCommand command, string operatorName, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanKingdomService.TrySpawnUnboundKingdom(command.TargetName, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                AutoPanLogService.Info($"{operatorName} 管理员生成无绑定国家：{command.TargetName}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteHeavenPunish(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.HeavenPunishCost, out string spendError))
+            {
+                result.Text = spendError;
+                return result;
+            }
+            result.Success = AutoPanInteractionService.TryHeavenPunish(command.TargetName, out string message);
+            result.Text = message;
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 天运惩罚：{command.TargetName}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteHeavenBless(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.HeavenBlessCost, out string spendError))
+            {
+                result.Text = spendError;
+                return result;
+            }
+            result.Success = AutoPanInteractionService.TryHeavenBless(command.TargetName, out string message);
+            result.Text = message;
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 天运赐福：{command.TargetName}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteDisturbKingdom(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanInteractionService.TryDisturbKingdom(kingdom, command.TargetName, out string message);
+            result.Text = message;
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 扰动国家：{command.TargetName}");
+            return result;
+        }
+        private static string BuildPlayerHelpText()
+        {
+            return string.Join("\n", new[]
+            {
+                "玩家指令总览：",
+                "加入人类 / 加入兽人 / 加入精灵 / 加入矮人",
+                "帮助",
+                "我的国家",
+                "国家信息",
+                "查看所有国家信息",
+                "国家改名 新名字",
+                "城市列表",
+                "城市信息",
+                "升级国运",
+                "降低国运 目标国家 [kingdomId] 1",
+                "国策 聚灵",
+                "增加人数 10",
+                "放置遗迹 1",
+                "转账 目标国家 [kingdomId] 1000",
+                "宣战 目标国家 [kingdomId] 或 宣战 @对方",
+                "求和 目标国家 [kingdomId] 或 求和 @对方",
+                "结盟 目标国家 [kingdomId] 或 结盟 @对方",
+                "同意结盟 / 拒绝结盟 / 退盟",
+                "约斗 目标国家 [kingdomId] 5000",
+                "同意约斗 / 拒绝约斗",
+                "血脉创立 单位id",
+                "天榜",
+                "削灵 目标国家 [kingdomId] 500",
+                "斩首 目标国家 [kingdomId]",
+                "诅咒 目标国家 [kingdomId] 3",
+                "国家祝福 全员 或 国家祝福 5",
+                "修士降境 目标国家 [kingdomId] 3 1",
+                "修士榜 / 古神榜 / 妖兽榜",
+                "修士 单位id 闭关 / 修士 单位id 升境",
+                "古神 单位id 炼体 / 古神 单位id 升星",
+                "妖兽 单位id 养成 / 妖兽 单位id 升阶",
+                "快速成年 全城 或 快速成年 城市名 [cityId]",
+                "征集军队 城市名 [cityId] 全部",
+                "移交城市 城市名 [cityId] 给 目标国家 [kingdomId]",
+                "军备 城市名 [cityId] 精金 全军",
+                "天运惩罚 目标国家（可@）",
+                "天运赐福 目标国家（可@）",
+                "扰动国家 目标国家（可@）",
+                "QQ群中的 # 管理员指令仅 QQ 管理员白名单可用。"
+            });
         }
     }
 }

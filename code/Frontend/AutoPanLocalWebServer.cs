@@ -108,6 +108,7 @@ namespace XianniAutoPan.Frontend
         private readonly object _sync = new object();
         private readonly ConcurrentQueue<FrontendInboundMessage> _pendingMessages = new ConcurrentQueue<FrontendInboundMessage>();
         private readonly ConcurrentDictionary<string, WsSession> _sessions = new ConcurrentDictionary<string, WsSession>();
+        private readonly ConcurrentDictionary<string, WsSession> _oneBotSessions = new ConcurrentDictionary<string, WsSession>();
         private TcpListener _tcpListener;
         private CancellationTokenSource _cts;
         private string _frontendFolder;
@@ -197,14 +198,43 @@ namespace XianniAutoPan.Frontend
         /// <summary>
         /// 向指定会话发送回包。
         /// </summary>
-        public void SendReply(string sessionId, AutoPanCommandResult result)
+        public void SendReply(FrontendInboundMessage sourceMessage, AutoPanCommandResult result)
         {
-            if (string.IsNullOrWhiteSpace(sessionId))
+            if (sourceMessage == null || result == null)
             {
                 return;
             }
 
-            if (!_sessions.TryGetValue(sessionId, out WsSession session) || !session.Alive)
+            if (sourceMessage.SourceType == AutoPanInputSourceType.QqGroup)
+            {
+                if (!AutoPanQqBridgeService.TryBuildReplyPlan(sourceMessage, result, out string replySessionId, out string groupId, out List<string> chunks))
+                {
+                    return;
+                }
+
+                if (!_oneBotSessions.TryGetValue(replySessionId, out WsSession qqSession) || !qqSession.Alive)
+                {
+                    AutoPanLogService.Error($"QQ 回包失败：未找到可用 OneBot 会话 {replySessionId}。");
+                    return;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    foreach (string chunk in chunks)
+                    {
+                        await SendOneBotGroupMessageAsync(replySessionId, qqSession, groupId, chunk).ConfigureAwait(false);
+                        await Task.Delay(400).ConfigureAwait(false);
+                    }
+                });
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceMessage.SessionId))
+            {
+                return;
+            }
+
+            if (!_sessions.TryGetValue(sourceMessage.SessionId, out WsSession session) || !session.Alive)
             {
                 return;
             }
@@ -219,7 +249,35 @@ namespace XianniAutoPan.Frontend
                 binding,
                 aiEnabled = AutoPanConfigHooks.EnableLlmAi
             }, CamelCaseJsonSettings);
-            _ = SendWsTextAsync(sessionId, session, payload);
+            _ = SendWsTextAsync(sourceMessage.SessionId, session, payload);
+        }
+
+        /// <summary>
+        /// 按最近 QQ 会话向指定玩家发送系统通知。
+        /// </summary>
+        public void SendQqNotice(AutoPanSessionInfo sessionInfo, string userId, string text)
+        {
+            if (sessionInfo == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            FrontendInboundMessage sourceMessage = new FrontendInboundMessage
+            {
+                SessionId = sessionInfo.SessionId,
+                UserId = userId,
+                PlayerName = sessionInfo.PlayerName,
+                SourceType = AutoPanInputSourceType.QqGroup,
+                ReplyTargetId = sessionInfo.ContextId,
+                ContextId = sessionInfo.ContextId,
+                BotSelfId = sessionInfo.BotSelfId
+            };
+            SendReply(sourceMessage, new AutoPanCommandResult
+            {
+                Success = true,
+                Text = text,
+                UserId = userId
+            });
         }
 
         // ── 生命周期 ──
@@ -296,10 +354,28 @@ namespace XianniAutoPan.Frontend
                 string rawPath = parts[1];
                 string path = Uri.UnescapeDataString(rawPath.Split('?')[0]);
 
-                if (IsWebSocketUpgrade(headerResult.Headers) && string.Equals(path, "/ws", StringComparison.OrdinalIgnoreCase))
+                if (LooksLikeWebSocketRequest(headerResult.Headers) && IsSameWebSocketPath(path, "/ws"))
                 {
-                    // WebSocket 连接期间不关闭 TcpClient，由 HandleWebSocketAsync 管理
-                    await HandleWebSocketAsync(client, stream, headerResult.Headers, remoteEndPoint, token).ConfigureAwait(false);
+                    // WebSocket 连接期间不关闭 TcpClient，由 HandleFrontendWebSocketAsync 管理
+                    await HandleFrontendWebSocketAsync(client, stream, headerResult.Headers, remoteEndPoint, token).ConfigureAwait(false);
+                    return;
+                }
+
+                if (LooksLikeWebSocketRequest(headerResult.Headers) && IsSameWebSocketPath(path, AutoPanConfigHooks.QqOneBotWsPath))
+                {
+                    string queryToken = ExtractQueryParam(rawPath, "access_token");
+                    if (string.IsNullOrWhiteSpace(queryToken))
+                    {
+                        queryToken = ExtractQueryParam(rawPath, "token");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(queryToken) && !headerResult.Headers.ContainsKey("Authorization"))
+                    {
+                        headerResult.Headers["Authorization"] = "Bearer " + queryToken.Trim();
+                    }
+
+                    // OneBot 反向 WebSocket 连接期间不关闭 TcpClient，由 HandleOneBotWebSocketAsync 管理
+                    await HandleOneBotWebSocketAsync(client, stream, headerResult.Headers, remoteEndPoint, token).ConfigureAwait(false);
                     return;
                 }
 
@@ -356,6 +432,20 @@ namespace XianniAutoPan.Frontend
                 return;
             }
 
+            if (path.StartsWith("/api/qq-config/set", StringComparison.OrdinalIgnoreCase))
+            {
+                string key = ExtractQueryParam(rawPath, "key");
+                string value = ExtractQueryParam(rawPath, "value");
+                bool success = AutoPanConfigHooks.TrySetQqSetting(key, value, out string message);
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    qqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
             await WriteHttpResponseAsync(stream, 404, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Not Found"), token).ConfigureAwait(false);
         }
 
@@ -393,7 +483,7 @@ namespace XianniAutoPan.Frontend
 
         // ── WebSocket 处理 ──
 
-        private async Task HandleWebSocketAsync(TcpClient client, NetworkStream stream, Dictionary<string, string> headers, string remoteEndPoint, CancellationToken token)
+        private async Task HandleFrontendWebSocketAsync(TcpClient client, NetworkStream stream, Dictionary<string, string> headers, string remoteEndPoint, CancellationToken token)
         {
             headers.TryGetValue("sec-websocket-key", out string wsKey);
             if (string.IsNullOrWhiteSpace(wsKey))
@@ -472,7 +562,8 @@ namespace XianniAutoPan.Frontend
                             UserId = request.userId,
                             PlayerName = request.playerName,
                             Text = request.text,
-                            RemoteEndPoint = remoteEndPoint
+                            RemoteEndPoint = remoteEndPoint,
+                            SourceType = AutoPanInputSourceType.FrontendWeb
                         });
                     }
                 }
@@ -497,6 +588,114 @@ namespace XianniAutoPan.Frontend
                 {
                 }
             }
+        }
+
+        private async Task HandleOneBotWebSocketAsync(TcpClient client, NetworkStream stream, Dictionary<string, string> headers, string remoteEndPoint, CancellationToken token)
+        {
+            headers.TryGetValue("sec-websocket-key", out string wsKey);
+            if (string.IsNullOrWhiteSpace(wsKey))
+            {
+                await WriteHttpResponseAsync(stream, 400, "text/plain", Encoding.UTF8.GetBytes("Missing Sec-WebSocket-Key"), token).ConfigureAwait(false);
+                return;
+            }
+
+            if (!AutoPanQqBridgeService.TryValidateHandshake(headers, out string role, out string selfId, out string error))
+            {
+                await WriteHttpResponseAsync(stream, 403, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes(error), token).ConfigureAwait(false);
+                return;
+            }
+
+            string acceptKey;
+            using (SHA1 sha1 = SHA1.Create())
+            {
+                acceptKey = Convert.ToBase64String(sha1.ComputeHash(Encoding.UTF8.GetBytes(wsKey.Trim() + WsAcceptGuid)));
+            }
+
+            string upgradeResponse = "HTTP/1.1 101 Switching Protocols\r\n"
+                + "Upgrade: websocket\r\n"
+                + "Connection: Upgrade\r\n"
+                + $"Sec-WebSocket-Accept: {acceptKey}\r\n"
+                + "\r\n";
+            byte[] upgradeBytes = Encoding.UTF8.GetBytes(upgradeResponse);
+            await stream.WriteAsync(upgradeBytes, 0, upgradeBytes.Length, token).ConfigureAwait(false);
+            await stream.FlushAsync(token).ConfigureAwait(false);
+
+            string sessionId = Guid.NewGuid().ToString("N");
+            WsSession session = new WsSession { Stream = stream };
+            _oneBotSessions[sessionId] = session;
+            AutoPanQqBridgeService.RegisterSession(sessionId, role, selfId, remoteEndPoint);
+
+            try
+            {
+                while (!token.IsCancellationRequested && session.Alive)
+                {
+                    WsFrame frame = await ReadWsFrameAsync(stream, token).ConfigureAwait(false);
+                    if (frame == null || frame.Opcode == 8)
+                    {
+                        break;
+                    }
+
+                    if (frame.Opcode == 9)
+                    {
+                        await WriteWsFrameAsync(session, 10, frame.Payload, token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (frame.Opcode != 1)
+                    {
+                        continue;
+                    }
+
+                    string payload = Encoding.UTF8.GetString(frame.Payload);
+                    if (AutoPanQqBridgeService.TryConvertIncomingPayload(sessionId, payload, remoteEndPoint, out FrontendInboundMessage inbound))
+                    {
+                        _pendingMessages.Enqueue(inbound);
+                    }
+                }
+            }
+            finally
+            {
+                session.Alive = false;
+                _oneBotSessions.TryRemove(sessionId, out _);
+                AutoPanQqBridgeService.UnregisterSession(sessionId);
+                try
+                {
+                    await WriteWsFrameAsync(session, 8, new byte[0], CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    client.Close();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private async Task SendOneBotGroupMessageAsync(string sessionId, WsSession session, string groupId, string text)
+        {
+            if (!long.TryParse(groupId, out long parsedGroupId))
+            {
+                AutoPanLogService.Error($"QQ 回包失败：非法群号 {groupId}。");
+                return;
+            }
+
+            string payload = JsonConvert.SerializeObject(new
+            {
+                action = "send_group_msg",
+                @params = new
+                {
+                    group_id = parsedGroupId,
+                    message = text,
+                    auto_escape = false
+                },
+                echo = $"autopan-{DateTime.UtcNow.Ticks}"
+            }, CamelCaseJsonSettings);
+            await SendWsTextAsync(sessionId, session, payload).ConfigureAwait(false);
         }
 
         // ── WebSocket 帧编解码 ──
@@ -725,13 +924,53 @@ namespace XianniAutoPan.Frontend
         /// <summary>
         /// 检测 HTTP 请求是否为 WebSocket 升级。
         /// </summary>
-        private static bool IsWebSocketUpgrade(Dictionary<string, string> headers)
+        private static bool LooksLikeWebSocketRequest(Dictionary<string, string> headers)
         {
             headers.TryGetValue("Connection", out string connection);
             headers.TryGetValue("Upgrade", out string upgrade);
+            headers.TryGetValue("Sec-WebSocket-Key", out string secWebSocketKey);
+            if (!string.IsNullOrWhiteSpace(secWebSocketKey))
+            {
+                return true;
+            }
+
             return connection != null
                 && connection.IndexOf("Upgrade", StringComparison.OrdinalIgnoreCase) >= 0
                 && string.Equals(upgrade, "websocket", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 判断两个 WebSocket 路径是否一致，忽略末尾斜杠差异。
+        /// </summary>
+        private static bool IsSameWebSocketPath(string actualPath, string configuredPath)
+        {
+            string left = NormalizeWebSocketPath(actualPath);
+            string right = NormalizeWebSocketPath(configuredPath);
+            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 规范化 WebSocket 路径。
+        /// </summary>
+        private static string NormalizeWebSocketPath(string path)
+        {
+            string normalized = (path ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "/";
+            }
+
+            if (!normalized.StartsWith("/", StringComparison.Ordinal))
+            {
+                normalized = "/" + normalized;
+            }
+
+            while (normalized.Length > 1 && normalized.EndsWith("/", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(0, normalized.Length - 1);
+            }
+
+            return normalized;
         }
 
         /// <summary>

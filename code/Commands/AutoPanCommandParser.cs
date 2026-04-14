@@ -8,10 +8,19 @@ namespace XianniAutoPan.Commands
     /// </summary>
     internal static class AutoPanCommandParser
     {
+        private static readonly Regex HelpRegex = new Regex(@"^(帮助|指令|帮助指令)$", RegexOptions.Compiled);
+        private static readonly Regex RenameKingdomRegex = new Regex(@"^国家改名\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex DeclareWarRegex = new Regex(@"^宣战\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex SeekPeaceRegex = new Regex(@"^求和\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AllianceRegex = new Regex(@"^(结盟|联盟)\s+(.+)$", RegexOptions.Compiled);
-        private static readonly Regex BreakAllianceRegex = new Regex(@"^(解盟|解除结盟|取消结盟)\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex AcceptAllianceRegex = new Regex(@"^同意结盟(?:\s+(.+))?$", RegexOptions.Compiled);
+        private static readonly Regex RejectAllianceRegex = new Regex(@"^拒绝结盟(?:\s+(.+))?$", RegexOptions.Compiled);
+        private static readonly Regex LeaveAllianceRegex = new Regex(@"^(退盟|解盟|退出联盟)$", RegexOptions.Compiled);
+        private static readonly Regex ChallengeDuelRegex = new Regex(@"^约斗\s+(.+?)(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
+        private static readonly Regex AcceptDuelRegex = new Regex(@"^同意约斗(?:\s+(.+))?$", RegexOptions.Compiled);
+        private static readonly Regex RejectDuelRegex = new Regex(@"^拒绝约斗(?:\s+(.+))?$", RegexOptions.Compiled);
+        private static readonly Regex BloodlineCreateRegex = new Regex(@"^血脉创立(?:\s+(\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex LowerNationRegex = new Regex(@"^降低国运\s+(.+?)(?:\s+(\d+))?$", RegexOptions.Compiled);
         private static readonly Regex AuraSabotageRegex = new Regex(@"^削灵\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex AssassinateRegex = new Regex(@"^斩首\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex CurseEnemyRegex = new Regex(@"^诅咒\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
@@ -35,6 +44,14 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AdminSetGoldRegex = new Regex(@"^#设置国家金币\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminViewGoldRegex = new Regex(@"^#查看国家金币\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminViewBindingRegex = new Regex(@"^#查看绑定\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex AdminSetAiDecisionStartYearRegex = new Regex(@"^#设置AI开始决策年份\s+(-?\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AdminSetPlayerDecisionStartYearRegex = new Regex(@"^#设置玩家开始决策年份\s+(-?\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AdminSetPolicyRegex = new Regex(@"^#设置政策\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AdminSetSpeedRegex = new Regex(@"^#(\d+(?:\.\d+)?)x$", RegexOptions.Compiled);
+        private static readonly Regex AdminSpawnKingdomRegex = new Regex(@"^#生成\s+(人类|兽人|精灵|矮人)$", RegexOptions.Compiled);
+        private static readonly Regex HeavenPunishRegex = new Regex(@"^天运惩罚\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex HeavenBlessRegex = new Regex(@"^天运赐福\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex DisturbKingdomRegex = new Regex(@"^扰动国家\s+(.+)$", RegexOptions.Compiled);
 
         /// <summary>
         /// 解析前端文本为内部命令。
@@ -49,6 +66,13 @@ namespace XianniAutoPan.Commands
             };
             if (string.IsNullOrWhiteSpace(text))
             {
+                return command;
+            }
+
+            Match match = HelpRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.Help;
                 return command;
             }
 
@@ -72,12 +96,13 @@ namespace XianniAutoPan.Commands
                 case "国家信息":
                     command.CommandType = AutoPanCommandType.KingdomInfo;
                     return command;
+                case "查看所有国家信息":
+                case "所有国家信息":
+                    command.CommandType = AutoPanCommandType.AllKingdomInfo;
+                    return command;
                 case "城市信息":
                     command.CommandType = AutoPanCommandType.CityInfo;
                     command.TargetName = string.Empty;
-                    return command;
-                case "血脉创立":
-                    command.CommandType = AutoPanCommandType.BloodlineCreate;
                     return command;
                 case "城市列表":
                     command.CommandType = AutoPanCommandType.CityList;
@@ -101,15 +126,54 @@ namespace XianniAutoPan.Commands
                 case "妖兽榜":
                     command.CommandType = AutoPanCommandType.BeastBoard;
                     return command;
+                case "天榜":
+                    command.CommandType = AutoPanCommandType.PowerBoard;
+                    return command;
+                case "同意结盟":
+                    command.CommandType = AutoPanCommandType.AcceptAlliance;
+                    return command;
+                case "拒绝结盟":
+                    command.CommandType = AutoPanCommandType.RejectAlliance;
+                    return command;
+                case "同意约斗":
+                    command.CommandType = AutoPanCommandType.AcceptDuel;
+                    return command;
+                case "拒绝约斗":
+                    command.CommandType = AutoPanCommandType.RejectDuel;
+                    return command;
+                case "退盟":
+                case "解盟":
+                case "退出联盟":
+                    command.CommandType = AutoPanCommandType.LeaveAlliance;
+                    return command;
                 case "#全局AI 开":
                     command.CommandType = AutoPanCommandType.AdminAiOn;
                     return command;
                 case "#全局AI 关":
                     command.CommandType = AutoPanCommandType.AdminAiOff;
                     return command;
+                case "#查看政策":
+                    command.CommandType = AutoPanCommandType.AdminViewPolicy;
+                    return command;
             }
 
-            Match match = AddPopulationRegex.Match(text);
+            match = RenameKingdomRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.RenameKingdom;
+                command.TextArg = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = BloodlineCreateRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.BloodlineCreate;
+                command.ObjectIdArg = string.IsNullOrWhiteSpace(match.Groups[1].Value) ? 0L : long.Parse(match.Groups[1].Value);
+                return command;
+            }
+
+            match = AddPopulationRegex.Match(text);
             if (match.Success && int.TryParse(match.Groups[2].Value, out int addPopulationCount))
             {
                 command.CommandType = AutoPanCommandType.AddPopulation;
@@ -131,6 +195,15 @@ namespace XianniAutoPan.Commands
                 command.CommandType = AutoPanCommandType.TransferTreasury;
                 command.TargetName = match.Groups[1].Value.Trim();
                 command.NumericValue = transferAmount;
+                return command;
+            }
+
+            match = LowerNationRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.LowerNation;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.NumericValue = string.IsNullOrWhiteSpace(match.Groups[2].Value) ? 1 : int.Parse(match.Groups[2].Value);
                 return command;
             }
 
@@ -249,59 +322,99 @@ namespace XianniAutoPan.Commands
                 return command;
             }
 
-            match = BreakAllianceRegex.Match(text);
+            match = AcceptAllianceRegex.Match(text);
             if (match.Success)
             {
-                command.CommandType = AutoPanCommandType.BreakAlliance;
-                command.TargetName = match.Groups[2].Value.Trim();
+                command.CommandType = AutoPanCommandType.AcceptAlliance;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = RejectAllianceRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.RejectAlliance;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = LeaveAllianceRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.LeaveAlliance;
+                return command;
+            }
+
+            match = ChallengeDuelRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.ChallengeDuel;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.BetAmount = string.IsNullOrWhiteSpace(match.Groups[2].Value) ? 0 : int.Parse(match.Groups[2].Value);
+                return command;
+            }
+
+            match = AcceptDuelRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AcceptDuel;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = RejectDuelRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.RejectDuel;
+                command.TargetName = match.Groups[1].Value.Trim();
                 return command;
             }
 
             match = CultivatorActionRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int cultivatorIndex))
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long cultivatorId))
             {
                 command.CommandType = AutoPanCommandType.CultivatorRetreat;
-                command.SlotIndex = cultivatorIndex;
+                command.ObjectIdArg = cultivatorId;
                 return command;
             }
 
             match = CultivatorRealmUpRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[1].Value, out cultivatorIndex))
+            if (match.Success && long.TryParse(match.Groups[1].Value, out cultivatorId))
             {
                 command.CommandType = AutoPanCommandType.CultivatorRealmUp;
-                command.SlotIndex = cultivatorIndex;
+                command.ObjectIdArg = cultivatorId;
                 return command;
             }
 
             match = AncientActionRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int ancientIndex))
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long ancientId))
             {
                 command.CommandType = AutoPanCommandType.AncientTrain;
-                command.SlotIndex = ancientIndex;
+                command.ObjectIdArg = ancientId;
                 return command;
             }
 
             match = AncientStarUpRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[1].Value, out ancientIndex))
+            if (match.Success && long.TryParse(match.Groups[1].Value, out ancientId))
             {
                 command.CommandType = AutoPanCommandType.AncientStarUp;
-                command.SlotIndex = ancientIndex;
+                command.ObjectIdArg = ancientId;
                 return command;
             }
 
             match = BeastActionRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int beastIndex))
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long beastId))
             {
                 command.CommandType = AutoPanCommandType.BeastTrain;
-                command.SlotIndex = beastIndex;
+                command.ObjectIdArg = beastId;
                 return command;
             }
 
             match = BeastStageUpRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[1].Value, out beastIndex))
+            if (match.Success && long.TryParse(match.Groups[1].Value, out beastId))
             {
                 command.CommandType = AutoPanCommandType.BeastStageUp;
-                command.SlotIndex = beastIndex;
+                command.ObjectIdArg = beastId;
                 return command;
             }
 
@@ -336,6 +449,73 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.AdminViewBinding;
                 command.UserIdArg = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = AdminSetAiDecisionStartYearRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int aiStartYear))
+            {
+                command.CommandType = AutoPanCommandType.AdminSetPolicy;
+                command.TargetName = "aiDecisionStartYear";
+                command.NumericValue = aiStartYear;
+                return command;
+            }
+
+            match = AdminSetPlayerDecisionStartYearRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int playerStartYear))
+            {
+                command.CommandType = AutoPanCommandType.AdminSetPolicy;
+                command.TargetName = "playerDecisionStartYear";
+                command.NumericValue = playerStartYear;
+                return command;
+            }
+
+            match = AdminSetPolicyRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[2].Value, out int policyValue))
+            {
+                command.CommandType = AutoPanCommandType.AdminSetPolicy;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.NumericValue = policyValue;
+                return command;
+            }
+
+            match = AdminSetSpeedRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminSetSpeed;
+                command.TextArg = match.Groups[1].Value;
+                return command;
+            }
+
+            match = AdminSpawnKingdomRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminSpawnKingdom;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = HeavenPunishRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.HeavenPunish;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = HeavenBlessRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.HeavenBless;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = DisturbKingdomRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.DisturbKingdom;
+                command.TargetName = match.Groups[1].Value.Trim();
                 return command;
             }
 

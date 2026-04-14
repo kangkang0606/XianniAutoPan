@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>仙逆自动盘前端测试</title>
+  <title>仙逆自动盘后端控制台</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -11,120 +11,226 @@
     <section class="hero-card">
       <div class="hero-copy">
         <p class="eyebrow">Xianni AutoPan</p>
-        <h1>仙逆自动盘前端测试台</h1>
-        <p class="subtitle">同一局域网内的电脑和手机都可以直接用这个页面发指令、切换模拟玩家、查看最近动作和指令书。</p>
+        <h1>仙逆自动盘后端控制台</h1>
+        <p class="subtitle">测试发令区保留，但数值调整已切到后端模块化配置。局域网内可直接查看国家状态、保存政策并立刻生效。</p>
       </div>
-      <div class="status-stack">
-        <div class="status-pill" id="wsStatus">WebSocket：连接中</div>
-        <div class="status-pill" id="aiStatus">AI：未知</div>
-      </div>
-    </section>
-
-    <section class="grid">
-      <article class="panel">
-        <h2>玩家信息</h2>
-        <label>当前 userId(UDID)
-          <input id="userId" type="text" value="test-user-001" />
-        </label>
-        <label>当前 playerName
-          <input id="playerName" type="text" value="测试玩家" />
-        </label>
-        <div class="binding-box">
-          <span class="muted">当前绑定国家</span>
-          <strong id="bindingText">未绑定</strong>
+      <div class="hero-side">
+        <div class="page-switch" role="tablist" aria-label="页面切换">
+          <button class="page-tab is-active" type="button" data-page-target="dashboard">主控台</button>
+          <button class="page-tab" type="button" data-page-target="config">配置页</button>
         </div>
-        <div class="address-box">
-          <span class="muted">当前访问地址</span>
-          <ul id="listenAddresses"></ul>
+        <div class="status-stack">
+          <div class="status-pill" id="wsStatus">WebSocket：连接中</div>
+          <div class="status-pill" id="aiStatus">AI：未知</div>
         </div>
-      </article>
-
-      <article class="panel">
-        <h2>快捷加入</h2>
-        <div class="button-grid">
-          <button class="action-btn" data-command="加入人类">加入人类</button>
-          <button class="action-btn" data-command="加入兽人">加入兽人</button>
-          <button class="action-btn" data-command="加入精灵">加入精灵</button>
-          <button class="action-btn" data-command="加入矮人">加入矮人</button>
-        </div>
-        <h2 class="spaced">管理员按钮</h2>
-        <div class="button-grid admin-grid">
-          <button class="ghost-btn" data-command="#全局AI 开">开启全局AI</button>
-          <button class="ghost-btn" data-command="#全局AI 关">关闭全局AI</button>
-          <button class="ghost-btn" id="viewBindingButton">查看当前绑定</button>
-          <button class="ghost-btn" data-command="国家信息">查看当前国家信息</button>
-          <button class="ghost-btn" data-command="城市列表">查看当前城市列表</button>
-          <button class="ghost-btn" data-command="城市信息">查看全部城市详情</button>
-          <button class="ghost-btn" data-command="修士榜">查看修士榜</button>
-          <button class="ghost-btn" data-command="古神榜">查看古神榜</button>
-          <button class="ghost-btn" data-command="妖兽榜">查看妖兽榜</button>
-        </div>
-        <h2 class="spaced">国家互动</h2>
-        <div class="button-grid admin-grid">
-          <button class="ghost-btn" data-command="血脉创立">血脉创立</button>
-          <button class="ghost-btn" data-command="国家祝福 5">祝福主力5人</button>
-          <button class="ghost-btn" data-command="国家祝福 全员">祝福全员</button>
-          <button class="ghost-btn" data-command="快速成年 全城">全城快速成年</button>
-          <button class="ghost-btn" data-command="增加人数 5">增加人数5</button>
-          <button class="ghost-btn" data-command="增加人数 20">增加人数20</button>
-          <button class="ghost-btn" data-command="放置遗迹 1">放置1座遗迹</button>
-        </div>
-        <h2 class="spaced">发指令</h2>
-        <label>命令输入框
-          <textarea id="commandText" rows="5" placeholder="例如：国家信息&#10;城市信息&#10;增加人数 10&#10;放置遗迹 1&#10;转账 某个国家 [kingdomId] 1000&#10;削灵 某个国家 [kingdomId] 500"></textarea>
-        </label>
-        <div class="send-row">
-          <button id="sendButton" class="primary-btn">发送指令</button>
-          <button id="refreshButton" class="ghost-btn">刷新状态</button>
-        </div>
-      </article>
-
-      <article class="panel">
-        <h2>最近回包</h2>
-        <div id="replyBox" class="scroll-box reply-box"></div>
-      </article>
-
-      <article class="panel">
-        <h2>最近动作日志</h2>
-        <div id="logBox" class="scroll-box"></div>
-      </article>
-    </section>
-
-    <section class="panel kingdom-panel">
-      <div class="command-book-head">
-        <h2>当前运行国家</h2>
-        <span class="muted">显示所有存活文明国家，并提供带 kingdomId 的外交/管理员快捷按钮</span>
-      </div>
-      <div class="table-wrap">
-        <table class="kingdom-table">
-          <thead>
-            <tr>
-              <th>国家</th>
-              <th>拥有者</th>
-              <th>国库</th>
-              <th>等级</th>
-              <th>修真国</th>
-              <th>城市</th>
-              <th>人口</th>
-              <th>灵气</th>
-              <th>年收</th>
-              <th>联盟</th>
-              <th>战争</th>
-              <th>快捷操作</th>
-            </tr>
-          </thead>
-          <tbody id="kingdomTableBody"></tbody>
-        </table>
       </div>
     </section>
 
-    <section class="panel command-book-panel">
-      <div class="command-book-head">
-        <h2>指令书</h2>
-        <span class="muted">直接读取模组根目录里的 指令书.txt</span>
-      </div>
-      <pre id="commandBook" class="command-book"></pre>
-    </section>
+    <div class="page-view is-active" data-page-view="dashboard">
+      <section class="grid dashboard-grid">
+        <article class="panel panel-feature">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">基础信息</p>
+              <h2>玩家信息</h2>
+            </div>
+          </div>
+          <label>当前 userId(UDID)
+            <input id="userId" type="text" value="test-user-001" />
+          </label>
+          <label>当前 playerName
+            <input id="playerName" type="text" value="测试玩家" />
+          </label>
+          <div class="binding-box">
+            <span class="muted">当前绑定国家</span>
+            <strong id="bindingText">未绑定</strong>
+          </div>
+          <div class="address-box">
+            <span class="muted">当前访问地址</span>
+            <ul id="listenAddresses"></ul>
+          </div>
+        </article>
+
+        <article class="panel panel-feature">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">快捷操作</p>
+              <h2>快捷加入</h2>
+            </div>
+          </div>
+          <div class="button-grid">
+            <button class="action-btn" data-command="加入人类">加入人类</button>
+            <button class="action-btn" data-command="加入兽人">加入兽人</button>
+            <button class="action-btn" data-command="加入精灵">加入精灵</button>
+            <button class="action-btn" data-command="加入矮人">加入矮人</button>
+          </div>
+          <h2 class="spaced">管理员按钮</h2>
+          <div class="button-grid admin-grid">
+            <button class="ghost-btn" data-command="#全局AI 开">开启全局AI</button>
+            <button class="ghost-btn" data-command="#全局AI 关">关闭全局AI</button>
+            <button class="ghost-btn" id="viewBindingButton">查看当前绑定</button>
+            <button class="ghost-btn" data-command="#查看政策">查看后端政策</button>
+            <button class="ghost-btn" data-command="帮助">查看帮助</button>
+            <button class="ghost-btn" data-command="国家信息">查看当前国家信息</button>
+            <button class="ghost-btn" data-command="查看所有国家信息">查看所有国家信息</button>
+            <button class="ghost-btn" data-command="城市列表">查看当前城市列表</button>
+            <button class="ghost-btn" data-command="城市信息">查看全部城市详情</button>
+            <button class="ghost-btn" data-command="天榜">查看天榜</button>
+            <button class="ghost-btn" data-command="修士榜">查看修士榜</button>
+            <button class="ghost-btn" data-command="古神榜">查看古神榜</button>
+            <button class="ghost-btn" data-command="妖兽榜">查看妖兽榜</button>
+            <button class="ghost-btn" data-command="退盟">直接退盟</button>
+          </div>
+        </article>
+
+        <article class="panel panel-feature panel-full">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">国家操作</p>
+              <h2>国家互动与发指令</h2>
+            </div>
+            <span class="muted">政策与指令书已移到配置页，国家管理保留在主控台。</span>
+          </div>
+          <h2 class="section-title">国家互动</h2>
+          <div class="button-grid admin-grid">
+            <button class="ghost-btn" data-command="血脉创立">血脉创立</button>
+            <button class="ghost-btn" data-command="国家祝福 5">祝福主力5人</button>
+            <button class="ghost-btn" data-command="国家祝福 全员">祝福全员</button>
+            <button class="ghost-btn" data-command="快速成年 全城">全城快速成年</button>
+            <button class="ghost-btn" data-command="增加人数 5">增加人数5</button>
+            <button class="ghost-btn" data-command="增加人数 20">增加人数20</button>
+            <button class="ghost-btn" data-command="放置遗迹 1">放置1座遗迹</button>
+          </div>
+          <h2 class="spaced section-title">发指令</h2>
+          <label>命令输入框
+            <textarea id="commandText" rows="5" placeholder="例如：国家信息&#10;城市信息&#10;增加人数 10&#10;放置遗迹 1&#10;转账 某个国家 [kingdomId] 1000&#10;削灵 某个国家 [kingdomId] 500"></textarea>
+          </label>
+          <div class="send-row">
+            <button id="sendButton" class="primary-btn">发送指令</button>
+            <button id="refreshButton" class="ghost-btn">刷新状态</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="grid dashboard-secondary-grid">
+        <article class="panel panel-compact">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">实时反馈</p>
+              <h2>最近回包</h2>
+            </div>
+          </div>
+          <div id="replyBox" class="scroll-box reply-box"></div>
+        </article>
+
+        <article class="panel panel-compact">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">运行日志</p>
+              <h2>最近动作日志</h2>
+            </div>
+          </div>
+          <div id="logBox" class="scroll-box"></div>
+        </article>
+
+        <article class="panel panel-full panel-compact">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">待办处理</p>
+              <h2>待处理请求</h2>
+            </div>
+            <span class="muted">结盟与约斗请求可在这里直接处理</span>
+          </div>
+          <div id="pendingRequests" class="pending-list"></div>
+        </article>
+      </section>
+
+      <section class="config-group">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">国家管理</p>
+            <h2>当前运行国家</h2>
+          </div>
+          <span class="muted">显示所有存活文明国家，并提供带 kingdomId 的外交/管理员快捷按钮</span>
+        </div>
+        <section class="panel kingdom-panel">
+          <div class="table-wrap">
+            <table class="kingdom-table">
+              <thead>
+                <tr>
+                  <th>国家</th>
+                  <th>拥有者</th>
+                  <th>国库</th>
+                  <th>等级</th>
+                  <th>修真国</th>
+                  <th>城市</th>
+                  <th>人口</th>
+                  <th>灵气</th>
+                  <th>年收</th>
+                  <th>联盟</th>
+                  <th>战争</th>
+                  <th>快捷操作</th>
+                </tr>
+              </thead>
+              <tbody id="kingdomTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <div class="page-view" data-page-view="config">
+      <section class="config-overview">
+        <article class="panel overview-card">
+          <div class="panel-head">
+            <div>
+              <p class="panel-tag">配置总览</p>
+              <h2>配置页说明</h2>
+            </div>
+          </div>
+          <p class="muted">这里集中放置长期调整内容：后端政策与指令书。主控台保留即时操作和国家管理，避免频繁切页。</p>
+        </article>
+      </section>
+
+      <section class="config-group">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">接入分组</p>
+            <h2>QQ 群接入</h2>
+          </div>
+          <span class="muted">按 OneBot 11 反向 WebSocket 接入，兼容 NapCat / LLOneBot 等协议端，网页后端继续保留。</span>
+        </div>
+        <article class="panel qq-panel">
+          <div id="qqBridgePanel" class="qq-bridge-grid"></div>
+        </article>
+      </section>
+
+      <section class="config-group">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">配置分组</p>
+            <h2>政策配置</h2>
+          </div>
+          <span class="muted">所有可调指令项按模块拆分展示，悬浮问号可查看说明</span>
+        </div>
+        <article class="panel policy-panel">
+          <div id="policyModules" class="policy-modules"></div>
+        </article>
+      </section>
+
+      <section class="config-group">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">配置分组</p>
+            <h2>指令书</h2>
+          </div>
+          <span class="muted">直接读取模组根目录里的 指令书.txt</span>
+        </div>
+        <section class="panel command-book-panel">
+          <pre id="commandBook" class="command-book"></pre>
+        </section>
+      </section>
+    </div>
   </main>
 
   <script src="/app.js"></script>

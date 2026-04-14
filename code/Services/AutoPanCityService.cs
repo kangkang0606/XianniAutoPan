@@ -164,7 +164,7 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            int cost = targets.Count * AutoPanConstants.FastAdultCostPerUnit;
+            int cost = targets.Count * AutoPanConfigHooks.FastAdultCostPerUnit;
             if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out string spendError))
             {
                 message = spendError;
@@ -220,7 +220,7 @@ namespace XianniAutoPan.Services
             }
 
             int recruitCount = requestedCount <= 0 ? candidates.Count : Math.Min(requestedCount, candidates.Count);
-            int cost = recruitCount * AutoPanConstants.ConscriptCostPerUnit;
+            int cost = recruitCount * AutoPanConfigHooks.ConscriptCostPerUnit;
             if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out string spendError))
             {
                 message = spendError;
@@ -300,7 +300,7 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConstants.TransferCityCost, out string spendError))
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.TransferCityCost, out string spendError))
             {
                 message = spendError;
                 return false;
@@ -315,7 +315,7 @@ namespace XianniAutoPan.Services
 
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             AutoPanKingdomService.ClearSnapshotCache(targetKingdom.getID());
-            message = $"{FormatCityLabel(city)} 已移交给 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)}，消耗 {AutoPanConstants.TransferCityCost} 金币。";
+            message = $"{FormatCityLabel(city)} 已移交给 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)}，消耗 {AutoPanConfigHooks.TransferCityCost} 金币。";
             return true;
         }
 
@@ -487,31 +487,31 @@ namespace XianniAutoPan.Services
             {
                 case "铜":
                     tierSuffix = "copper";
-                    costPerUnit = AutoPanConstants.EquipCopperCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipCopperCostPerUnit;
                     return true;
                 case "青铜":
                     tierSuffix = "bronze";
-                    costPerUnit = AutoPanConstants.EquipBronzeCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipBronzeCostPerUnit;
                     return true;
                 case "白银":
                     tierSuffix = "silver";
-                    costPerUnit = AutoPanConstants.EquipSilverCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipSilverCostPerUnit;
                     return true;
                 case "铁":
                     tierSuffix = "iron";
-                    costPerUnit = AutoPanConstants.EquipIronCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipIronCostPerUnit;
                     return true;
                 case "钢":
                     tierSuffix = "steel";
-                    costPerUnit = AutoPanConstants.EquipSteelCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipSteelCostPerUnit;
                     return true;
                 case "秘银":
                     tierSuffix = "mythril";
-                    costPerUnit = AutoPanConstants.EquipMythrilCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipMythrilCostPerUnit;
                     return true;
                 case "精金":
                     tierSuffix = "adamantine";
-                    costPerUnit = AutoPanConstants.EquipAdamantineCostPerUnit;
+                    costPerUnit = AutoPanConfigHooks.EquipAdamantineCostPerUnit;
                     return true;
                 default:
                     return false;

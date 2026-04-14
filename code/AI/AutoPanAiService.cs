@@ -29,7 +29,7 @@ namespace XianniAutoPan.AI
         /// </summary>
         public static void ScheduleForYear(int year)
         {
-            if (!AutoPanConfigHooks.EnableLlmAi || year % 2 != 0 || World.world?.kingdoms == null)
+            if (!AutoPanConfigHooks.EnableLlmAi || year < AutoPanConfigHooks.AiDecisionStartYear || year % 2 != 0 || World.world?.kingdoms == null)
             {
                 return;
             }
@@ -217,26 +217,26 @@ namespace XianniAutoPan.AI
         private static List<string> BuildFallbackCommands(AutoPanAiRequestContext context)
         {
             List<string> commands = new List<string>();
-            int upgradeCost = 200 * Math.Max(1, context.NationLevel);
+            int upgradeCost = AutoPanConfigHooks.NationUpgradeCostPerLevel * Math.Max(1, context.NationLevel);
             if (context.Treasury >= upgradeCost)
             {
                 commands.Add("升级国运");
                 return commands;
             }
 
-            if (context.CultivatorChoices.Count > 0 && context.Treasury >= AutoPanConstants.CultivatorRetreatCost)
+            if (context.CultivatorChoices.Count > 0 && context.Treasury >= AutoPanConfigHooks.CultivatorRetreatCost)
             {
                 commands.Add("修士 1 闭关");
                 return commands;
             }
 
-            if (context.AncientChoices.Count > 0 && context.Treasury >= AutoPanConstants.AncientTrainCost)
+            if (context.AncientChoices.Count > 0 && context.Treasury >= AutoPanConfigHooks.AncientTrainCost)
             {
                 commands.Add("古神 1 炼体");
                 return commands;
             }
 
-            if (context.BeastChoices.Count > 0 && context.Treasury >= AutoPanConstants.BeastTrainCost)
+            if (context.BeastChoices.Count > 0 && context.Treasury >= AutoPanConfigHooks.BeastTrainCost)
             {
                 commands.Add("妖兽 1 养成");
             }
@@ -246,9 +246,9 @@ namespace XianniAutoPan.AI
 
         private static string BuildSystemPrompt()
         {
-            return "你是 WorldBox 国家自动盘 AI。你只能从以下动作里选 0 到 2 个：升级国运、国策 聚灵、宣战 <国家名>、求和 <国家名>、修士 1 闭关、古神 1 炼体、妖兽 1 养成。" +
+            return "你是 WorldBox 国家自动盘 AI。你只能从以下动作里选 0 到 2 个：升级国运、国策 聚灵、宣战 国家名、求和 国家名、修士 1 闭关、古神 1 炼体、妖兽 1 养成。" +
                    "动作必须严格使用这些文本格式，不要解释，不要输出 Markdown，只返回 JSON：{\"actions\":[\"动作1\",\"动作2\"]}。" +
-                   "所有动作都要考虑国库，升级国运成本=200*当前国家等级，聚灵=120，宣战=150，求和=100，修士闭关=80，古神炼体=100，妖兽养成=90。" +
+                   $"所有动作都要考虑国库，升级国运成本={AutoPanConfigHooks.NationUpgradeCostPerLevel}*当前国家等级，聚灵={AutoPanConfigHooks.GatherSpiritCost}，宣战={AutoPanConfigHooks.DeclareWarCost}，求和={AutoPanConfigHooks.SeekPeaceCost}，修士闭关={AutoPanConfigHooks.CultivatorRetreatCost}，古神炼体={AutoPanConfigHooks.AncientTrainCost}，妖兽养成={AutoPanConfigHooks.BeastTrainCost}。" +
                    "如果没有合适动作，返回 {\"actions\":[]}。";
         }
 

@@ -92,12 +92,11 @@ namespace XianniAutoPan.Services
 
         private const float SpeechLifetimeSeconds = 18f;
         private const float BubbleRefreshIntervalSeconds = 0.8f;
-        private const float AnchorFreshSeconds = 1.6f;
-        private const float BubbleYOffset = 44f;
-        private const float BubbleMinWidth = 80f;
-        private const float BubbleMaxWidth = 300f;
-        private const float BubbleMinHeight = 32f;
-        private const float BubblePaddingH = 36f;
+        private const float BubbleYOffset = 42f;
+        private const float BubbleMinWidth = 110f;
+        private const float BubbleMaxWidth = 340f;
+        private const float BubbleMinHeight = 42f;
+        private const float BubblePaddingH = 28f;
         private const float BubblePaddingV = 16f;
         private const int MaxSpeechEntries = 3;
         private const int MaxLineLength = 56;
@@ -246,12 +245,14 @@ namespace XianniAutoPan.Services
             RectTransform rootRect = root.GetComponent<RectTransform>();
             rootRect.anchorMin = new Vector2(0.5f, 0.5f);
             rootRect.anchorMax = new Vector2(0.5f, 0.5f);
-            rootRect.pivot = new Vector2(0.5f, 0.5f);
+            rootRect.pivot = new Vector2(0.5f, 0f);
             Image bubbleImage = root.AddComponent<Image>();
-            bubbleImage.sprite = CommunicationLibrary.normal?.getSpriteBubble();
             bubbleImage.type = Image.Type.Simple;
             bubbleImage.color = new Color(1f, 1f, 1f, 0.96f);
             bubbleImage.raycastTarget = false;
+            Outline bubbleOutline = root.AddComponent<Outline>();
+            bubbleOutline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+            bubbleOutline.effectDistance = new Vector2(1.5f, -1.5f);
 
             GameObject textObject = new GameObject("Text", typeof(RectTransform));
             textObject.hideFlags = HideFlags.DontSave;
@@ -263,17 +264,14 @@ namespace XianniAutoPan.Services
 
             Text text = textObject.AddComponent<Text>();
             text.font = ResolveFont();
-            text.fontSize = 13;
+            text.fontSize = 16;
+            text.fontStyle = FontStyle.Normal;
             text.alignment = TextAnchor.MiddleCenter;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
-            text.lineSpacing = 1f;
+            text.lineSpacing = 1.08f;
             text.supportRichText = false;
             text.raycastTarget = false;
-
-            Outline outline = textObject.AddComponent<Outline>();
-            outline.effectColor = new Color(0f, 0f, 0f, 0.5f);
-            outline.effectDistance = new Vector2(1f, -1f);
 
             visual.Root = root;
             visual.RootRect = rootRect;
@@ -321,10 +319,6 @@ namespace XianniAutoPan.Services
             EnsureParent(visual.Root.transform);
             if (!TryGetAnchorScreenPosition(kingdom.getID(), out Vector2 anchorPosition))
             {
-                if (visual.Root.activeSelf)
-                {
-                    visual.Root.SetActive(false);
-                }
                 return;
             }
 
@@ -336,10 +330,7 @@ namespace XianniAutoPan.Services
             visual.Root.transform.SetAsLastSibling();
             visual.Root.transform.position = new Vector3(anchorPosition.x, anchorPosition.y + BubbleYOffset, 0f);
 
-            // 跟随铭牌缩放，远景自动缩小
-            float nameplateScale = MapBox.instance?.nameplate_manager?._tween_scale ?? 0.5f;
-            float bubbleScale = Mathf.Clamp(nameplateScale * 1.6f, 0.3f, 0.85f);
-            visual.Root.transform.localScale = new Vector3(bubbleScale, bubbleScale, 1f);
+            visual.Root.transform.localScale = new Vector3(0.4f, 0.4f, 1f);
 
             string text = string.Join("\n", visual.Lines.Select(item => item.Text).ToArray());
             visual.Text.text = text;
@@ -354,11 +345,10 @@ namespace XianniAutoPan.Services
             visual.RootRect.sizeDelta = new Vector2(bubbleWidth, bubbleHeight);
             visual.TextRect.sizeDelta = new Vector2(textWidth, bubbleHeight - BubblePaddingV);
 
-            visual.BubbleImage.sprite = CommunicationLibrary.normal?.getSpriteBubble();
-            visual.BubbleImage.color = BuildBubbleColor(kingdom, visual.Lines.Any(item => item.IsCommand));
-
-            Actor anchorActor = FindAnchorActor(kingdom);
-            RefreshBubbleIcon(visual, anchorActor, visual.Lines.Any(item => item.IsCommand));
+            visual.BubbleImage.color = BuildBubbleColor();
+            // 高倍速下原版社交图标会因单位移动/战斗状态快速切换而闪烁，
+            // 这里只保留铭牌文字气泡，不再复用原版头顶聊天图标。
+            ReleaseBubbleIcon(visual);
         }
 
         private static bool TryGetAnchorScreenPosition(long kingdomId, out Vector2 screenPosition)
@@ -369,33 +359,13 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            if (Time.unscaledTime - anchor.LastSeenAt > AnchorFreshSeconds)
-            {
-                return false;
-            }
-
             screenPosition = anchor.ScreenPosition;
             return true;
         }
 
-        private static Color BuildBubbleColor(Kingdom kingdom, bool hasCommand)
+        private static Color BuildBubbleColor()
         {
-            Color baseColor = kingdom?.getColor().getColorMain() ?? Color.white;
-            Color tinted = Color.Lerp(Color.white, baseColor, hasCommand ? 0.42f : 0.26f);
-            tinted.a = hasCommand ? 0.98f : 0.94f;
-            return tinted;
-        }
-
-        private static Color BuildReadableTextColor(Kingdom kingdom)
-        {
-            Color source = kingdom?.getColor().getColorText() ?? Color.black;
-            float luminance = source.r * 0.299f + source.g * 0.587f + source.b * 0.114f;
-            if (luminance > 0.7f)
-            {
-                return Color.black;
-            }
-
-            return Color.Lerp(source, Color.black, 0.3f);
+            return new Color(1f, 1f, 1f, 0.98f);
         }
 
         private static void RefreshBubbleIcon(SpeechVisual visual, Actor anchorActor, bool isCommand)

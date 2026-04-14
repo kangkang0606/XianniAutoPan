@@ -9,14 +9,24 @@ const replyBoxEl = document.getElementById("replyBox");
 const logBoxEl = document.getElementById("logBox");
 const commandBookEl = document.getElementById("commandBook");
 const kingdomTableBodyEl = document.getElementById("kingdomTableBody");
+const policyModulesEl = document.getElementById("policyModules");
+const qqBridgePanelEl = document.getElementById("qqBridgePanel");
+const pendingRequestsEl = document.getElementById("pendingRequests");
 const sendButtonEl = document.getElementById("sendButton");
 const refreshButtonEl = document.getElementById("refreshButton");
 const viewBindingButtonEl = document.getElementById("viewBindingButton");
+const pageTabEls = Array.from(document.querySelectorAll("[data-page-target]"));
+const pageViewEls = Array.from(document.querySelectorAll("[data-page-view]"));
 
 let socket = null;
 let dashboardTimer = null;
 let currentBinding = null;
 let currentKingdoms = [];
+let currentPage = "dashboard";
+const policyDrafts = Object.create(null);
+const policyDirtyKeys = new Set();
+const qqDrafts = Object.create(null);
+const qqDirtyKeys = new Set();
 
 function pick(obj, camelKey, pascalKey) {
   if (!obj) {
@@ -28,11 +38,126 @@ function pick(obj, camelKey, pascalKey) {
   return obj[pascalKey];
 }
 
+function switchPage(pageName) {
+  currentPage = pageName;
+  pageTabEls.forEach((button) => {
+    const isActive = button.dataset.pageTarget === pageName;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  pageViewEls.forEach((view) => {
+    view.classList.toggle("is-active", view.dataset.pageView === pageName);
+  });
+}
+
 function appendReply(text, ok = true) {
   const item = document.createElement("div");
   item.className = `reply-item ${ok ? "reply-ok" : "reply-fail"}`;
   item.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
   replyBoxEl.prepend(item);
+}
+
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function rememberDraft(store, dirtySet, key, value) {
+  if (!key) {
+    return;
+  }
+  store[key] = value;
+  dirtySet.add(key);
+}
+
+function getDraftValue(store, dirtySet, key, fallbackValue) {
+  if (key && dirtySet.has(key)) {
+    return store[key];
+  }
+  return fallbackValue;
+}
+
+function clearDraft(store, dirtySet, key) {
+  if (!key) {
+    return;
+  }
+  delete store[key];
+  dirtySet.delete(key);
+}
+
+function shouldSuspendAutoRefresh() {
+  if (currentPage === "config") {
+    return true;
+  }
+
+  const active = document.activeElement;
+  if (!active) {
+    return false;
+  }
+
+  const tagName = (active.tagName || "").toUpperCase();
+  if (tagName !== "INPUT" && tagName !== "TEXTAREA" && tagName !== "SELECT") {
+    return false;
+  }
+
+  return true;
+}
+
+function toWebSocketUrl(address, wsPath) {
+  const base = String(address || "").trim();
+  const path = String(wsPath || "/onebot/ws").trim() || "/onebot/ws";
+  if (!base) {
+    return "";
+  }
+
+  if (base.startsWith("http://")) {
+    return `ws://${base.slice("http://".length)}${path}`;
+  }
+  if (base.startsWith("https://")) {
+    return `wss://${base.slice("https://".length)}${path}`;
+  }
+  return `${base}${path}`;
+}
+
+function syncPolicyDrafts(policy) {
+  const modules = pick(policy, "modules", "Modules") || [];
+  modules.forEach((module) => {
+    const items = pick(module, "items", "Items") || [];
+    items.forEach((item) => {
+      const key = pick(item, "key", "Key");
+      const value = String(pick(item, "value", "Value") ?? "");
+      if (key && policyDirtyKeys.has(key) && String(policyDrafts[key]) === value) {
+        clearDraft(policyDrafts, policyDirtyKeys, key);
+      }
+    });
+  });
+}
+
+function syncQqDrafts(qqBridge) {
+  const data = qqBridge || {};
+  const comparableValues = {
+    qqAdapterEnabled: pick(data, "enabled", "Enabled") ? "1" : "0",
+    qqOneBotWsPath: pick(data, "wsPath", "WsPath") || "/onebot/ws",
+    qqBotSelfId: pick(data, "botSelfId", "BotSelfId") || "",
+    qqReplyAtSender: pick(data, "replyAtSender", "ReplyAtSender") ? "1" : "0",
+    qqGroupWhitelist: pick(data, "groupWhitelist", "GroupWhitelist") || "",
+    qqAdminWhitelist: pick(data, "adminWhitelist", "AdminWhitelist") || ""
+  };
+
+  Object.entries(comparableValues).forEach(([key, value]) => {
+    if (qqDirtyKeys.has(key) && String(qqDrafts[key]) === String(value)) {
+      clearDraft(qqDrafts, qqDirtyKeys, key);
+    }
+  });
+}
+
+function buildKingdomLabel(name, id) {
+  const safeName = name || "未知国家";
+  return `${safeName} [${id}]`;
 }
 
 function updateBinding(binding) {
@@ -91,9 +216,332 @@ function buildOwnerText(kingdom) {
   return "AI/无人绑定";
 }
 
-function buildKingdomLabel(name, id) {
-  const safeName = name || "未知国家";
-  return `${safeName} [${id}]`;
+function renderPendingRequests(requests) {
+  pendingRequestsEl.innerHTML = "";
+  const items = Array.isArray(requests) ? requests : [];
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pending-empty";
+    empty.textContent = "当前没有待处理的结盟或约斗请求。";
+    pendingRequestsEl.appendChild(empty);
+    return;
+  }
+
+  items.forEach((request) => {
+    const requestType = pick(request, "requestType", "RequestType") || "请求";
+    const sourceLabel = pick(request, "sourceKingdomLabel", "SourceKingdomLabel") || "未知国家";
+    const secondsRemaining = pick(request, "secondsRemaining", "SecondsRemaining") ?? 0;
+    const detailsText = pick(request, "detailsText", "DetailsText") || "";
+
+    const card = document.createElement("div");
+    card.className = "pending-card";
+
+    const title = document.createElement("div");
+    title.className = "pending-title";
+    title.textContent = `${requestType}请求：${sourceLabel}`;
+    card.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "pending-meta";
+    meta.textContent = detailsText ? `${detailsText} · 剩余 ${secondsRemaining}s` : `剩余 ${secondsRemaining}s`;
+    card.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    if (requestType === "结盟") {
+      actions.appendChild(createMiniButton("同意", "mini-btn-ok", () => sendCommand(`同意结盟 ${sourceLabel}`)));
+      actions.appendChild(createMiniButton("拒绝", "mini-btn-danger", () => sendCommand(`拒绝结盟 ${sourceLabel}`)));
+    } else {
+      actions.appendChild(createMiniButton("同意", "mini-btn-ok", () => sendCommand(`同意约斗 ${sourceLabel}`)));
+      actions.appendChild(createMiniButton("拒绝", "mini-btn-danger", () => sendCommand(`拒绝约斗 ${sourceLabel}`)));
+    }
+    card.appendChild(actions);
+    pendingRequestsEl.appendChild(card);
+  });
+}
+
+function renderPolicy(policy) {
+  policyModulesEl.innerHTML = "";
+  const modules = pick(policy, "modules", "Modules") || [];
+  if (!policy || modules.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pending-empty";
+    empty.textContent = "当前没有可显示的后端政策。";
+    policyModulesEl.appendChild(empty);
+    return;
+  }
+
+  modules.forEach((module) => {
+    const card = document.createElement("section");
+    card.className = "policy-module";
+
+    const head = document.createElement("div");
+    head.className = "policy-module-head";
+
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = pick(module, "displayName", "DisplayName") || "未命名模块";
+    titleWrap.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.className = "policy-module-desc";
+    desc.textContent = pick(module, "description", "Description") || "";
+    titleWrap.appendChild(desc);
+    head.appendChild(titleWrap);
+    card.appendChild(head);
+
+    const itemsWrap = document.createElement("div");
+    itemsWrap.className = "policy-module-items";
+    const items = pick(module, "items", "Items") || [];
+    items.forEach((item) => {
+      const box = document.createElement("div");
+      box.className = "policy-item";
+
+      const labelRow = document.createElement("div");
+      labelRow.className = "policy-label-row";
+
+      const label = document.createElement("label");
+      label.className = "policy-label";
+      label.textContent = pick(item, "displayName", "DisplayName") || "未命名配置";
+      labelRow.appendChild(label);
+
+      const help = document.createElement("span");
+      help.className = "policy-help";
+      help.textContent = "?";
+      help.title = `${pick(item, "description", "Description") || "暂无说明"}\n稳定键：${pick(item, "key", "Key") || ""}`;
+      labelRow.appendChild(help);
+      box.appendChild(labelRow);
+
+      const meta = document.createElement("div");
+      meta.className = "policy-item-meta";
+      const unitText = pick(item, "unitText", "UnitText") || "";
+      const minValue = pick(item, "minValue", "MinValue");
+      const maxValue = pick(item, "maxValue", "MaxValue");
+      meta.textContent = `键：${pick(item, "key", "Key")}  范围：${minValue} ~ ${maxValue}${unitText ? `  单位：${unitText}` : ""}`;
+      box.appendChild(meta);
+
+      const inputRow = document.createElement("div");
+      inputRow.className = "policy-input-row";
+
+      const input = document.createElement("input");
+      input.type = "number";
+      const key = pick(item, "key", "Key");
+      input.value = String(getDraftValue(policyDrafts, policyDirtyKeys, key, String(pick(item, "value", "Value") ?? 0)));
+      input.addEventListener("input", () => rememberDraft(policyDrafts, policyDirtyKeys, key, input.value));
+      inputRow.appendChild(input);
+
+      const saveButton = createMiniButton("保存", "mini-btn-admin", () => {
+        sendCommand(`#设置政策 ${key} ${input.value.trim()}`);
+      });
+      inputRow.appendChild(saveButton);
+      box.appendChild(inputRow);
+      itemsWrap.appendChild(box);
+    });
+
+    card.appendChild(itemsWrap);
+    policyModulesEl.appendChild(card);
+  });
+}
+
+function createConfigActionButton(text, onClick) {
+  return createMiniButton(text, "mini-btn-admin", onClick, false);
+}
+
+function renderQqBridge(qqBridge, listenAddresses) {
+  qqBridgePanelEl.innerHTML = "";
+  const data = qqBridge || {};
+  const enabled = !!pick(data, "enabled", "Enabled");
+  const connected = !!pick(data, "connected", "Connected");
+  const wsPath = pick(data, "wsPath", "WsPath") || "/onebot/ws";
+  const hasAccessToken = !!pick(data, "hasAccessToken", "HasAccessToken");
+  const botSelfId = pick(data, "botSelfId", "BotSelfId") || "";
+  const replyAtSender = !!pick(data, "replyAtSender", "ReplyAtSender");
+  const groupWhitelist = pick(data, "groupWhitelist", "GroupWhitelist") || "";
+  const adminWhitelist = pick(data, "adminWhitelist", "AdminWhitelist") || "";
+  const connectedBots = pick(data, "connectedBots", "ConnectedBots") || [];
+  const recentGroups = pick(data, "recentGroups", "RecentGroups") || [];
+  const recentMessages = pick(data, "recentMessages", "RecentMessages") || [];
+  const wsExamples = (Array.isArray(listenAddresses) ? listenAddresses : [])
+    .map((address) => toWebSocketUrl(address, wsPath))
+    .filter((value) => !!value);
+
+  const statusCard = document.createElement("section");
+  statusCard.className = "qq-card";
+  statusCard.innerHTML = `
+    <div class="qq-card-head">
+      <div>
+        <p class="panel-tag">运行状态</p>
+        <h3>OneBot 连接</h3>
+      </div>
+      <span class="qq-status ${connected ? "qq-status-on" : "qq-status-off"}">${enabled ? (connected ? "已连接" : "已启用未连接") : "未启用"}</span>
+    </div>
+    <div class="qq-meta-list">
+      <div><strong>WS 路径</strong><span>${escapeHtml(wsPath)}</span></div>
+      <div><strong>机器人 QQ</strong><span>${escapeHtml(botSelfId || "未限制 / 待连接上报")}</span></div>
+      <div><strong>访问令牌</strong><span>${hasAccessToken ? "已配置" : "未配置"}</span></div>
+      <div><strong>已连接实例</strong><span>${escapeHtml(connectedBots.length ? connectedBots.join("，") : "暂无")}</span></div>
+      <div><strong>最近群号</strong><span>${escapeHtml(recentGroups.length ? recentGroups.join("，") : "暂无")}</span></div>
+      <div><strong>管理员白名单</strong><span>${escapeHtml(adminWhitelist || "未配置")}</span></div>
+    </div>
+    <div class="qq-status-tip">${connected ? "OneBot 协议端已连接，群消息会进入自动盘。" : "当前还没有 OneBot 协议端连进来，QQ群里发指令不会生效。请把下面的 Reverse WS 地址填到 NapCat / LLOneBot 里。"} </div>
+    <div class="qq-example-list">${wsExamples.length ? wsExamples.map((item) => `<div class="qq-example-item">${escapeHtml(item)}</div>`).join("") : '<div class="pending-empty">暂时没有可显示的本地监听地址。</div>'}</div>
+    <div class="qq-log-box">${recentMessages.length ? recentMessages.map((item) => `<div class="qq-log-item">${escapeHtml(item)}</div>`).join("") : '<div class="pending-empty">当前还没有收到 QQ 群消息。</div>'}</div>
+  `;
+  qqBridgePanelEl.appendChild(statusCard);
+
+  const baseCard = document.createElement("section");
+  baseCard.className = "qq-card";
+  baseCard.innerHTML = `
+    <div class="qq-card-head">
+      <div>
+        <p class="panel-tag">基础开关</p>
+        <h3>启用与回包</h3>
+      </div>
+    </div>
+  `;
+  const baseBody = document.createElement("div");
+  baseBody.className = "qq-setting-list";
+
+  const enabledRow = document.createElement("div");
+  enabledRow.className = "qq-setting-row";
+  const enabledLabel = document.createElement("label");
+  enabledLabel.className = "qq-toggle";
+  const enabledInput = document.createElement("input");
+  enabledInput.type = "checkbox";
+  enabledInput.checked = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqAdapterEnabled", enabled ? "1" : "0")) === "1";
+  enabledInput.addEventListener("change", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqAdapterEnabled", enabledInput.checked ? "1" : "0"));
+  enabledLabel.appendChild(enabledInput);
+  enabledLabel.appendChild(document.createTextNode("启用 QQ 群接入"));
+  enabledRow.appendChild(enabledLabel);
+  enabledRow.appendChild(createConfigActionButton("保存", () => saveQqSetting("qqAdapterEnabled", enabledInput.checked ? "1" : "0")));
+  baseBody.appendChild(enabledRow);
+
+  const replyRow = document.createElement("div");
+  replyRow.className = "qq-setting-row";
+  const replyLabel = document.createElement("label");
+  replyLabel.className = "qq-toggle";
+  const replyInput = document.createElement("input");
+  replyInput.type = "checkbox";
+  replyInput.checked = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqReplyAtSender", replyAtSender ? "1" : "0")) === "1";
+  replyInput.addEventListener("change", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqReplyAtSender", replyInput.checked ? "1" : "0"));
+  replyLabel.appendChild(replyInput);
+  replyLabel.appendChild(document.createTextNode("群回包时自动 @ 发送者"));
+  replyRow.appendChild(replyLabel);
+  replyRow.appendChild(createConfigActionButton("保存", () => saveQqSetting("qqReplyAtSender", replyInput.checked ? "1" : "0")));
+  baseBody.appendChild(replyRow);
+  baseCard.appendChild(baseBody);
+  qqBridgePanelEl.appendChild(baseCard);
+
+  const socketCard = document.createElement("section");
+  socketCard.className = "qq-card";
+  socketCard.innerHTML = `
+    <div class="qq-card-head">
+      <div>
+        <p class="panel-tag">协议端配置</p>
+        <h3>OneBot 路径与鉴权</h3>
+      </div>
+    </div>
+  `;
+  const socketBody = document.createElement("div");
+  socketBody.className = "qq-setting-list";
+  [
+    { label: "WS 路径", key: "qqOneBotWsPath", value: wsPath, type: "text", placeholder: "/onebot/ws", help: "协议端 Reverse WS 指向本模组时使用的路径。" },
+    { label: "访问令牌", key: "qqOneBotAccessToken", value: "", type: "password", placeholder: hasAccessToken ? "当前已保存令牌；留空保存会清空" : "可留空", help: "对应 OneBot Access Token；留空则不校验。页面不会回显已保存的令牌明文。" },
+    { label: "机器人 QQ", key: "qqBotSelfId", value: botSelfId, type: "text", placeholder: "可留空", help: "留空表示接受任意 self_id；填写后只允许该机器人连接。" }
+  ].forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "qq-setting-row";
+    const field = document.createElement("div");
+    field.className = "qq-setting-field";
+    const label = document.createElement("label");
+    label.textContent = item.label;
+    const input = document.createElement("input");
+    input.type = item.type;
+    input.value = String(getDraftValue(qqDrafts, qqDirtyKeys, item.key, item.value));
+    input.placeholder = item.placeholder;
+    input.addEventListener("input", () => rememberDraft(qqDrafts, qqDirtyKeys, item.key, input.value));
+    field.appendChild(label);
+    field.appendChild(input);
+    const tip = document.createElement("div");
+    tip.className = "qq-setting-help";
+    tip.textContent = item.help;
+    field.appendChild(tip);
+    row.appendChild(field);
+    row.appendChild(createConfigActionButton("保存", () => saveQqSetting(item.key, input.value.trim())));
+    socketBody.appendChild(row);
+  });
+  socketCard.appendChild(socketBody);
+  qqBridgePanelEl.appendChild(socketCard);
+
+  const scopeCard = document.createElement("section");
+  scopeCard.className = "qq-card";
+  scopeCard.innerHTML = `
+    <div class="qq-card-head">
+      <div>
+        <p class="panel-tag">群范围</p>
+        <h3>白名单控制</h3>
+      </div>
+    </div>
+  `;
+  const scopeBody = document.createElement("div");
+  scopeBody.className = "qq-setting-list";
+  const scopeRow = document.createElement("div");
+  scopeRow.className = "qq-setting-row qq-setting-row-stack";
+  const scopeField = document.createElement("div");
+  scopeField.className = "qq-setting-field";
+  const scopeLabel = document.createElement("label");
+  scopeLabel.textContent = "群白名单";
+  const scopeInput = document.createElement("textarea");
+  scopeInput.rows = 4;
+  scopeInput.value = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqGroupWhitelist", groupWhitelist));
+  scopeInput.placeholder = "留空表示所有群都可用；多个群号用逗号、空格或换行分隔";
+  scopeInput.addEventListener("input", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqGroupWhitelist", scopeInput.value));
+  scopeField.appendChild(scopeLabel);
+  scopeField.appendChild(scopeInput);
+  const scopeTip = document.createElement("div");
+  scopeTip.className = "qq-setting-help";
+  scopeTip.textContent = "建议公开发布时默认留空，方便普通用户直接用；需要控群时再填写。";
+  scopeField.appendChild(scopeTip);
+  scopeRow.appendChild(scopeField);
+  scopeRow.appendChild(createConfigActionButton("保存白名单", () => saveQqSetting("qqGroupWhitelist", scopeInput.value)));
+  scopeBody.appendChild(scopeRow);
+  scopeCard.appendChild(scopeBody);
+  qqBridgePanelEl.appendChild(scopeCard);
+
+  const adminCard = document.createElement("section");
+  adminCard.className = "qq-card";
+  adminCard.innerHTML = `
+    <div class="qq-card-head">
+      <div>
+        <p class="panel-tag">权限范围</p>
+        <h3>QQ 管理员白名单</h3>
+      </div>
+    </div>
+  `;
+  const adminBody = document.createElement("div");
+  adminBody.className = "qq-setting-list";
+  const adminRow = document.createElement("div");
+  adminRow.className = "qq-setting-row qq-setting-row-stack";
+  const adminField = document.createElement("div");
+  adminField.className = "qq-setting-field";
+  const adminLabel = document.createElement("label");
+  adminLabel.textContent = "管理员 QQ 白名单";
+  const adminInput = document.createElement("textarea");
+  adminInput.rows = 4;
+  adminInput.value = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqAdminWhitelist", adminWhitelist));
+  adminInput.placeholder = "留空表示群里的 # 管理员指令全部拒绝；多个 QQ 号用逗号、空格或换行分隔";
+  adminInput.addEventListener("input", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqAdminWhitelist", adminInput.value));
+  adminField.appendChild(adminLabel);
+  adminField.appendChild(adminInput);
+  const adminTip = document.createElement("div");
+  adminTip.className = "qq-setting-help";
+  adminTip.textContent = "只有这里的 QQ 号才允许在群里执行 # 开头的管理员指令；网页端不受这个白名单限制。";
+  adminField.appendChild(adminTip);
+  adminRow.appendChild(adminField);
+  adminRow.appendChild(createConfigActionButton("保存管理员白名单", () => saveQqSetting("qqAdminWhitelist", adminInput.value)));
+  adminBody.appendChild(adminRow);
+  adminCard.appendChild(adminBody);
+  qqBridgePanelEl.appendChild(adminCard);
 }
 
 function renderKingdoms(kingdoms) {
@@ -157,11 +605,12 @@ function renderKingdoms(kingdoms) {
     actions.appendChild(createMiniButton("宣战", "mini-btn-danger", () => sendCommand(`宣战 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("求和", "mini-btn-neutral", () => sendCommand(`求和 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("结盟", "mini-btn-ok", () => sendCommand(`结盟 ${kingdomLabel}`), isCurrent));
-    actions.appendChild(createMiniButton("解盟", "mini-btn-neutral", () => sendCommand(`解盟 ${kingdomLabel}`), isCurrent));
+    actions.appendChild(createMiniButton("约斗", "mini-btn-neutral", () => sendCommand(`约斗 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("削灵500", "mini-btn-danger", () => sendCommand(`削灵 ${kingdomLabel} 500`), isCurrent));
     actions.appendChild(createMiniButton("斩首", "mini-btn-danger", () => sendCommand(`斩首 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("诅咒3人", "mini-btn-danger", () => sendCommand(`诅咒 ${kingdomLabel} 3`), isCurrent));
     actions.appendChild(createMiniButton("修士-1境", "mini-btn-neutral", () => sendCommand(`修士降境 ${kingdomLabel} 2 1`), isCurrent));
+    actions.appendChild(createMiniButton("降低国运1", "mini-btn-neutral", () => sendCommand(`降低国运 ${kingdomLabel} 1`), isCurrent));
 
     actionCell.appendChild(actions);
     row.appendChild(actionCell);
@@ -177,10 +626,16 @@ async function refreshDashboard() {
   }
 
   const snapshot = await response.json();
+  syncPolicyDrafts(pick(snapshot, "policy", "Policy"));
+  syncQqDrafts(pick(snapshot, "qqBridge", "QqBridge"));
   updateBinding(pick(snapshot, "binding", "Binding"));
   renderLogs(pick(snapshot, "recentLogs", "RecentLogs"));
-  renderAddresses(pick(snapshot, "listenAddresses", "ListenAddresses"));
+  const listenAddresses = pick(snapshot, "listenAddresses", "ListenAddresses");
+  renderAddresses(listenAddresses);
   renderKingdoms(pick(snapshot, "kingdoms", "Kingdoms"));
+  renderPendingRequests(pick(snapshot, "pendingRequests", "PendingRequests"));
+  renderPolicy(pick(snapshot, "policy", "Policy"));
+  renderQqBridge(pick(snapshot, "qqBridge", "QqBridge"), listenAddresses);
 
   const commandBookText = pick(snapshot, "commandBookText", "CommandBookText");
   if (commandBookText) {
@@ -191,6 +646,18 @@ async function refreshDashboard() {
   }
 
   aiStatusEl.textContent = `AI：${pick(snapshot, "aiEnabled", "AiEnabled") ? "已开启" : "已关闭"}`;
+}
+
+async function saveQqSetting(key, value) {
+  const response = await fetch(`/api/qq-config/set?key=${encodeURIComponent(key)}&value=${encodeURIComponent(value)}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`QQ 配置保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  clearDraft(qqDrafts, qqDirtyKeys, key);
+  appendReply(payload.text || "QQ 配置已保存。", !!payload.ok);
+  await refreshDashboard();
 }
 
 function connectWebSocket() {
@@ -210,9 +677,9 @@ function connectWebSocket() {
     appendReply("WebSocket 连接发生错误。", false);
   });
 
-  socket.addEventListener("close", (e) => {
+  socket.addEventListener("close", (event) => {
     wsStatusEl.textContent = "WebSocket：已断开，2 秒后重连";
-    appendReply(`WebSocket 已断开：code=${e.code}`, false);
+    appendReply(`WebSocket 已断开：code=${event.code}`, false);
     setTimeout(connectWebSocket, 2000);
   });
 
@@ -222,7 +689,7 @@ function connectWebSocket() {
       appendReply(payload.text, !!payload.ok);
       updateBinding(payload.binding);
       aiStatusEl.textContent = `AI：${payload.aiEnabled ? "已开启" : "已关闭"}`;
-      await refreshDashboard().catch((err) => appendReply(err.message, false));
+      await refreshDashboard().catch((error) => appendReply(error.message, false));
     }
   });
 }
@@ -253,6 +720,10 @@ document.querySelectorAll("[data-command]").forEach((button) => {
   button.addEventListener("click", () => sendCommand(button.dataset.command));
 });
 
+pageTabEls.forEach((button) => {
+  button.addEventListener("click", () => switchPage(button.dataset.pageTarget));
+});
+
 viewBindingButtonEl.addEventListener("click", () => {
   const userId = userIdEl.value.trim();
   if (!userId) {
@@ -264,7 +735,7 @@ viewBindingButtonEl.addEventListener("click", () => {
 
 sendButtonEl.addEventListener("click", () => sendCommand());
 refreshButtonEl.addEventListener("click", () => {
-  refreshDashboard().catch((err) => appendReply(err.message, false));
+  refreshDashboard().catch((error) => appendReply(error.message, false));
 });
 
 commandTextEl.addEventListener("keydown", (event) => {
@@ -278,10 +749,14 @@ function startDashboardPolling() {
     clearInterval(dashboardTimer);
   }
   dashboardTimer = setInterval(() => {
+    if (shouldSuspendAutoRefresh()) {
+      return;
+    }
     refreshDashboard().catch(() => {});
   }, 3000);
 }
 
+switchPage(currentPage);
 connectWebSocket();
-refreshDashboard().catch((err) => appendReply(err.message, false));
+refreshDashboard().catch((error) => appendReply(error.message, false));
 startDashboardPolling();
