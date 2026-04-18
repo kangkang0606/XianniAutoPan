@@ -29,12 +29,19 @@ namespace XianniAutoPan
             _modFolder = GetDeclaration().FolderPath;
             AutoPanConfigHooks.InitializeFromConfig(GetConfig());
             AutoPanConfigHooks.InitializeBackendPolicy(_modFolder);
+            AutoPanNotificationService.Initialize(_modFolder);
+            AutoPanScoreService.Initialize(_modFolder);
+            AutoPanScreenshotService.Initialize(_modFolder);
+            AutoPanRoundService.Initialize();
             ValidateCommandBook();
 
             _harmony = new Harmony("xianni.autopan.runtime");
             _harmony.PatchAll(typeof(AutoPanKingdomRemovePatch));
+            _harmony.PatchAll(typeof(AutoPanMapFinishingUpLoadingPatch));
             _harmony.PatchAll(typeof(AutoPanWarEndPatch));
+            _harmony.PatchAll(typeof(AutoPanCityCapturePatch));
             _harmony.PatchAll(typeof(AutoPanKingdomNameplatePatch));
+            _harmony.PatchAll(typeof(AutoPanNameplateManagerUpdatePatch));
 
             MapBox.on_world_loaded += OnWorldLoaded;
             AutoPanLocalWebServer.Instance.Initialize(_modFolder);
@@ -69,6 +76,7 @@ namespace XianniAutoPan
             AutoPanStateRepository.CleanupDeadBindings();
             AutoPanKingdomService.ApplyYearlyIncomeToAll(currentYear);
             AutoPanAiService.ScheduleForYear(currentYear);
+            AutoPanRoundService.CheckAutoEndRound(currentYear);
         }
 
         /// <summary>
@@ -91,6 +99,7 @@ namespace XianniAutoPan
             AutoPanRequestService.ClearAll();
             AutoPanDuelService.ClearAll();
             AutoPanKingdomSpeechService.ClearAll();
+            AutoPanRoundService.OnWorldLoaded();
             _lastObservedYear = Date.getCurrentYear();
             AutoPanLogService.Info($"世界已加载，当前年份 {_lastObservedYear}，自动盘状态已恢复。");
         }
@@ -163,20 +172,28 @@ namespace XianniAutoPan
                 "城市列表",
                 "城市信息",
                 "升级国运",
+                "升级修真国",
+                "政策 开放占领",
+                "政策 坚守城池",
                 "降低国运",
                 "国策 聚灵",
+                "全民皆兵",
                 "增加人数",
                 "放置遗迹",
                 "转账",
                 "天榜",
+                "战力榜",
                 "削灵",
                 "斩首",
                 "诅咒",
                 "国家祝福",
                 "修士降境",
+                "古神降星",
+                "妖兽降阶",
                 "快速成年",
                 "征集军队",
                 "移交城市",
+                "随机一座城市",
                 "军备",
                 "约斗",
                 "宣战",
@@ -205,7 +222,11 @@ namespace XianniAutoPan
                 "#查看政策",
                 "#设置政策",
                 "#设置AI开始决策年份",
-                "#设置玩家开始决策年份"
+                "#设置玩家开始决策年份",
+                "#当前局势",
+                "#结盘",
+                "玩家排名",
+                "当前局势"
             };
 
             string[] missing = requiredKeywords.Where(keyword => !text.Contains(keyword)).ToArray();

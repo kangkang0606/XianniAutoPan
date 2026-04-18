@@ -81,7 +81,9 @@ namespace XianniAutoPan.Services
 
                 RefundRequest(source, request);
                 AutoPanLogService.Info($"{GetTypeText(request.Type)} 请求已超时：{AutoPanKingdomService.FormatKingdomLabel(source)} -> {AutoPanKingdomService.FormatKingdomLabel(target)}");
-                XianniAutoPanApi.Broadcast($"{AutoPanKingdomService.FormatKingdomLabel(source)} 发给 {AutoPanKingdomService.FormatKingdomLabel(target)} 的{GetTypeText(request.Type)}请求已超时");
+                string timeoutText = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 发给 {AutoPanKingdomService.FormatKingdomLabel(target)} 的{GetTypeText(request.Type)}请求已超时";
+                XianniAutoPanApi.Broadcast(timeoutText);
+                AutoPanNotificationService.BroadcastToKnownGroups(timeoutText, GetOwnerUserIds(source, target));
                 PendingRequests.RemoveAt(index);
             }
         }
@@ -176,11 +178,12 @@ namespace XianniAutoPan.Services
             PendingRequests.Add(request);
             AutoPanKingdomSpeechService.ShowSpeech(target, "外交请求", $"{AutoPanKingdomService.FormatKingdomLabel(source)} 请求结盟", isCommand: true);
             message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。";
+            AutoPanNotificationService.NotifyKingdomOwners(target, $"{AutoPanKingdomService.FormatKingdomLabel(source)} 向你的国家发出结盟请求，请在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。");
             return true;
         }
 
         /// <summary>
-        /// 创建最强者约斗请求。
+        /// 创建战力前五随机约斗请求。
         /// </summary>
         public static bool TryCreateDuelRequest(Kingdom source, Kingdom target, int betAmount, out string message)
         {
@@ -193,7 +196,7 @@ namespace XianniAutoPan.Services
 
             if (AutoPanDuelService.IsRunning)
             {
-                message = "当前已有一场最强者约斗在进行中，请稍后再试。";
+                message = "当前已有一场约斗在进行中，请稍后再试。";
                 return false;
             }
 
@@ -213,9 +216,10 @@ namespace XianniAutoPan.Services
             PendingRequest request = CreateRequest(source, target, AutoPanPendingRequestType.Duel, cost);
             request.BetAmount = Mathf.Max(0, betAmount);
             PendingRequests.Add(request);
-            string duelTitle = request.BetAmount > 0 ? $"发起最强者约斗，赌注 {request.BetAmount} 金币" : "发起最强者约斗";
+            string duelTitle = request.BetAmount > 0 ? $"发起约斗，赌注 {request.BetAmount} 金币" : "发起约斗";
             AutoPanKingdomSpeechService.ShowSpeech(target, "比武邀请", $"{AutoPanKingdomService.FormatKingdomLabel(source)} {duelTitle}", isCommand: true);
-            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出最强者约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。";
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。";
+            AutoPanNotificationService.NotifyKingdomOwners(target, $"{AutoPanKingdomService.FormatKingdomLabel(source)} 向你的国家发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，请在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。");
             return true;
         }
 
@@ -366,6 +370,17 @@ namespace XianniAutoPan.Services
         private static string GetTypeText(AutoPanPendingRequestType type)
         {
             return type == AutoPanPendingRequestType.Alliance ? "结盟" : "约斗";
+        }
+
+        private static List<string> GetOwnerUserIds(params Kingdom[] kingdoms)
+        {
+            return (kingdoms ?? new Kingdom[0])
+                .Where(item => item != null)
+                .SelectMany(item => AutoPanStateRepository.GetBindingsByKingdomId(item.getID()))
+                .Where(item => item != null && !string.IsNullOrWhiteSpace(item.UserId))
+                .Select(item => item.UserId)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
         }
     }
 }

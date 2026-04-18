@@ -76,6 +76,7 @@
             <button class="ghost-btn" data-command="城市列表">查看当前城市列表</button>
             <button class="ghost-btn" data-command="城市信息">查看全部城市详情</button>
             <button class="ghost-btn" data-command="天榜">查看天榜</button>
+            <button class="ghost-btn" data-command="战力榜">查看本国战力榜</button>
             <button class="ghost-btn" data-command="修士榜">查看修士榜</button>
             <button class="ghost-btn" data-command="古神榜">查看古神榜</button>
             <button class="ghost-btn" data-command="妖兽榜">查看妖兽榜</button>
@@ -94,11 +95,16 @@
           <h2 class="section-title">国家互动</h2>
           <div class="button-grid admin-grid">
             <button class="ghost-btn" data-command="血脉创立">血脉创立</button>
+            <button class="ghost-btn" data-command="升级国运">升级国运</button>
+            <button class="ghost-btn" data-command="升级修真国">升级修真国</button>
+            <button class="ghost-btn" data-command="政策 开放占领">政策开放占领</button>
+            <button class="ghost-btn" data-command="政策 坚守城池">政策坚守城池</button>
+            <button class="ghost-btn" data-command="全民皆兵">全民皆兵</button>
             <button class="ghost-btn" data-command="国家祝福 5">祝福主力5人</button>
             <button class="ghost-btn" data-command="国家祝福 全员">祝福全员</button>
             <button class="ghost-btn" data-command="快速成年 全城">全城快速成年</button>
             <button class="ghost-btn" data-command="增加人数 5">增加人数5</button>
-            <button class="ghost-btn" data-command="增加人数 20">增加人数20</button>
+            <button class="ghost-btn" data-command="增加人数 10">增加人数10</button>
             <button class="ghost-btn" data-command="放置遗迹 1">放置1座遗迹</button>
           </div>
           <h2 class="spaced section-title">发指令</h2>
@@ -189,6 +195,45 @@
             </div>
           </div>
           <p class="muted">这里集中放置长期调整内容：后端政策与指令书。主控台保留即时操作和国家管理，避免频繁切页。</p>
+        </article>
+      </section>
+
+      <section class="config-group">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">积分管理</p>
+            <h2>玩家积分榜</h2>
+          </div>
+          <span class="muted">只修改结盘胜场积分，不删除当前绑定国家或 QQ 路由</span>
+        </div>
+        <article class="panel score-panel">
+          <div class="score-edit-grid">
+            <label>userId
+              <input id="scoreUserId" type="text" placeholder="玩家 userId / QQ号" />
+            </label>
+            <label>playerName
+              <input id="scorePlayerName" type="text" placeholder="显示名，可留空" />
+            </label>
+            <label>胜场
+              <input id="scoreWins" type="number" min="0" value="0" />
+            </label>
+            <button id="scoreSaveButton" class="primary-btn" type="button">保存积分</button>
+          </div>
+          <div class="table-wrap score-table-wrap">
+            <table class="kingdom-table score-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>userId</th>
+                  <th>playerName</th>
+                  <th>胜场</th>
+                  <th>最后更新</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="scoreTableBody"></tbody>
+            </table>
+          </div>
         </article>
       </section>
 

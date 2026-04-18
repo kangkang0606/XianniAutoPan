@@ -280,6 +280,44 @@ namespace XianniAutoPan.Frontend
             });
         }
 
+        /// <summary>
+        /// 向 QQ 群直接发送原始 OneBot 消息，允许包含 CQ 码图片。
+        /// </summary>
+        public bool SendQqGroupRawMessage(FrontendInboundMessage sourceMessage, string text)
+        {
+            if (sourceMessage == null || sourceMessage.SourceType != AutoPanInputSourceType.QqGroup || string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string groupId = AutoPanQqBridgeService.NormalizeQqDigits(sourceMessage.ReplyTargetId);
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                groupId = AutoPanQqBridgeService.NormalizeQqDigits(sourceMessage.ContextId);
+            }
+
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                AutoPanLogService.Error("QQ 原始消息发送失败：缺少群号。");
+                return false;
+            }
+
+            if (!AutoPanQqBridgeService.TryResolveReplySessionId(sourceMessage.SessionId, sourceMessage.BotSelfId, out string replySessionId))
+            {
+                AutoPanLogService.Error($"QQ 原始消息发送失败：未找到可用 OneBot 会话，group={groupId}。");
+                return false;
+            }
+
+            if (!_oneBotSessions.TryGetValue(replySessionId, out WsSession qqSession) || !qqSession.Alive)
+            {
+                AutoPanLogService.Error($"QQ 原始消息发送失败：会话 {replySessionId} 不可用。");
+                return false;
+            }
+
+            _ = Task.Run(() => SendOneBotGroupMessageAsync(replySessionId, qqSession, groupId, text));
+            return true;
+        }
+
         // ── 生命周期 ──
 
         private void Restart()
@@ -442,6 +480,54 @@ namespace XianniAutoPan.Frontend
                     ok = success,
                     text = message,
                     qqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
+            if (path.StartsWith("/api/policy/set", StringComparison.OrdinalIgnoreCase))
+            {
+                string key = ExtractQueryParam(rawPath, "key");
+                string value = ExtractQueryParam(rawPath, "value");
+                bool success = AutoPanConfigHooks.TrySetPolicy(global::XianniAutoPan.XianniAutoPanMain.Instance.GetConfig(), key, value, out string message);
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    policy = AutoPanConfigHooks.BuildPolicySnapshot()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
+            if (path.StartsWith("/api/score/set", StringComparison.OrdinalIgnoreCase))
+            {
+                string userId = ExtractQueryParam(rawPath, "userId");
+                string playerName = ExtractQueryParam(rawPath, "playerName");
+                string winsText = ExtractQueryParam(rawPath, "wins");
+                string message = string.Empty;
+                bool success = int.TryParse(winsText, out int wins) && AutoPanScoreService.TrySetScore(userId, playerName, wins, out message);
+                if (!success && string.IsNullOrWhiteSpace(message))
+                {
+                    message = "保存积分失败：胜场必须是整数。";
+                }
+
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    scoreboard = AutoPanScoreService.BuildDashboardRecords()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
+            if (path.StartsWith("/api/score/delete", StringComparison.OrdinalIgnoreCase))
+            {
+                string userId = ExtractQueryParam(rawPath, "userId");
+                bool success = AutoPanScoreService.TryDeleteScore(userId, out string message);
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    scoreboard = AutoPanScoreService.BuildDashboardRecords()
                 }, token).ConfigureAwait(false);
                 return;
             }

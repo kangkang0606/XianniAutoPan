@@ -71,6 +71,11 @@ namespace XianniAutoPan.Services
         };
 
         /// <summary>
+        /// 自动盘支持推进的最高修真国等级。
+        /// </summary>
+        public static int MaxXiuzhenguoLevel => XiuzhenguoRequirements.Length - 1;
+
+        /// <summary>
         /// 根据加入命令创建玩家国家。
         /// </summary>
         public static bool TryCreatePlayerKingdom(string userId, string playerName, AutoPanCommandType joinType, out Kingdom kingdom, out string message)
@@ -130,7 +135,7 @@ namespace XianniAutoPan.Services
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, raceId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 200，国家等级 1。";
+                    message = $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {AutoPanConfigHooks.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领，可发送“政策 坚守城池”或“政策 开放占领”变更。";
                     return true;
                 }
             }
@@ -228,6 +233,26 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 清理即将销毁国家上的自动盘经济与绑定字段，避免复用对象时继承旧国库。
+        /// </summary>
+        public static void ClearRuntimeEconomyState(Kingdom kingdom)
+        {
+            if (kingdom == null)
+            {
+                return;
+            }
+
+            kingdom.data.set(AutoPanConstants.KeyTreasury, 0);
+            kingdom.data.set(AutoPanConstants.KeyLevel, AutoPanConfigHooks.InitialLevel);
+            kingdom.data.set(AutoPanConstants.KeyGatherSpiritUntilYear, 0);
+            kingdom.data.set(AutoPanConstants.KeyOccupationPolicy, AutoPanConstants.OccupationPolicyOpen);
+            kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, 0);
+            kingdom.data.set(AutoPanConstants.KeyOwnerUserId, string.Empty);
+            kingdom.data.set(AutoPanConstants.KeyOwnerName, string.Empty);
+            ClearSnapshotCache(kingdom.getID());
+        }
+
+        /// <summary>
         /// 增减国家国库。
         /// </summary>
         public static int AddTreasury(Kingdom kingdom, int delta)
@@ -304,6 +329,120 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 获取国家当前占领政策的显示文本。
+        /// </summary>
+        public static string GetOccupationPolicyText(Kingdom kingdom)
+        {
+            string policy = GetOccupationPolicy(kingdom);
+            return policy == AutoPanConstants.OccupationPolicyDefend ? "坚守城池" : "开放占领";
+        }
+
+        /// <summary>
+        /// 判断国家是否允许占领并领取被占补助。
+        /// </summary>
+        public static bool IsOpenOccupationPolicy(Kingdom kingdom)
+        {
+            return GetOccupationPolicy(kingdom) == AutoPanConstants.OccupationPolicyOpen;
+        }
+
+        /// <summary>
+        /// 判断国家是否坚守城池，城镇不可被占领。
+        /// </summary>
+        public static bool IsDefendCityPolicy(Kingdom kingdom)
+        {
+            return GetOccupationPolicy(kingdom) == AutoPanConstants.OccupationPolicyDefend;
+        }
+
+        /// <summary>
+        /// 变更国家占领政策。
+        /// </summary>
+        public static bool TryChangeOccupationPolicy(Kingdom kingdom, string rawPolicyText, out string message)
+        {
+            message = string.Empty;
+            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            {
+                message = "当前国家状态无效。";
+                return false;
+            }
+
+            string targetPolicy = NormalizeOccupationPolicy(rawPolicyText);
+            if (string.IsNullOrWhiteSpace(targetPolicy))
+            {
+                message = "未知国家政策，只支持：开放占领、坚守城池。";
+                return false;
+            }
+
+            EnsureKingdomStateInitialized(kingdom);
+            if (GetOccupationPolicy(kingdom) == targetPolicy)
+            {
+                message = $"{FormatKingdomLabel(kingdom)} 当前已经是 {GetOccupationPolicyText(kingdom)} 政策。";
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.OccupationPolicyChangeCost;
+            if (!TrySpendTreasury(kingdom, cost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            kingdom.data.set(AutoPanConstants.KeyOccupationPolicy, targetPolicy);
+            message = $"{FormatKingdomLabel(kingdom)} 已切换为 {GetOccupationPolicyText(kingdom)} 政策，消耗 {cost} 金币。";
+            return true;
+        }
+
+        /// <summary>
+        /// 获取全民皆兵截止年份。
+        /// </summary>
+        public static int GetMilitiaUntilYear(Kingdom kingdom)
+        {
+            if (kingdom == null)
+            {
+                return 0;
+            }
+
+            EnsureKingdomStateInitialized(kingdom);
+            kingdom.data.get(AutoPanConstants.KeyMilitiaUntilYear, out int untilYear, 0);
+            return untilYear;
+        }
+
+        /// <summary>
+        /// 判断全民皆兵是否处于生效期。
+        /// </summary>
+        public static bool IsMilitiaActive(Kingdom kingdom)
+        {
+            return kingdom != null && GetMilitiaUntilYear(kingdom) >= Date.getCurrentYear();
+        }
+
+        /// <summary>
+        /// 开启全民皆兵状态，并立即执行一次全国征兵。
+        /// </summary>
+        public static bool TryActivateNationalMilitia(Kingdom kingdom, out string message)
+        {
+            message = string.Empty;
+            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            {
+                message = "当前国家状态无效。";
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.NationalMilitiaCost;
+            if (!TrySpendTreasury(kingdom, cost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            int currentYear = Date.getCurrentYear();
+            int baseYear = Math.Max(currentYear, GetMilitiaUntilYear(kingdom));
+            int untilYear = baseYear + AutoPanConfigHooks.NationalMilitiaDurationYears;
+            kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, untilYear);
+            int drafted = AutoPanCityService.ApplyNationalMilitiaDraft(kingdom);
+            message = $"{FormatKingdomLabel(kingdom)} 已开启全民皆兵，持续到第 {untilYear} 年，本次补充军队 {drafted} 人，消耗 {cost} 金币。";
+            return true;
+        }
+
+        /// <summary>
         /// 计算国家的有效灵气。
         /// </summary>
         public static int GetEffectiveAura(Kingdom kingdom)
@@ -360,6 +499,7 @@ namespace XianniAutoPan.Services
                 EnsureKingdomStateInitialized(kingdom);
                 int income = ComputeYearlyIncome(kingdom);
                 AddTreasury(kingdom, income);
+                UpdateNationalMilitiaForYear(kingdom, year);
                 ClearSnapshotCache(kingdom.getID());
             }
         }
@@ -429,7 +569,8 @@ namespace XianniAutoPan.Services
             XianniKingdomSnapshot snapshot = GetSnapshot(kingdom);
             int gatherSpiritUntil = GetGatherSpiritUntilYear(kingdom);
             int gatherSpiritRemain = Math.Max(0, gatherSpiritUntil - Date.getCurrentYear());
-            return $"{FormatKingdomLabel(kingdom)}：国库 {GetTreasury(kingdom)}，国家等级 {GetLevel(kingdom)}，修真国等级 {snapshot.XiuzhenguoLevel}，城市 {kingdom.countCities()}，人口 {kingdom.getPopulationTotal()}，灵气 {GetEffectiveAura(kingdom)}，年收入 {ComputeYearlyIncome(kingdom)}，聚灵剩余 {gatherSpiritRemain} 年。";
+            int militiaRemain = Math.Max(0, GetMilitiaUntilYear(kingdom) - Date.getCurrentYear());
+            return $"{FormatKingdomLabel(kingdom)}：国库 {GetTreasury(kingdom)}，国家等级 {GetLevel(kingdom)}，修真国等级 {snapshot.XiuzhenguoLevel}，城市 {kingdom.countCities()}，人口 {kingdom.getPopulationTotal()}，军队 {CountArmyUnits(kingdom)}，灵气 {GetEffectiveAura(kingdom)}，年收入 {ComputeYearlyIncome(kingdom)}，国家政策 {GetOccupationPolicyText(kingdom)}，聚灵剩余 {gatherSpiritRemain} 年，全民皆兵剩余 {militiaRemain} 年。";
         }
 
         /// <summary>
@@ -457,7 +598,11 @@ namespace XianniAutoPan.Services
             foreach (Kingdom kingdom in kingdoms)
             {
                 kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, null);
-                lines.Add($"{BuildKingdomInfoText(kingdom)}，拥有者 {(!string.IsNullOrWhiteSpace(ownerName) ? ownerName : "AI/无人绑定")}。");
+                kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, null);
+                string ownerText = !string.IsNullOrWhiteSpace(ownerName)
+                    ? $"{ownerName}({(!string.IsNullOrWhiteSpace(ownerUserId) ? ownerUserId : "未知QQ")})"
+                    : "AI/无人绑定";
+                lines.Add($"{BuildKingdomInfoText(kingdom)}，拥有者 {ownerText}。");
             }
 
             return string.Join("\n", lines);
@@ -944,17 +1089,13 @@ namespace XianniAutoPan.Services
             int naturalLevel = XianniAutoPanApi.RefreshXiuzhenguoLevel(kingdom);
             if (naturalLevel < targetLevel)
             {
-                foreach (Actor actor in spawnedActors)
+                int delta = targetLevel - naturalLevel;
+                if (!XianniAutoPanApi.TryAdjustXiuzhenguoLevel(kingdom, delta, out int visibleLevel, out _)
+                    || visibleLevel < targetLevel)
                 {
-                    if (actor != null && actor.isAlive())
-                    {
-                        actor.dieAndDestroy(AttackType.Other);
-                    }
+                    error = "修真国等级刷新失败，已召来达标修士但未能推进等级。";
+                    return false;
                 }
-
-                XianniAutoPanApi.RefreshXiuzhenguoLevel(kingdom);
-                error = "当前城市空间不足，未能召来足够的高境界修士完成国运晋升。";
-                return false;
             }
 
             spawnedCount = spawnedActors.Count;
@@ -1120,6 +1261,12 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (count > AutoPanConstants.MaxAddPopulationPerCommand)
+            {
+                message = $"增加人数一次最多只能增加 {AutoPanConstants.MaxAddPopulationPerCommand} 人。";
+                return false;
+            }
+
             int safeCount = count;
             int totalCost = safeCount * AutoPanConfigHooks.AddPopulationCostPerUnit;
             if (!TrySpendTreasury(kingdom, totalCost, out string spendError))
@@ -1258,6 +1405,74 @@ namespace XianniAutoPan.Services
             return new string((name ?? string.Empty).Trim().Where(ch => !char.IsWhiteSpace(ch)).ToArray());
         }
 
+        private static string GetOccupationPolicy(Kingdom kingdom)
+        {
+            if (kingdom == null)
+            {
+                return AutoPanConstants.OccupationPolicyOpen;
+            }
+
+            EnsureKingdomStateInitialized(kingdom);
+            kingdom.data.get(AutoPanConstants.KeyOccupationPolicy, out string policy, AutoPanConstants.OccupationPolicyOpen);
+            return string.IsNullOrWhiteSpace(policy) ? AutoPanConstants.OccupationPolicyOpen : policy;
+        }
+
+        private static string NormalizeOccupationPolicy(string rawPolicyText)
+        {
+            string text = (rawPolicyText ?? string.Empty).Trim();
+            return text switch
+            {
+                "开放占领" => AutoPanConstants.OccupationPolicyOpen,
+                "坚守城池" => AutoPanConstants.OccupationPolicyDefend,
+                _ => string.Empty
+            };
+        }
+
+        private static void UpdateNationalMilitiaForYear(Kingdom kingdom, int year)
+        {
+            int untilYear = GetMilitiaUntilYear(kingdom);
+            if (untilYear <= 0)
+            {
+                return;
+            }
+
+            if (untilYear < year)
+            {
+                kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, 0);
+                string text = $"{FormatKingdomLabel(kingdom)} 的全民皆兵状态已结束。";
+                XianniAutoPanApi.Broadcast(text);
+                AutoPanNotificationService.NotifyKingdomOwners(kingdom, text);
+                return;
+            }
+
+            int drafted = AutoPanCityService.ApplyNationalMilitiaDraft(kingdom);
+            if (drafted > 0)
+            {
+                AutoPanLogService.Info($"{kingdom.name} 全民皆兵年度补充 {drafted} 人。");
+            }
+        }
+
+        private static int CountArmyUnits(Kingdom kingdom)
+        {
+            if (kingdom == null || !kingdom.isAlive())
+            {
+                return 0;
+            }
+
+            int total = 0;
+            foreach (City city in kingdom.getCities())
+            {
+                if (city == null || !city.isAlive())
+                {
+                    continue;
+                }
+
+                total += city.countWarriors();
+            }
+
+            return total;
+        }
+
         private static bool TryExtractTaggedId(string rawText, out long objectId)
         {
             objectId = 0L;
@@ -1330,38 +1545,33 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static void HandleWarEnded(War war, WarWinner winner)
         {
-            if (war == null)
-            {
-                return;
-            }
-
-            Kingdom attacker = war.getMainAttacker();
-            Kingdom defender = war.getMainDefender();
-            if (winner == WarWinner.Attackers)
-            {
-                RewardWarResult(attacker, defender, isWinner: true);
-                RewardWarResult(defender, attacker, isWinner: false);
-            }
-            else if (winner == WarWinner.Defenders)
-            {
-                RewardWarResult(defender, attacker, isWinner: true);
-                RewardWarResult(attacker, defender, isWinner: false);
-            }
+            AutoPanLogService.Info("战争结束：固定胜败金币奖励已关闭，改为按开放占领政策的被占城市逐座补助。");
         }
 
-        private static void RewardWarResult(Kingdom target, Kingdom enemy, bool isWinner)
+        /// <summary>
+        /// 对开放占领政策国家发放被占城市补助。
+        /// </summary>
+        public static void GrantOccupationSubsidy(Kingdom loser, Kingdom occupier, string cityName)
         {
-            if (target == null || !target.isAlive() || !target.isCiv())
+            if (loser == null || !loser.isAlive() || !loser.isCiv() || !IsOpenOccupationPolicy(loser))
             {
                 return;
             }
 
-            EnsureKingdomStateInitialized(target);
-            int reward = isWinner ? 80 + 20 * GetLevel(enemy) : 20;
-            int treasury = AddTreasury(target, reward);
-            string resultText = isWinner ? "战争获胜" : "战争失利补偿";
-            XianniAutoPanApi.Broadcast($"{target.name} {resultText}，获得 {reward} 金币，当前国库 {treasury}");
-            AutoPanLogService.Info($"{target.name} {resultText}，奖励 {reward} 金币。");
+            int min = Math.Max(0, AutoPanConfigHooks.OccupationSubsidyMin);
+            int max = Math.Max(min, AutoPanConfigHooks.OccupationSubsidyMax);
+            int reward = max <= min ? min : Randy.randomInt(min, max + 1);
+            if (reward <= 0)
+            {
+                return;
+            }
+
+            int treasury = AddTreasury(loser, reward);
+            string occupierText = occupier != null ? FormatKingdomLabel(occupier) : "敌国";
+            string text = $"{FormatKingdomLabel(loser)} 采用开放占领政策，城市 {cityName} 被 {occupierText} 占领后获得 {reward} 金币补助，当前国库 {treasury}。";
+            XianniAutoPanApi.Broadcast(text);
+            AutoPanNotificationService.NotifyKingdomOwners(loser, text);
+            AutoPanLogService.Info(text);
         }
 
         private static List<int> BuildPromotionSpawnPlan(Kingdom kingdom, XiuzhenguoLevelRequirement requirement)
@@ -1772,7 +1982,25 @@ namespace XianniAutoPan.Services
             if (level == int.MinValue)
             {
                 kingdom.data.set(AutoPanConstants.KeyLevel, AutoPanConfigHooks.InitialLevel);
+            }
+
+            kingdom.data.get(AutoPanConstants.KeyGatherSpiritUntilYear, out int gatherSpiritUntilYear, int.MinValue);
+            if (gatherSpiritUntilYear == int.MinValue)
+            {
+                kingdom.data.set(AutoPanConstants.KeyGatherSpiritUntilYear, 0);
+            }
+
+            kingdom.data.get(AutoPanConstants.KeyOccupationPolicy, out string occupationPolicy, string.Empty);
+            if (string.IsNullOrWhiteSpace(occupationPolicy))
+            {
+                kingdom.data.set(AutoPanConstants.KeyOccupationPolicy, AutoPanConstants.OccupationPolicyOpen);
+            }
+
+            kingdom.data.get(AutoPanConstants.KeyMilitiaUntilYear, out int militiaUntilYear, int.MinValue);
+            if (militiaUntilYear == int.MinValue)
+            {
+                kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, 0);
+            }
         }
     }
-}
 }

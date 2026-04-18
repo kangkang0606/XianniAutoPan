@@ -27,9 +27,13 @@ namespace XianniAutoPan.Commands
             AutoPanCommandType.CityList,
             AutoPanCommandType.CityInfo,
             AutoPanCommandType.PowerBoard,
+            AutoPanCommandType.CountryPowerBoard,
             AutoPanCommandType.CultivatorBoard,
             AutoPanCommandType.AncientBoard,
-            AutoPanCommandType.BeastBoard
+            AutoPanCommandType.BeastBoard,
+            AutoPanCommandType.ScoreRank,
+            AutoPanCommandType.CurrentSituationScreenshot,
+            AutoPanCommandType.AdminCurrentSituationScreenshot
         };
 
         private static readonly WorldTimeScaleAsset CustomWorldSpeedAsset = new WorldTimeScaleAsset
@@ -64,6 +68,7 @@ namespace XianniAutoPan.Commands
             }
 
             AutoPanStateRepository.RecordSession(message.SessionId, userId, playerName, message.RemoteEndPoint, message.SourceType, message.ContextId, message.BotSelfId);
+            AutoPanNotificationService.RecordRoute(message, playerName);
             AutoPanStateRepository.RefreshPlayerProfile(userId, playerName);
             AutoPanStateRepository.EnsureBindingValidForUser(userId);
             AutoPanParsedCommand command = AutoPanCommandParser.Parse(message.Text);
@@ -103,6 +108,15 @@ namespace XianniAutoPan.Commands
                     result.Success = true;
                     result.Text = BuildPlayerHelpText();
                     return result;
+                case AutoPanCommandType.ScoreRank:
+                    result.Success = true;
+                    result.Text = AutoPanScoreService.BuildRankingText();
+                    return result;
+                case AutoPanCommandType.CurrentSituationScreenshot:
+                    result.Success = AutoPanScreenshotService.TrySendCurrentSituation(message, bypassCooldown: false, out string screenshotText);
+                    result.Text = screenshotText;
+                    result.SuppressQqReply = result.Success;
+                    return result;
                 case AutoPanCommandType.JoinHuman:
                 case AutoPanCommandType.JoinOrc:
                 case AutoPanCommandType.JoinElf:
@@ -136,6 +150,15 @@ namespace XianniAutoPan.Commands
                     return ExecuteAdminSetSpeed(command, playerName, result);
                 case AutoPanCommandType.AdminSpawnKingdom:
                     return ExecuteAdminSpawnKingdom(command, playerName, result);
+                case AutoPanCommandType.AdminEndRound:
+                    result.Success = true;
+                    result.Text = AutoPanRoundService.EndRound("管理员手动结盘", playerName);
+                    return result;
+                case AutoPanCommandType.AdminCurrentSituationScreenshot:
+                    result.Success = AutoPanScreenshotService.TrySendCurrentSituation(message, bypassCooldown: true, out string adminScreenshotText);
+                    result.Text = adminScreenshotText;
+                    result.SuppressQqReply = result.Success;
+                    return result;
                 case AutoPanCommandType.AllKingdomInfo:
                     result.Success = true;
                     result.Text = AutoPanKingdomService.BuildAllKingdomInfoText();
@@ -212,8 +235,14 @@ namespace XianniAutoPan.Commands
                     return ExecuteCityInfo(kingdom, command, result);
                 case AutoPanCommandType.UpgradeNation:
                     return ExecuteUpgradeNation(kingdom, operatorName, isAi, result);
+                case AutoPanCommandType.UpgradeXiuzhenguo:
+                    return ExecuteUpgradeXiuzhenguo(kingdom, operatorName, isAi, result);
+                case AutoPanCommandType.ChangeKingdomPolicy:
+                    return ExecuteChangeKingdomPolicy(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.GatherSpirit:
                     return ExecuteGatherSpirit(kingdom, operatorName, isAi, result);
+                case AutoPanCommandType.NationalMilitia:
+                    return ExecuteNationalMilitia(kingdom, operatorName, isAi, result);
                 case AutoPanCommandType.AddPopulation:
                     return ExecuteAddPopulation(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.PlaceRuins:
@@ -244,6 +273,10 @@ namespace XianniAutoPan.Commands
                     result.Success = true;
                     result.Text = AutoPanInteractionService.BuildTopPowerBoardText();
                     return result;
+                case AutoPanCommandType.CountryPowerBoard:
+                    result.Success = true;
+                    result.Text = AutoPanInteractionService.BuildCountryPowerBoardText(kingdom);
+                    return result;
                 case AutoPanCommandType.AuraSabotage:
                     return ExecuteAuraSabotage(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.AssassinateStrongest:
@@ -260,6 +293,10 @@ namespace XianniAutoPan.Commands
                     return ExecuteDisturbKingdom(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CultivatorSuppress:
                     return ExecuteCultivatorSuppress(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.AncientSuppress:
+                    return ExecuteAncientSuppress(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.BeastSuppress:
+                    return ExecuteBeastSuppress(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.LowerNation:
                     return ExecuteLowerNation(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CultivatorBoard:
@@ -268,12 +305,18 @@ namespace XianniAutoPan.Commands
                     result.Success = true;
                     result.Text = AutoPanKingdomService.BuildBoardText(kingdom, command.CommandType);
                     return result;
+                case AutoPanCommandType.ScoreRank:
+                    result.Success = true;
+                    result.Text = AutoPanScoreService.BuildRankingText();
+                    return result;
                 case AutoPanCommandType.FastAdult:
                     return ExecuteFastAdult(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.ConscriptArmy:
                     return ExecuteConscriptArmy(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.TransferCity:
                     return ExecuteTransferCity(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.RandomTransferCity:
+                    return ExecuteRandomTransferCity(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.EquipArmy:
                     return ExecuteEquipArmy(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CultivatorRetreat:
@@ -410,6 +453,18 @@ namespace XianniAutoPan.Commands
             return result;
         }
 
+        private static AutoPanCommandResult ExecuteRandomTransferCity(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanCityService.TryTransferRandomNonCapitalCity(kingdom, command.TargetName, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 随机移交一座非首都城市给 {command.TargetName}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 随机移交城市：{kingdom.name} -> {command.TargetName}");
+            }
+            return result;
+        }
+
         private static AutoPanCommandResult ExecuteEquipArmy(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
             result.Success = AutoPanCityService.TryEquipArmy(kingdom, command.TargetName, command.SecondaryTargetName, command.NumericValue, out string message);
@@ -438,9 +493,32 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            if (!AutoPanKingdomService.TryPromoteXiuzhenguoNaturally(kingdom, out int previousXiuzhenguoLevel, out _, out int spawnedCount, out error))
+            result.Success = true;
+            result.Text = $"{kingdom.name} 升级国运成功，消耗 {cost} 金币，国家等级提升到 {newLevel}。修真国等级不会随国运自动提升，需要单独发送“升级修真国”。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 国运提升至 {newLevel} 级");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 执行升级国运：{kingdom.name} -> Lv{newLevel}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteUpgradeXiuzhenguo(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            int previousXiuzhenguoLevel = XianniAutoPanApi.CalculateXiuzhenguoLevel(kingdom);
+            if (previousXiuzhenguoLevel >= AutoPanKingdomService.MaxXiuzhenguoLevel)
             {
-                AutoPanKingdomService.TryAdjustNationLevel(kingdom, -1, out _, out _);
+                result.Text = "当前修真国等级已达到上限。";
+                return result;
+            }
+
+            int targetLevel = previousXiuzhenguoLevel + 1;
+            int cost = AutoPanConfigHooks.XiuzhenguoUpgradeCostPerLevel * Math.Max(1, targetLevel);
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out string error))
+            {
+                result.Text = error;
+                return result;
+            }
+
+            if (!AutoPanKingdomService.TryPromoteXiuzhenguoNaturally(kingdom, out previousXiuzhenguoLevel, out targetLevel, out int spawnedCount, out error))
+            {
                 AutoPanKingdomService.AddTreasury(kingdom, cost);
                 result.Text = error;
                 return result;
@@ -448,9 +526,9 @@ namespace XianniAutoPan.Commands
 
             int visibleXiuzhenguoLevel = XianniAutoPanApi.RefreshXiuzhenguoLevel(kingdom);
             result.Success = true;
-            result.Text = $"{kingdom.name} 升级国运成功，消耗 {cost} 金币，国家等级提升到 {newLevel}，修真国由 {previousXiuzhenguoLevel} 自然达到 {visibleXiuzhenguoLevel} 级，本次召来 {spawnedCount} 名达标修士。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 国运提升至 {newLevel} 级");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 执行升级国运：{kingdom.name} -> Lv{newLevel}");
+            result.Text = $"{kingdom.name} 升级修真国成功，消耗 {cost} 金币，修真国由 {previousXiuzhenguoLevel} 级推进到 {visibleXiuzhenguoLevel} 级，本次召来 {spawnedCount} 名达标修士。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 修真国提升至 {visibleXiuzhenguoLevel} 级");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 执行升级修真国：{kingdom.name} -> XZG{visibleXiuzhenguoLevel} / spawned={spawnedCount}");
             return result;
         }
 
@@ -492,6 +570,30 @@ namespace XianniAutoPan.Commands
             result.Text = $"{kingdom.name} 已开启聚灵国策，持续到第 {untilYear} 年。";
             XianniAutoPanApi.Broadcast($"{kingdom.name} 开启聚灵国策，灵气汇聚 {AutoPanConfigHooks.GatherSpiritDurationYears} 年");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 开启聚灵：{kingdom.name} -> {untilYear}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteChangeKingdomPolicy(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanKingdomService.TryChangeOccupationPolicy(kingdom, command.TextArg, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 调整国家政策为 {AutoPanKingdomService.GetOccupationPolicyText(kingdom)}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 调整国家政策：{kingdom.name} -> {AutoPanKingdomService.GetOccupationPolicyText(kingdom)}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteNationalMilitia(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanKingdomService.TryActivateNationalMilitia(kingdom, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 开启全民皆兵，持续 {AutoPanConfigHooks.NationalMilitiaDurationYears} 年");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 全民皆兵：{kingdom.name}");
+            }
             return result;
         }
 
@@ -551,7 +653,9 @@ namespace XianniAutoPan.Commands
                 result.Text = $"当前与 {target.name} 没有正在进行的战争。";
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.SeekPeaceCost, out string error))
+            int offerCost = AutoPanConfigHooks.SeekPeaceCost;
+            int totalCost = offerCost * 2;
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, totalCost, out string error))
             {
                 result.Text = error;
                 return result;
@@ -559,7 +663,7 @@ namespace XianniAutoPan.Commands
 
             World.world.wars.endWar(war, WarWinner.Peace);
             result.Success = true;
-            result.Text = $"{kingdom.name} 已向 {target.name} 求和，消耗 {AutoPanConfigHooks.SeekPeaceCost} 金币。";
+            result.Text = $"{kingdom.name} 已向 {target.name} 求和，先提交求和礼金 {offerCost} 金币，再消耗求和成本 {offerCost} 金币，共消耗 {totalCost} 金币。";
             XianniAutoPanApi.Broadcast($"{kingdom.name} 与 {target.name} 达成和平");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 求和：{kingdom.name} -> {target.name}");
             return result;
@@ -647,7 +751,7 @@ namespace XianniAutoPan.Commands
             result.Text = message;
             if (result.Success)
             {
-                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 发出最强者约斗请求{(command.BetAmount > 0 ? $"，赌注 {command.BetAmount} 金币" : string.Empty)}");
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 发出约斗请求{(command.BetAmount > 0 ? $"，赌注 {command.BetAmount} 金币" : string.Empty)}");
                 AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 发起约斗：{kingdom.name} -> {target.name} / bet={command.BetAmount}");
             }
             return result;
@@ -732,6 +836,30 @@ namespace XianniAutoPan.Commands
             {
                 XianniAutoPanApi.Broadcast($"{kingdom.name} 发动修士压境：{command.TargetName}");
                 AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士压境：{kingdom.name} -> {command.TargetName} / 人数{command.NumericValue} / 等级{command.SecondaryNumericValue}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteAncientSuppress(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanInteractionService.TrySuppressEnemyAncients(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动古神压境：{command.TargetName}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神压境：{kingdom.name} -> {command.TargetName} / 人数{command.NumericValue} / 层数{command.SecondaryNumericValue}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteBeastSuppress(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanInteractionService.TrySuppressEnemyBeasts(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动妖兽压境：{command.TargetName}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 妖兽压境：{kingdom.name} -> {command.TargetName} / 人数{command.NumericValue} / 层数{command.SecondaryNumericValue}");
             }
             return result;
         }
@@ -1037,7 +1165,7 @@ namespace XianniAutoPan.Commands
         private static bool IsPlayerCommandBlockedByYear(AutoPanParsedCommand command, out string message)
         {
             message = string.Empty;
-            if (IsInfoCommand(command.CommandType))
+            if (command.CommandType != AutoPanCommandType.DeclareWar)
             {
                 return false;
             }
@@ -1049,7 +1177,7 @@ namespace XianniAutoPan.Commands
                 return false;
             }
 
-            message = $"当前为第 {currentYear} 年，玩家国家需到第 {startYear} 年后才能执行该指令；加入类、信息查看类与普通聊天不受限制。";
+            message = $"当前为第 {currentYear} 年，玩家国家需到第 {startYear} 年后才能宣战；其它玩家指令不受该年份限制。";
             return true;
         }
 
@@ -1235,13 +1363,18 @@ namespace XianniAutoPan.Commands
                 "帮助",
                 "我的国家",
                 "国家信息",
+                "当前局势（QQ群截图，冷却由后台配置） / #当前局势（管理员无冷却）",
                 "查看所有国家信息",
+                "玩家排名",
                 "国家改名 新名字",
                 "城市列表",
                 "城市信息",
                 "升级国运",
+                "升级修真国",
                 "降低国运 目标国家 [kingdomId] 1",
+                "政策 开放占领 / 政策 坚守城池",
                 "国策 聚灵",
+                "全民皆兵",
                 "增加人数 10",
                 "放置遗迹 1",
                 "转账 目标国家 [kingdomId] 1000",
@@ -1252,12 +1385,14 @@ namespace XianniAutoPan.Commands
                 "约斗 目标国家 [kingdomId] 5000",
                 "同意约斗 / 拒绝约斗",
                 "血脉创立 单位id",
-                "天榜",
+                "天榜 / 战力榜",
                 "削灵 目标国家 [kingdomId] 500",
                 "斩首 目标国家 [kingdomId]",
                 "诅咒 目标国家 [kingdomId] 3",
                 "国家祝福 全员 或 国家祝福 5",
                 "修士降境 目标国家 [kingdomId] 3 1",
+                "古神降星 目标国家 [kingdomId] 3 1",
+                "妖兽降阶 目标国家 [kingdomId] 3 1",
                 "修士榜 / 古神榜 / 妖兽榜",
                 "修士 单位id 闭关 / 修士 单位id 升境",
                 "古神 单位id 炼体 / 古神 单位id 升星",
@@ -1265,10 +1400,12 @@ namespace XianniAutoPan.Commands
                 "快速成年 全城 或 快速成年 城市名 [cityId]",
                 "征集军队 城市名 [cityId] 全部",
                 "移交城市 城市名 [cityId] 给 目标国家 [kingdomId]",
+                "移交 目标国家 [kingdomId]随机一座城市",
                 "军备 城市名 [cityId] 精金 全军",
                 "天运惩罚 目标国家（可@）",
                 "天运赐福 目标国家（可@）",
                 "扰动国家 目标国家（可@）",
+                "#结盘（管理员）",
                 "QQ群中的 # 管理员指令仅 QQ 管理员白名单可用。"
             });
         }

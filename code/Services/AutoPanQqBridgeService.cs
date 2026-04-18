@@ -186,11 +186,12 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            string card = (root["sender"]?["card"]?.ToString() ?? string.Empty).Trim();
             string nickname = (root["sender"]?["nickname"]?.ToString() ?? string.Empty).Trim();
-            string playerName = string.IsNullOrWhiteSpace(nickname) ? userId : nickname;
+            string playerName = !string.IsNullOrWhiteSpace(card) ? card : string.IsNullOrWhiteSpace(nickname) ? userId : nickname;
 
             TouchSession(sessionId);
-            RecordIncoming(groupId, $"{nickname}({userId})：{Truncate(text, 80)}");
+            RecordIncoming(groupId, $"{playerName}({userId})：{Truncate(text, 80)}");
             message = new FrontendInboundMessage
             {
                 SessionId = sessionId,
@@ -232,8 +233,25 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            messageChunks = SplitMessage(result.Text, MaxReplyChunkLength);
+            messageChunks = SplitMessage(BuildReplyText(result.UserId, result.Text), MaxReplyChunkLength);
             return messageChunks.Count > 0;
+        }
+
+        /// <summary>
+        /// 为需要直接发送 OneBot 消息的服务解析可用回包会话。
+        /// </summary>
+        public static bool TryResolveReplySessionId(string preferredSessionId, string selfId, out string replySessionId)
+        {
+            replySessionId = ResolveReplySessionId(preferredSessionId, selfId);
+            return !string.IsNullOrWhiteSpace(replySessionId);
+        }
+
+        /// <summary>
+        /// 规范化 QQ 号或群号，只保留数字。
+        /// </summary>
+        public static string NormalizeQqDigits(string value)
+        {
+            return NormalizeDigits(value);
         }
 
         /// <summary>
@@ -302,7 +320,7 @@ namespace XianniAutoPan.Services
         {
             lock (Sync)
             {
-                if (Sessions.TryGetValue(preferredSessionId, out SessionMeta preferred) && preferred != null && CanSendActions(preferred.Role))
+                if (!string.IsNullOrWhiteSpace(preferredSessionId) && Sessions.TryGetValue(preferredSessionId, out SessionMeta preferred) && preferred != null && CanSendActions(preferred.Role))
                 {
                     return preferred.SessionId;
                 }

@@ -224,6 +224,13 @@ namespace XianniAutoPan.AI
                 return commands;
             }
 
+            int xiuzhenguoUpgradeCost = AutoPanConfigHooks.XiuzhenguoUpgradeCostPerLevel * Math.Max(1, context.XiuzhenguoLevel + 1);
+            if (context.XiuzhenguoLevel < AutoPanKingdomService.MaxXiuzhenguoLevel && context.Treasury >= xiuzhenguoUpgradeCost)
+            {
+                commands.Add("升级修真国");
+                return commands;
+            }
+
             if (context.CultivatorChoices.Count > 0 && context.Treasury >= AutoPanConfigHooks.CultivatorRetreatCost)
             {
                 commands.Add("修士 1 闭关");
@@ -246,9 +253,9 @@ namespace XianniAutoPan.AI
 
         private static string BuildSystemPrompt()
         {
-            return "你是 WorldBox 国家自动盘 AI。你只能从以下动作里选 0 到 2 个：升级国运、国策 聚灵、宣战 国家名、求和 国家名、修士 1 闭关、古神 1 炼体、妖兽 1 养成。" +
+            return "你是 WorldBox 国家自动盘 AI。你只能从以下动作里选 0 到 2 个：升级国运、升级修真国、国策 聚灵、宣战 国家名、求和 国家名、修士 1 闭关、古神 1 炼体、妖兽 1 养成。" +
                    "动作必须严格使用这些文本格式，不要解释，不要输出 Markdown，只返回 JSON：{\"actions\":[\"动作1\",\"动作2\"]}。" +
-                   $"所有动作都要考虑国库，升级国运成本={AutoPanConfigHooks.NationUpgradeCostPerLevel}*当前国家等级，聚灵={AutoPanConfigHooks.GatherSpiritCost}，宣战={AutoPanConfigHooks.DeclareWarCost}，求和={AutoPanConfigHooks.SeekPeaceCost}，修士闭关={AutoPanConfigHooks.CultivatorRetreatCost}，古神炼体={AutoPanConfigHooks.AncientTrainCost}，妖兽养成={AutoPanConfigHooks.BeastTrainCost}。" +
+                   $"所有动作都要考虑国库，升级国运成本={AutoPanConfigHooks.NationUpgradeCostPerLevel}*当前国家等级，升级修真国成本={AutoPanConfigHooks.XiuzhenguoUpgradeCostPerLevel}*下一级修真国等级，聚灵={AutoPanConfigHooks.GatherSpiritCost}，宣战={AutoPanConfigHooks.DeclareWarCost}，求和={AutoPanConfigHooks.SeekPeaceCost}，修士闭关={AutoPanConfigHooks.CultivatorRetreatCost}，古神炼体={AutoPanConfigHooks.AncientTrainCost}，妖兽养成={AutoPanConfigHooks.BeastTrainCost}。" +
                    "如果没有合适动作，返回 {\"actions\":[]}。";
         }
 

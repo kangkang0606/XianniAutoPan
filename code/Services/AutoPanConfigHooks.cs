@@ -224,6 +224,11 @@ namespace XianniAutoPan.Services
         public static int NationUpgradeCostPerLevel { get; private set; } = 200;
 
         /// <summary>
+        /// 升级修真国每级倍率。
+        /// </summary>
+        public static int XiuzhenguoUpgradeCostPerLevel { get; private set; } = 300;
+
+        /// <summary>
         /// 年收入基础值。
         /// </summary>
         public static int IncomeBase { get; private set; } = 10;
@@ -282,6 +287,36 @@ namespace XianniAutoPan.Services
         /// 国策聚灵成本。
         /// </summary>
         public static int GatherSpiritCost { get; private set; } = 120;
+
+        /// <summary>
+        /// 国家占领政策变更成本。
+        /// </summary>
+        public static int OccupationPolicyChangeCost { get; private set; } = 80;
+
+        /// <summary>
+        /// 全民皆兵成本。
+        /// </summary>
+        public static int NationalMilitiaCost { get; private set; } = 120;
+
+        /// <summary>
+        /// 全民皆兵持续年数。
+        /// </summary>
+        public static int NationalMilitiaDurationYears { get; private set; } = 3;
+
+        /// <summary>
+        /// 每座被占领城市的开放占领补助最小值。
+        /// </summary>
+        public static int OccupationSubsidyMin { get; private set; } = 20;
+
+        /// <summary>
+        /// 每座被占领城市的开放占领补助最大值。
+        /// </summary>
+        public static int OccupationSubsidyMax { get; private set; } = 40;
+
+        /// <summary>
+        /// QQ 当前局势截图冷却秒数。
+        /// </summary>
+        public static int CurrentSituationCooldownSeconds { get; private set; } = 120;
 
         /// <summary>
         /// 增加人数单价。
@@ -481,7 +516,7 @@ namespace XianniAutoPan.Services
         /// <summary>
         /// 请求超时秒数。
         /// </summary>
-        public static int RequestTimeoutSeconds { get; private set; } = 10;
+        public static int RequestTimeoutSeconds { get; private set; } = 20;
 
         /// <summary>
         /// AI 从哪一年开始允许决策。
@@ -489,9 +524,14 @@ namespace XianniAutoPan.Services
         public static int AiDecisionStartYear { get; private set; } = 1;
 
         /// <summary>
-        /// 玩家从哪一年开始允许执行国家决策类指令。
+        /// 玩家从哪一年开始允许执行宣战指令。
         /// </summary>
         public static int PlayerDecisionStartYear { get; private set; } = 1;
+
+        /// <summary>
+        /// 自动结盘年份。
+        /// </summary>
+        public static int RoundEndYear { get; private set; } = 100;
 
         /// <summary>
         /// 天运惩罚成本。
@@ -659,6 +699,10 @@ namespace XianniAutoPan.Services
             _backendSettingsPath = Path.Combine(modFolder, "backend_settings.json");
             LoadBackendSettings();
             LoadBackendPolicy();
+            if (RequestTimeoutSeconds == 10)
+            {
+                RequestTimeoutSeconds = 20;
+            }
             ApplyRuntimeBindings();
             SaveBackendSettings();
             SaveBackendPolicy();
@@ -1047,6 +1091,14 @@ namespace XianniAutoPan.Services
             RequestTimeoutSeconds = ParsePositive(value, RequestTimeoutSeconds, 3, 300);
         }
 
+        /// <summary>
+        /// 自动结盘年份配置回调。
+        /// </summary>
+        public static void OnRoundEndYearChanged(string value)
+        {
+            RoundEndYear = ParsePositive(value, RoundEndYear, 1, 100000);
+        }
+
         private static void RegisterPolicyDefinitions()
         {
             if (PolicyDefinitions.Count > 0)
@@ -1065,13 +1117,20 @@ namespace XianniAutoPan.Services
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritAuraBonusPerCity", "聚灵每城灵气", "国策“聚灵”生效时，每座城市临时视作增加的灵气。", "灵气", 0, 1_000_000_000, () => GatherSpiritAuraBonusPerCity, value => GatherSpiritAuraBonusPerCity = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritDurationYears", "聚灵持续年数", "每次执行“国策 聚灵”后持续生效的年数。", "年", 1, 1000, () => GatherSpiritDurationYears, value => GatherSpiritDurationYears = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritCost", "聚灵成本", "执行“国策 聚灵”需要消耗的金币。", "金币", 0, 1_000_000_000, () => GatherSpiritCost, value => GatherSpiritCost = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "occupationPolicyChangeCost", "国家政策变更成本", "执行“政策 开放占领/坚守城池”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => OccupationPolicyChangeCost, value => OccupationPolicyChangeCost = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "nationalMilitiaCost", "全民皆兵成本", "执行“全民皆兵”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => NationalMilitiaCost, value => NationalMilitiaCost = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "nationalMilitiaDurationYears", "全民皆兵持续年数", "全民皆兵开启后持续生效的年数；生效期内每年会把可征集平民补进军队。", "年", 1, 1000, () => NationalMilitiaDurationYears, value => NationalMilitiaDurationYears = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "occupationSubsidyMin", "占城补助最小值", "开放占领政策下，每被敌方占领一座城市时获得的随机补助下限。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMin, value => OccupationSubsidyMin = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "occupationSubsidyMax", "占城补助最大值", "开放占领政策下，每被敌方占领一座城市时获得的随机补助上限。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMax, value => OccupationSubsidyMax = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、胜场累计与新局启动相关配置。", "roundEndYear", "自动结盘年份", "世界年份达到该值后，自动计算本局胜者并开启新一局。", "年", 1, 100000, () => RoundEndYear, value => RoundEndYear = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、胜场累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群“当前局势”截图指令的同群冷却秒数；管理员“#当前局势”不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
 
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "declareWarCost", "宣战成本", "执行“宣战 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "seekPeaceCost", "求和成本", "执行“求和 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "allianceRequestCost", "结盟成本", "发出结盟请求时预扣的金币。", "金币", 0, 1_000_000_000, () => AllianceRequestCost, value => AllianceRequestCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "leaveAllianceCost", "退盟成本", "主动退出联盟时消耗的金币。", "金币", 0, 1_000_000_000, () => LeaveAllianceCost, value => LeaveAllianceCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "duelRequestCost", "约斗成本", "发起最强者约斗请求时预扣的金币。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "requestTimeoutSeconds", "请求超时", "结盟和约斗请求在前端等待同意的秒数。", "秒", 3, 300, () => RequestTimeoutSeconds, value => RequestTimeoutSeconds = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "duelRequestCost", "约斗成本", "发起约斗请求时预扣的金币；开战后双方各从国家战力前 5 随机出战。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "requestTimeoutSeconds", "请求超时", "结盟和约斗请求等待对方同意或拒绝的秒数，默认 20 秒。", "秒", 3, 300, () => RequestTimeoutSeconds, value => RequestTimeoutSeconds = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "lowerNationCostPerLevel", "降低国运成本", "每降低敌国 1 级国运时需要消耗的金币。", "金币", 0, 1_000_000_000, () => LowerNationCostPerLevel, value => LowerNationCostPerLevel = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "bloodlineCreateBaseCost", "血脉创立基础成本", "血脉创立成本 = 基础成本 + 单位层级 × 层级加价。", "金币", 0, 1_000_000_000, () => BloodlineCreateBaseCost, value => BloodlineCreateBaseCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "bloodlineCreateStageStepCost", "血脉创立层级加价", "血脉创立每提升一层战力阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => BloodlineCreateStageStepCost, value => BloodlineCreateStageStepCost = value);
@@ -1114,7 +1173,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
 
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家开始决策年份", "世界年份达到该值后，玩家国家才允许执行加入和信息查看之外的国家指令。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家国家才允许宣战；其它玩家指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
 
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenPunishCost", "天运惩罚成本", "执行天运惩罚消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenPunishCost, value => HeavenPunishCost = value);
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenBlessCost", "天运赐福成本", "执行天运赐福消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenBlessCost, value => HeavenBlessCost = value);
@@ -1124,6 +1183,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbKingdomCost", "扰动国家成本", "执行扰动国家消耗的金币（无论成功与否）。", "金币", 0, 1_000_000_000, () => DisturbKingdomCost, value => DisturbKingdomCost = value);
             RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbSuccessRate", "扰动成功概率", "扰动国家成功夺取城市的概率。", "%", 0, 100, () => DisturbSuccessRate, value => DisturbSuccessRate = value);
 
+            RegisterPolicy("xiuzhenguo", "修真国", "修真国升级成本与逐级灵气上限；仅自动盘运行时注入，不改变 xianni 单独运行的默认玩法。", "xiuzhenguoUpgradeCostPerLevel", "升级修真国每级倍率", "升级修真国的花费 = 下一级修真国等级 × 这个倍率，并会按门槛召来达标修士。", "金币", 1, 1_000_000_000, () => XiuzhenguoUpgradeCostPerLevel, value => XiuzhenguoUpgradeCostPerLevel = value);
             RegisterXiuzhenguoAuraCapPolicy(0, "0级灵气上限", "凡人国度的单城灵气上限。-1 表示无限。");
             RegisterXiuzhenguoAuraCapPolicy(1, "1级灵气上限", "一级修真国的单城灵气上限。-1 表示无限。");
             RegisterXiuzhenguoAuraCapPolicy(2, "2级灵气上限", "二级修真国的单城灵气上限。-1 表示无限。");
@@ -1245,6 +1305,7 @@ namespace XianniAutoPan.Services
                     return;
                 }
 
+                bool hasRequestTimeout = false;
                 foreach (KeyValuePair<string, int> pair in persisted.Values)
                 {
                     if (!TryResolvePolicyDefinition(pair.Key, out PolicyDefinition definition))
@@ -1252,7 +1313,23 @@ namespace XianniAutoPan.Services
                         continue;
                     }
 
-                    definition.Setter(ClampValue(pair.Value, definition.MinValue, definition.MaxValue));
+                    int value = pair.Value;
+                    if (string.Equals(definition.Key, "requestTimeoutSeconds", StringComparison.Ordinal))
+                    {
+                        hasRequestTimeout = true;
+                        // 旧版默认值为 10 秒；方案 A 统一迁移到 20 秒，避免旧文件继续覆盖新默认。
+                        if (value == 10)
+                        {
+                            value = 20;
+                        }
+                    }
+
+                    definition.Setter(ClampValue(value, definition.MinValue, definition.MaxValue));
+                }
+
+                if (!hasRequestTimeout && RequestTimeoutSeconds == 10)
+                {
+                    RequestTimeoutSeconds = 20;
                 }
             }
             catch (Exception ex)

@@ -1,9 +1,9 @@
 using HarmonyLib;
 using UnityEngine;
 using XianniAutoPan.Commands;
-using XianniAutoPan.Frontend;
 using XianniAutoPan.Model;
 using XianniAutoPan.Services;
+using xn.api;
 
 namespace XianniAutoPan
 {
@@ -31,14 +31,28 @@ namespace XianniAutoPan
                     continue;
                 }
 
-                if (AutoPanStateRepository.TryGetLatestQqSessionForUser(binding.UserId, out AutoPanSessionInfo session))
-                {
-                    AutoPanLocalWebServer.Instance.SendQqNotice(session, binding.UserId, $"你绑定的国家 {AutoPanKingdomService.FormatKingdomLabel(pKingdom)} 已灭亡，绑定已自动解除。现在可以重新发送“加入人类/加入兽人/加入精灵/加入矮人”。");
-                }
+                AutoPanNotificationService.NotifyKingdomDestroyed(binding, pKingdom);
             }
 
             AutoPanStateRepository.ClearBindingByKingdomId(pKingdom.getID());
+            AutoPanKingdomService.ClearRuntimeEconomyState(pKingdom);
             AutoPanLogService.Info($"国家灭亡：{pKingdom.name}，已清理相关玩家绑定。");
+        }
+    }
+
+    /// <summary>
+    /// 在原版新世界收尾加载完成后执行新局 UI 隐藏。
+    /// </summary>
+    [HarmonyPatch(typeof(MapBox), nameof(MapBox.finishingUpLoading))]
+    internal static class AutoPanMapFinishingUpLoadingPatch
+    {
+        /// <summary>
+        /// 原版会在此处重新打开主 UI，自动盘需要在其后隐藏权能条和清理交互。
+        /// </summary>
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            AutoPanRoundUiService.ApplyPendingHideAfterWorldLoad();
         }
     }
 
@@ -73,6 +87,86 @@ namespace XianniAutoPan
     }
 
     /// <summary>
+    /// 接管城市占领结算：坚守城池时禁止占领并摧毁城市，开放占领时按被占城市发放补助。
+    /// </summary>
+    [HarmonyPatch(typeof(City), nameof(City.finishCapture))]
+    internal static class AutoPanCityCapturePatch
+    {
+        private sealed class CaptureState
+        {
+            /// <summary>
+            /// 被占领前的城市所属国家。
+            /// </summary>
+            public Kingdom PreviousKingdom;
+
+            /// <summary>
+            /// 城市名称快照。
+            /// </summary>
+            public string CityName;
+
+            /// <summary>
+            /// 被攻方是否采用开放占领政策。
+            /// </summary>
+            public bool WasOpenOccupation;
+        }
+
+        /// <summary>
+        /// 坚守城池政策下，城市不会变更归属，攻破时直接摧毁。
+        /// </summary>
+        [HarmonyPrefix]
+        private static bool Prefix(City __instance, Kingdom pNewKingdom, out CaptureState __state)
+        {
+            __state = null;
+            Kingdom previousKingdom = __instance?.kingdom;
+            if (__instance == null || previousKingdom == null || !previousKingdom.isAlive())
+            {
+                return true;
+            }
+
+            __state = new CaptureState
+            {
+                PreviousKingdom = previousKingdom,
+                CityName = __instance.name,
+                WasOpenOccupation = AutoPanKingdomService.IsOpenOccupationPolicy(previousKingdom)
+            };
+
+            if (!AutoPanKingdomService.IsDefendCityPolicy(previousKingdom) || World.world?.cities == null || World.world.cities.isLocked())
+            {
+                return true;
+            }
+
+            string attackerText = pNewKingdom != null ? AutoPanKingdomService.FormatKingdomLabel(pNewKingdom) : "敌军";
+            string text = $"{AutoPanKingdomService.FormatKingdomLabel(previousKingdom)} 采用坚守城池政策，{__instance.name} 被 {attackerText} 攻破后不会被占领，已被摧毁。";
+            __instance.clearCapture();
+            World.world.cities.removeObject(__instance);
+            XianniAutoPanApi.Broadcast(text);
+            AutoPanNotificationService.NotifyKingdomOwners(previousKingdom, text);
+            AutoPanLogService.Info(text);
+            return false;
+        }
+
+        /// <summary>
+        /// 原版完成占领后，对开放占领政策国家发放逐城补助。
+        /// </summary>
+        [HarmonyPostfix]
+        private static void Postfix(City __instance, CaptureState __state)
+        {
+            if (__state == null || __instance == null || !__state.WasOpenOccupation)
+            {
+                return;
+            }
+
+            Kingdom newKingdom = __instance.kingdom;
+            if (newKingdom == null || newKingdom == __state.PreviousKingdom)
+            {
+                return;
+            }
+
+            AutoPanKingdomService.GrantOccupationSubsidy(__state.PreviousKingdom, newKingdom, __state.CityName);
+        }
+    }
+
+    /// <summary>
     /// 记录国家铭牌屏幕坐标，供聊天气泡锚定。
     /// </summary>
     [HarmonyPatch(typeof(NameplateText), nameof(NameplateText.showTextKingdom))]
@@ -90,6 +184,22 @@ namespace XianniAutoPan
             }
 
             AutoPanKingdomSpeechService.RecordNameplatePosition(pMetaObject, __instance.getLastScreenPosition());
+        }
+    }
+
+    /// <summary>
+    /// 在原版铭牌完成刷新后稳定更新自动盘聊天气泡位置。
+    /// </summary>
+    [HarmonyPatch(typeof(NameplateManager), nameof(NameplateManager.update))]
+    internal static class AutoPanNameplateManagerUpdatePatch
+    {
+        /// <summary>
+        /// 原版铭牌布局完成后刷新气泡，避免高倍速下与铭牌刷新顺序抢位置。
+        /// </summary>
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            AutoPanKingdomSpeechService.UpdateAnchoredVisuals();
         }
     }
 

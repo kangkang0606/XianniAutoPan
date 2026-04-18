@@ -109,6 +109,26 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 获取古神降星成本，沿用压境基础与阶梯配置。
+        /// </summary>
+        public static int GetAncientSuppressUnitCost(Actor actor, int levels)
+        {
+            int stage = Math.Max(1, XianniAutoPanApi.GetAncientStage(actor));
+            int safeLevels = Math.Max(1, levels);
+            return AutoPanConfigHooks.CultivatorSuppressBaseCost + stage * AutoPanConfigHooks.CultivatorSuppressStageStepCost * safeLevels;
+        }
+
+        /// <summary>
+        /// 获取妖兽降阶成本，沿用压境基础与阶梯配置。
+        /// </summary>
+        public static int GetBeastSuppressUnitCost(Actor actor, int levels)
+        {
+            int stage = Math.Max(1, XianniAutoPanApi.GetBeastStage(actor));
+            int safeLevels = Math.Max(1, levels);
+            return AutoPanConfigHooks.CultivatorSuppressBaseCost + stage * AutoPanConfigHooks.CultivatorSuppressStageStepCost * safeLevels;
+        }
+
+        /// <summary>
         /// 获取单位当前用于成本计算的阶段值。
         /// </summary>
         public static int GetActorStageValue(Actor actor)

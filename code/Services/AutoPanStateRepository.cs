@@ -162,6 +162,7 @@ namespace XianniAutoPan.Services
 
             if (!TryGetLiveBinding(userId, out _, out _))
             {
+                AutoPanNotificationService.NotifyKingdomDestroyed(binding, null);
                 ClearBinding(userId, saveImmediately: true);
             }
         }
@@ -171,6 +172,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static void CleanupDeadBindings()
         {
+            List<AutoPanBindingRecord> deadBindings = new List<AutoPanBindingRecord>();
             lock (Sync)
             {
                 List<string> toRemove = new List<string>();
@@ -180,6 +182,7 @@ namespace XianniAutoPan.Services
                     if (kingdom == null || !kingdom.isAlive())
                     {
                         toRemove.Add(pair.Key);
+                        deadBindings.Add(CloneBinding(pair.Value));
                     }
                 }
 
@@ -190,6 +193,10 @@ namespace XianniAutoPan.Services
             }
 
             SaveToWorld();
+            foreach (AutoPanBindingRecord binding in deadBindings)
+            {
+                AutoPanNotificationService.NotifyKingdomDestroyed(binding, null);
+            }
         }
 
         /// <summary>
@@ -440,6 +447,7 @@ namespace XianniAutoPan.Services
                 CommandBookText = commandBookText,
                 RecentLogs = AutoPanLogService.GetRecentEntries(),
                 Kingdoms = AutoPanKingdomService.BuildDashboardKingdoms(),
+                Scoreboard = AutoPanScoreService.BuildDashboardRecords(),
                 Policy = AutoPanConfigHooks.BuildPolicySnapshot(),
                 QqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot()
             };

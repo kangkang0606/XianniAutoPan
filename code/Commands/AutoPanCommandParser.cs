@@ -9,6 +9,7 @@ namespace XianniAutoPan.Commands
     internal static class AutoPanCommandParser
     {
         private static readonly Regex HelpRegex = new Regex(@"^(帮助|指令|帮助指令)$", RegexOptions.Compiled);
+        private static readonly Regex ScoreRankRegex = new Regex(@"^(玩家排名|积分排名|胜场排名)$", RegexOptions.Compiled);
         private static readonly Regex RenameKingdomRegex = new Regex(@"^国家改名\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex DeclareWarRegex = new Regex(@"^宣战\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex SeekPeaceRegex = new Regex(@"^求和\s+(.+)$", RegexOptions.Compiled);
@@ -26,13 +27,17 @@ namespace XianniAutoPan.Commands
         private static readonly Regex CurseEnemyRegex = new Regex(@"^诅咒\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex KingdomBlessingRegex = new Regex(@"^国家祝福\s+(全员|\d+)$", RegexOptions.Compiled);
         private static readonly Regex CultivatorSuppressRegex = new Regex(@"^修士降境\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AncientSuppressRegex = new Regex(@"^古神降星\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex BeastSuppressRegex = new Regex(@"^妖兽降阶\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex AddPopulationRegex = new Regex(@"^(增加人数|增加人口)\s+([1-9]\d*)$", RegexOptions.Compiled);
+        private static readonly Regex KingdomPolicyRegex = new Regex(@"^(政策|国家政策)\s+(开放占领|坚守城池)$", RegexOptions.Compiled);
         private static readonly Regex PlaceRuinsRegex = new Regex(@"^放置遗迹(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
         private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s+(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex FastAdultRegex = new Regex(@"^快速成年\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队\s+(.+?)\s+(全部|\d+)$", RegexOptions.Compiled);
         private static readonly Regex TransferCityRegex = new Regex(@"^移交城市\s+(.+?)\s+给\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex RandomTransferCityRegex = new Regex(@"^移交\s+(.+?)\s*随机一座城市$", RegexOptions.Compiled);
         private static readonly Regex EquipArmyRegex = new Regex(@"^军备\s+(.+?)\s+(铜|青铜|白银|铁|钢|秘银|精金)\s+(全军|\d+)$", RegexOptions.Compiled);
         private static readonly Regex CultivatorActionRegex = new Regex(@"^修士\s+(\d+)\s+闭关$", RegexOptions.Compiled);
         private static readonly Regex CultivatorRealmUpRegex = new Regex(@"^修士\s+(\d+)\s+(升境|提升境界)$", RegexOptions.Compiled);
@@ -49,6 +54,8 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AdminSetPolicyRegex = new Regex(@"^#设置政策\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetSpeedRegex = new Regex(@"^#(\d+(?:\.\d+)?)x$", RegexOptions.Compiled);
         private static readonly Regex AdminSpawnKingdomRegex = new Regex(@"^#生成\s+(人类|兽人|精灵|矮人)$", RegexOptions.Compiled);
+        private static readonly Regex AdminEndRoundRegex = new Regex(@"^#结盘$", RegexOptions.Compiled);
+        private static readonly Regex AdminCurrentSituationRegex = new Regex(@"^#当前局势$", RegexOptions.Compiled);
         private static readonly Regex HeavenPunishRegex = new Regex(@"^天运惩罚\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex HeavenBlessRegex = new Regex(@"^天运赐福\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex DisturbKingdomRegex = new Regex(@"^扰动国家\s+(.+)$", RegexOptions.Compiled);
@@ -96,6 +103,12 @@ namespace XianniAutoPan.Commands
                 case "国家信息":
                     command.CommandType = AutoPanCommandType.KingdomInfo;
                     return command;
+                case "当前局势":
+                    command.CommandType = AutoPanCommandType.CurrentSituationScreenshot;
+                    return command;
+                case "#当前局势":
+                    command.CommandType = AutoPanCommandType.AdminCurrentSituationScreenshot;
+                    return command;
                 case "查看所有国家信息":
                 case "所有国家信息":
                     command.CommandType = AutoPanCommandType.AllKingdomInfo;
@@ -110,8 +123,14 @@ namespace XianniAutoPan.Commands
                 case "升级国运":
                     command.CommandType = AutoPanCommandType.UpgradeNation;
                     return command;
+                case "升级修真国":
+                    command.CommandType = AutoPanCommandType.UpgradeXiuzhenguo;
+                    return command;
                 case "国策 聚灵":
                     command.CommandType = AutoPanCommandType.GatherSpirit;
+                    return command;
+                case "全民皆兵":
+                    command.CommandType = AutoPanCommandType.NationalMilitia;
                     return command;
                 case "放置遗迹":
                     command.CommandType = AutoPanCommandType.PlaceRuins;
@@ -128,6 +147,9 @@ namespace XianniAutoPan.Commands
                     return command;
                 case "天榜":
                     command.CommandType = AutoPanCommandType.PowerBoard;
+                    return command;
+                case "战力榜":
+                    command.CommandType = AutoPanCommandType.CountryPowerBoard;
                     return command;
                 case "同意结盟":
                     command.CommandType = AutoPanCommandType.AcceptAlliance;
@@ -170,6 +192,13 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.BloodlineCreate;
                 command.ObjectIdArg = string.IsNullOrWhiteSpace(match.Groups[1].Value) ? 0L : long.Parse(match.Groups[1].Value);
+                return command;
+            }
+
+            match = ScoreRankRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.ScoreRank;
                 return command;
             }
 
@@ -252,6 +281,34 @@ namespace XianniAutoPan.Commands
                 return command;
             }
 
+            match = AncientSuppressRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[2].Value, out int ancientSuppressCount) && int.TryParse(match.Groups[3].Value, out int ancientSuppressLevels))
+            {
+                command.CommandType = AutoPanCommandType.AncientSuppress;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.NumericValue = ancientSuppressCount;
+                command.SecondaryNumericValue = ancientSuppressLevels;
+                return command;
+            }
+
+            match = BeastSuppressRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[2].Value, out int beastSuppressCount) && int.TryParse(match.Groups[3].Value, out int beastSuppressLevels))
+            {
+                command.CommandType = AutoPanCommandType.BeastSuppress;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.NumericValue = beastSuppressCount;
+                command.SecondaryNumericValue = beastSuppressLevels;
+                return command;
+            }
+
+            match = KingdomPolicyRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.ChangeKingdomPolicy;
+                command.TextArg = match.Groups[2].Value.Trim();
+                return command;
+            }
+
             match = CityInfoRegex.Match(text);
             if (match.Success)
             {
@@ -284,6 +341,14 @@ namespace XianniAutoPan.Commands
                 command.CommandType = AutoPanCommandType.TransferCity;
                 command.TargetName = match.Groups[1].Value.Trim();
                 command.SecondaryTargetName = match.Groups[2].Value.Trim();
+                return command;
+            }
+
+            match = RandomTransferCityRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.RandomTransferCity;
+                command.TargetName = match.Groups[1].Value.Trim();
                 return command;
             }
 
@@ -492,6 +557,20 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.AdminSpawnKingdom;
                 command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = AdminEndRoundRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminEndRound;
+                return command;
+            }
+
+            match = AdminCurrentSituationRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminCurrentSituationScreenshot;
                 return command;
             }
 

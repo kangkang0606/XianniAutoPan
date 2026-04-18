@@ -18,7 +18,10 @@ namespace XianniAutoPan.Model
         AllKingdomInfo,
         RenameKingdom,
         UpgradeNation,
+        UpgradeXiuzhenguo,
+        ChangeKingdomPolicy,
         GatherSpirit,
+        NationalMilitia,
         AddPopulation,
         PlaceRuins,
         TransferTreasury,
@@ -33,17 +36,21 @@ namespace XianniAutoPan.Model
         RejectDuel,
         BloodlineCreate,
         PowerBoard,
+        CountryPowerBoard,
         AuraSabotage,
         AssassinateStrongest,
         CurseEnemy,
         KingdomBlessing,
         CultivatorSuppress,
+        AncientSuppress,
+        BeastSuppress,
         LowerNation,
         CityList,
         CityInfo,
         FastAdult,
         ConscriptArmy,
         TransferCity,
+        RandomTransferCity,
         EquipArmy,
         CultivatorBoard,
         AncientBoard,
@@ -64,6 +71,10 @@ namespace XianniAutoPan.Model
         AdminSetPolicy,
         AdminSetSpeed,
         AdminSpawnKingdom,
+        AdminEndRound,
+        AdminCurrentSituationScreenshot,
+        ScoreRank,
+        CurrentSituationScreenshot,
         HeavenPunish,
         HeavenBless,
         DisturbKingdom
@@ -80,7 +91,7 @@ namespace XianniAutoPan.Model
         Alliance = 0,
 
         /// <summary>
-        /// 最强者约斗。
+        /// 战力前五随机约斗。
         /// </summary>
         Duel = 1
     }
@@ -518,6 +529,11 @@ namespace XianniAutoPan.Model
         public List<AutoPanKingdomDashboardInfo> Kingdoms { get; set; } = new List<AutoPanKingdomDashboardInfo>();
 
         /// <summary>
+        /// 跨局玩家积分榜。
+        /// </summary>
+        public List<AutoPanScoreDashboardRecord> Scoreboard { get; set; } = new List<AutoPanScoreDashboardRecord>();
+
+        /// <summary>
         /// 当前后端政策配置。
         /// </summary>
         public AutoPanPolicySnapshot Policy { get; set; }
@@ -531,6 +547,32 @@ namespace XianniAutoPan.Model
         /// QQ 群接入状态与配置快照。
         /// </summary>
         public AutoPanQqDashboardSnapshot QqBridge { get; set; }
+    }
+
+    /// <summary>
+    /// 前端展示用玩家积分记录。
+    /// </summary>
+    public sealed class AutoPanScoreDashboardRecord
+    {
+        /// <summary>
+        /// 玩家唯一标识。
+        /// </summary>
+        public string UserId { get; set; }
+
+        /// <summary>
+        /// 最近显示名。
+        /// </summary>
+        public string PlayerName { get; set; }
+
+        /// <summary>
+        /// 跨局累计胜场。
+        /// </summary>
+        public int Wins { get; set; }
+
+        /// <summary>
+        /// 最近获胜或手动修改时间，UTC ISO 字符串。
+        /// </summary>
+        public string LastWinUtc { get; set; }
     }
 
     /// <summary>

@@ -106,6 +106,47 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 从国家战力前五中随机抽取一名参战者。
+        /// </summary>
+        public static bool TryGetRandomTopPowerActor(Kingdom kingdom, out Actor actor, out string summary)
+        {
+            actor = null;
+            summary = string.Empty;
+            List<RankedActor> candidates = GetRankedActors(kingdom).Take(5).ToList();
+            if (candidates.Count == 0)
+            {
+                summary = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 当前没有可参加约斗的强者。";
+                return false;
+            }
+
+            RankedActor selected = candidates[Randy.randomInt(0, candidates.Count)];
+            actor = selected.Actor;
+            summary = $"{selected.Actor.getName()} [id={selected.Actor.getID()}] / {selected.CategoryText} / 战力 {selected.Score}";
+            return true;
+        }
+
+        /// <summary>
+        /// 构建当前国家战力前五榜单。
+        /// </summary>
+        public static string BuildCountryPowerBoardText(Kingdom kingdom)
+        {
+            List<RankedActor> rankedList = GetRankedActors(kingdom).Take(5).ToList();
+            if (rankedList.Count == 0)
+            {
+                return $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 当前没有可上榜的修士、古神或妖兽。";
+            }
+
+            List<string> lines = new List<string> { $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 战力前 5：" };
+            for (int index = 0; index < rankedList.Count; index++)
+            {
+                RankedActor item = rankedList[index];
+                lines.Add($"{index + 1}. {item.Actor.getName()} [id={item.Actor.getID()}]，{item.CategoryText}，阶段 {item.StageValue}，战力 {item.Score}");
+            }
+
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>
         /// 构建全图天榜前五。
         /// </summary>
         public static string BuildTopPowerBoardText()
@@ -401,6 +442,42 @@ namespace XianniAutoPan.Services
             return true;
         }
 
+        /// <summary>
+        /// 让敌国若干古神下降指定星级。
+        /// </summary>
+        public static bool TrySuppressEnemyAncients(Kingdom sourceKingdom, string rawTargetKingdomName, int count, int levels, out string message)
+        {
+            return TrySuppressEnemyStages(
+                sourceKingdom,
+                rawTargetKingdomName,
+                count,
+                levels,
+                "古神",
+                GetTargetAncients,
+                AutoPanCostService.GetAncientSuppressUnitCost,
+                AutoPanCultivationPromotionService.TryLowerAncientStage,
+                "星级",
+                out message);
+        }
+
+        /// <summary>
+        /// 让敌国若干妖兽下降指定阶级。
+        /// </summary>
+        public static bool TrySuppressEnemyBeasts(Kingdom sourceKingdom, string rawTargetKingdomName, int count, int levels, out string message)
+        {
+            return TrySuppressEnemyStages(
+                sourceKingdom,
+                rawTargetKingdomName,
+                count,
+                levels,
+                "妖兽",
+                GetTargetBeasts,
+                AutoPanCostService.GetBeastSuppressUnitCost,
+                AutoPanCultivationPromotionService.TryLowerBeastStage,
+                "阶级",
+                out message);
+        }
+
         private static bool TryResolveEnemyKingdom(Kingdom sourceKingdom, string rawTargetKingdomName, out Kingdom targetKingdom, out string error)
         {
             targetKingdom = null;
@@ -458,6 +535,107 @@ namespace XianniAutoPan.Services
             }
             return result;
         }
+
+        private static List<Actor> GetTargetAncients(Kingdom kingdom, int count)
+        {
+            XianniKingdomSnapshot snapshot = AutoPanKingdomService.GetSnapshot(kingdom, forceRefresh: true);
+            return ResolveSnapshotActors(kingdom, snapshot.Ancients, count);
+        }
+
+        private static List<Actor> GetTargetBeasts(Kingdom kingdom, int count)
+        {
+            XianniKingdomSnapshot snapshot = AutoPanKingdomService.GetSnapshot(kingdom, forceRefresh: true);
+            return ResolveSnapshotActors(kingdom, snapshot.Beasts, count);
+        }
+
+        private static List<Actor> ResolveSnapshotActors(Kingdom kingdom, IEnumerable<XianniActorEntry> entries, int count)
+        {
+            List<Actor> result = new List<Actor>();
+            foreach (XianniActorEntry entry in (entries ?? Enumerable.Empty<XianniActorEntry>()).Take(Math.Max(1, count)))
+            {
+                Actor actor = World.world?.units?.get(entry.ActorId);
+                if (actor != null && actor.isAlive() && actor.kingdom == kingdom)
+                {
+                    result.Add(actor);
+                }
+            }
+
+            return result;
+        }
+
+        private static bool TrySuppressEnemyStages(
+            Kingdom sourceKingdom,
+            string rawTargetKingdomName,
+            int count,
+            int levels,
+            string targetTypeText,
+            Func<Kingdom, int, List<Actor>> targetResolver,
+            Func<Actor, int, int> costResolver,
+            TryLowerStageDelegate lowerDelegate,
+            string stageText,
+            out string message)
+        {
+            message = string.Empty;
+            if (!TryResolveEnemyKingdom(sourceKingdom, rawTargetKingdomName, out Kingdom targetKingdom, out string targetError))
+            {
+                message = targetError;
+                return false;
+            }
+
+            int requestedCount = Math.Max(1, count);
+            int requestedLevels = Math.Max(1, levels);
+            List<Actor> targets = targetResolver(targetKingdom, requestedCount);
+            if (targets.Count == 0)
+            {
+                message = $"{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 当前没有可降低{stageText}的{targetTypeText}。";
+                return false;
+            }
+
+            int expectedCost = targets.Sum(actor => costResolver(actor, requestedLevels));
+            if (!AutoPanKingdomService.TrySpendTreasury(sourceKingdom, expectedCost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            int actualCost = 0;
+            int affectedCount = 0;
+            int totalLowered = 0;
+            List<string> affectedNames = new List<string>();
+            foreach (Actor actor in targets)
+            {
+                int unitCost = costResolver(actor, requestedLevels);
+                if (!lowerDelegate(actor, requestedLevels, out int actualLowered))
+                {
+                    continue;
+                }
+
+                affectedCount++;
+                totalLowered += actualLowered;
+                actualCost += unitCost;
+                affectedNames.Add($"{actor.getName()}(-{actualLowered})");
+            }
+
+            if (affectedCount == 0)
+            {
+                AutoPanKingdomService.AddTreasury(sourceKingdom, expectedCost);
+                message = $"{targetTypeText}压制失败，目标没有实际下降{stageText}。";
+                return false;
+            }
+
+            int refund = expectedCost - actualCost;
+            if (refund > 0)
+            {
+                AutoPanKingdomService.AddTreasury(sourceKingdom, refund);
+            }
+
+            AutoPanKingdomService.ClearSnapshotCache(sourceKingdom.getID());
+            AutoPanKingdomService.ClearSnapshotCache(targetKingdom.getID());
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(sourceKingdom)} 已压制 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 的 {affectedCount} 名{targetTypeText}，共下降 {totalLowered} 层{stageText}：{BuildNameList(affectedNames)}，消耗 {actualCost} 金币。";
+            return true;
+        }
+
+        private delegate bool TryLowerStageDelegate(Actor actor, int levels, out int actualLowered);
 
         private static List<RankedActor> GetRankedActors(Kingdom kingdom)
         {

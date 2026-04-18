@@ -155,6 +155,22 @@ namespace XianniAutoPan.Services
             return TryPromoteStage(actor, BeastStageIds, KeyBeastPower, KeyBeastStop, "path_03_beast");
         }
 
+        /// <summary>
+        /// 直接将古神降低指定星级。
+        /// </summary>
+        public static bool TryLowerAncientStage(Actor actor, int levels, out int actualLowered)
+        {
+            return TryLowerStage(actor, AncientStageIds, KeyAncientPower, KeyAncientStop, "path_04_ancient", levels, out actualLowered);
+        }
+
+        /// <summary>
+        /// 直接将妖兽降低指定阶级。
+        /// </summary>
+        public static bool TryLowerBeastStage(Actor actor, int levels, out int actualLowered)
+        {
+            return TryLowerStage(actor, BeastStageIds, KeyBeastPower, KeyBeastStop, "path_03_beast", levels, out actualLowered);
+        }
+
         private static bool TryPromoteStage(Actor actor, string[] stageIds, string powerKey, string stopKey, string pathTraitId)
         {
             if (actor == null || !actor.isAlive())
@@ -179,6 +195,33 @@ namespace XianniAutoPan.Services
             actor.data.set(powerKey, Math.Max(currentPower, AncientBeastThresholds[nextStageIndex]));
             actor.data.set(stopKey, 0);
             return true;
+        }
+
+        private static bool TryLowerStage(Actor actor, string[] stageIds, string powerKey, string stopKey, string pathTraitId, int levels, out int actualLowered)
+        {
+            actualLowered = 0;
+            if (actor == null || !actor.isAlive())
+            {
+                return false;
+            }
+
+            int currentStageIndex = GetTraitIndex(actor, stageIds);
+            if (currentStageIndex <= 0)
+            {
+                return false;
+            }
+
+            int targetStageIndex = Math.Max(0, currentStageIndex - Math.Max(1, levels));
+            actualLowered = currentStageIndex - targetStageIndex;
+            ReplaceTraitSet(actor, stageIds, targetStageIndex);
+            if (!string.IsNullOrWhiteSpace(pathTraitId) && !actor.hasTrait(pathTraitId))
+            {
+                actor.addTrait(pathTraitId);
+            }
+
+            actor.data.set(powerKey, AncientBeastThresholds[targetStageIndex]);
+            actor.data.set(stopKey, 0);
+            return actualLowered > 0;
         }
 
         private static int GetTraitIndex(Actor actor, string[] traitIds)

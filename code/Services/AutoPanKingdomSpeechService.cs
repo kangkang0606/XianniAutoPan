@@ -152,7 +152,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 每帧更新气泡位置与到期状态。
+        /// 每帧只清理气泡到期状态，位置刷新交给铭牌管理器后置补丁。
         /// </summary>
         public static void Update()
         {
@@ -180,14 +180,35 @@ namespace XianniAutoPan.Services
                     toRemove.Add(pair.Key);
                     continue;
                 }
-
-                RefreshVisual(kingdom, visual);
             }
 
             foreach (long kingdomId in toRemove)
             {
                 Visuals.Remove(kingdomId);
                 Anchors.Remove(kingdomId);
+            }
+        }
+
+        /// <summary>
+        /// 在原版铭牌位置刷新完成后统一更新自动盘气泡位置。
+        /// </summary>
+        public static void UpdateAnchoredVisuals()
+        {
+            if (Visuals.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<long, SpeechVisual> pair in Visuals.ToList())
+            {
+                Kingdom kingdom = World.world?.kingdoms?.get(pair.Key);
+                SpeechVisual visual = pair.Value;
+                if (kingdom == null || !kingdom.isAlive() || visual?.Root == null || visual.Lines.Count == 0)
+                {
+                    continue;
+                }
+
+                RefreshVisual(kingdom, visual);
             }
         }
 
@@ -295,6 +316,12 @@ namespace XianniAutoPan.Services
 
         private static Transform ResolveUiParent()
         {
+            Canvas mapNames = CanvasMain.instance?.canvas_map_names;
+            if (mapNames != null)
+            {
+                return mapNames.transform;
+            }
+
             return MapBox.instance?.nameplate_manager?.transform;
         }
 
@@ -317,7 +344,7 @@ namespace XianniAutoPan.Services
             }
 
             EnsureParent(visual.Root.transform);
-            if (!TryGetAnchorScreenPosition(kingdom.getID(), out Vector2 anchorPosition))
+            if (!TryGetAnchorScreenPosition(kingdom, out Vector2 anchorPosition))
             {
                 return;
             }
@@ -351,15 +378,48 @@ namespace XianniAutoPan.Services
             ReleaseBubbleIcon(visual);
         }
 
-        private static bool TryGetAnchorScreenPosition(long kingdomId, out Vector2 screenPosition)
+        private static bool TryGetAnchorScreenPosition(Kingdom kingdom, out Vector2 screenPosition)
         {
             screenPosition = default;
-            if (!Anchors.TryGetValue(kingdomId, out SpeechAnchor anchor))
+            if (kingdom != null && Anchors.TryGetValue(kingdom.getID(), out SpeechAnchor anchor))
+            {
+                screenPosition = anchor.ScreenPosition;
+                return true;
+            }
+
+            return TryGetFallbackScreenPosition(kingdom, out screenPosition);
+        }
+
+        private static bool TryGetFallbackScreenPosition(Kingdom kingdom, out Vector2 screenPosition)
+        {
+            screenPosition = default;
+            if (kingdom == null || MapBox.instance?.camera == null)
             {
                 return false;
             }
 
-            screenPosition = anchor.ScreenPosition;
+            Actor actor = FindAnchorActor(kingdom);
+            Vector2 worldPosition;
+            if (actor != null && actor.isAlive())
+            {
+                worldPosition = actor.current_position;
+            }
+            else if (kingdom.capital != null && kingdom.capital.isAlive())
+            {
+                worldPosition = kingdom.capital.city_center;
+            }
+            else
+            {
+                worldPosition = new Vector2(kingdom.location.x, kingdom.location.y);
+            }
+
+            Vector3 projected = MapBox.instance.camera.WorldToScreenPoint(new Vector3(worldPosition.x, worldPosition.y, 0f));
+            if (projected.z < 0f)
+            {
+                return false;
+            }
+
+            screenPosition = new Vector2(projected.x, projected.y);
             return true;
         }
 

@@ -497,6 +497,32 @@ textarea {
   gap: 14px;
 }
 
+.score-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.score-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 1fr) minmax(110px, 0.6fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.score-table-wrap {
+  max-height: 420px;
+}
+
+.score-inline-input {
+  width: min(220px, 100%);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.score-wins-input {
+  width: 96px;
+}
+
 .policy-modules {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -740,6 +766,7 @@ textarea {
   .grid,
   .dashboard-secondary-grid,
   .policy-modules,
+  .score-edit-grid,
   .qq-bridge-grid {
     grid-template-columns: 1fr;
   }

@@ -41,6 +41,26 @@ namespace XianniAutoPan.Model
         public const string KeyGatherSpiritUntilYear = "xianni.autopan.gather_spirit_until_year";
 
         /// <summary>
+        /// 国家占领政策键。
+        /// </summary>
+        public const string KeyOccupationPolicy = "xianni.autopan.occupation_policy";
+
+        /// <summary>
+        /// 全民皆兵截止年份键。
+        /// </summary>
+        public const string KeyMilitiaUntilYear = "xianni.autopan.militia_until_year";
+
+        /// <summary>
+        /// 开放占领政策值。
+        /// </summary>
+        public const string OccupationPolicyOpen = "open_occupation";
+
+        /// <summary>
+        /// 坚守城池政策值。
+        /// </summary>
+        public const string OccupationPolicyDefend = "defend_city";
+
+        /// <summary>
         /// 玩家加入时的初始国库。
         /// </summary>
         public const int InitialTreasury = 200;
@@ -154,6 +174,11 @@ namespace XianniAutoPan.Model
         /// 增加人口每名单位的价格。
         /// </summary>
         public const int AddPopulationCostPerUnit = 55;
+
+        /// <summary>
+        /// 单次增加人口指令允许的最大人数。
+        /// </summary>
+        public const int MaxAddPopulationPerCommand = 10;
 
         /// <summary>
         /// 征集军队每名单位的价格。

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using xn.tournament;
 using xn.api;
@@ -79,23 +81,23 @@ namespace XianniAutoPan.Services
         public static bool IsRunning => _activeDuel != null;
 
         /// <summary>
-        /// 尝试以两国最强者开启专属约斗。
+        /// 尝试以两国战力前五随机强者开启专属约斗。
         /// </summary>
         public static bool TryStartStrongestDuel(Kingdom challenger, Kingdom defender, int betAmount, out string message)
         {
             message = string.Empty;
             if (_activeDuel != null)
             {
-                message = "当前已有一场最强者约斗正在进行，请等待上一场结束。";
+                message = "当前已有一场约斗正在进行，请等待上一场结束。";
                 return false;
             }
 
-            if (!AutoPanInteractionService.TryGetStrongestActor(challenger, out Actor fighterA, out string fighterASummary))
+            if (!AutoPanInteractionService.TryGetRandomTopPowerActor(challenger, out Actor fighterA, out string fighterASummary))
             {
                 message = fighterASummary;
                 return false;
             }
-            if (!AutoPanInteractionService.TryGetStrongestActor(defender, out Actor fighterB, out string fighterBSummary))
+            if (!AutoPanInteractionService.TryGetRandomTopPowerActor(defender, out Actor fighterB, out string fighterBSummary))
             {
                 message = fighterBSummary;
                 return false;
@@ -136,8 +138,8 @@ namespace XianniAutoPan.Services
             PrepareFighter(fighterB, fighterA, arenaTiles[arenaTiles.Count / 2]);
 
             string betText = _activeDuel.BetAmount > 0 ? $"，赌注 {_activeDuel.BetAmount} 金币" : string.Empty;
-            XianniAutoPanApi.Broadcast($"最强者约斗开启：{AutoPanKingdomService.FormatKingdomLabel(challenger)} 的 {fighterA.getName()} 对战 {AutoPanKingdomService.FormatKingdomLabel(defender)} 的 {fighterB.getName()}{betText}");
-            message = $"{AutoPanKingdomService.FormatKingdomLabel(challenger)} 与 {AutoPanKingdomService.FormatKingdomLabel(defender)} 的最强者约斗已开启：{fighterA.getName()} VS {fighterB.getName()}{betText}。";
+            XianniAutoPanApi.Broadcast($"约斗开启：{AutoPanKingdomService.FormatKingdomLabel(challenger)} 的 {fighterA.getName()} 对战 {AutoPanKingdomService.FormatKingdomLabel(defender)} 的 {fighterB.getName()}{betText}");
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(challenger)} 与 {AutoPanKingdomService.FormatKingdomLabel(defender)} 的约斗已开启：双方各从国家战力前 5 随机出战，{fighterA.getName()} VS {fighterB.getName()}{betText}。";
             return true;
         }
 
@@ -155,7 +157,7 @@ namespace XianniAutoPan.Services
             Actor fighterB = World.world?.units?.get(_activeDuel.FighterBId);
             if (fighterA == null && fighterB == null)
             {
-                FinishDuel(null, null, "最强者约斗结束：双方均已失去作战资格。");
+                FinishDuel(null, null, "约斗结束：双方均已失去作战资格。");
                 return;
             }
 
@@ -230,7 +232,7 @@ namespace XianniAutoPan.Services
             bool aliveB = fighterB != null && fighterB.isAlive();
             if (!aliveA && !aliveB)
             {
-                reason = "最强者约斗结束：双方同归于尽。";
+                reason = "约斗结束：双方同归于尽。";
                 return true;
             }
 
@@ -388,6 +390,13 @@ namespace XianniAutoPan.Services
             if (!string.IsNullOrWhiteSpace(reason))
             {
                 XianniAutoPanApi.Broadcast(finalReason);
+                List<string> atUserIds = AutoPanStateRepository.GetBindingsByKingdomId(duel.ChallengerKingdomId)
+                    .Concat(AutoPanStateRepository.GetBindingsByKingdomId(duel.DefenderKingdomId))
+                    .Where(item => item != null && !string.IsNullOrWhiteSpace(item.UserId))
+                    .Select(item => item.UserId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                AutoPanNotificationService.BroadcastToKnownGroups(finalReason, atUserIds);
             }
 
             _activeDuel = null;

@@ -12,6 +12,11 @@ const kingdomTableBodyEl = document.getElementById("kingdomTableBody");
 const policyModulesEl = document.getElementById("policyModules");
 const qqBridgePanelEl = document.getElementById("qqBridgePanel");
 const pendingRequestsEl = document.getElementById("pendingRequests");
+const scoreTableBodyEl = document.getElementById("scoreTableBody");
+const scoreUserIdEl = document.getElementById("scoreUserId");
+const scorePlayerNameEl = document.getElementById("scorePlayerName");
+const scoreWinsEl = document.getElementById("scoreWins");
+const scoreSaveButtonEl = document.getElementById("scoreSaveButton");
 const sendButtonEl = document.getElementById("sendButton");
 const refreshButtonEl = document.getElementById("refreshButton");
 const viewBindingButtonEl = document.getElementById("viewBindingButton");
@@ -27,6 +32,9 @@ const policyDrafts = Object.create(null);
 const policyDirtyKeys = new Set();
 const qqDrafts = Object.create(null);
 const qqDirtyKeys = new Set();
+const policySaveTimers = Object.create(null);
+const qqSaveTimers = Object.create(null);
+const AUTO_SAVE_DELAY_MS = 650;
 
 function pick(obj, camelKey, pascalKey) {
   if (!obj) {
@@ -87,6 +95,13 @@ function clearDraft(store, dirtySet, key) {
   }
   delete store[key];
   dirtySet.delete(key);
+}
+
+function clearDraftIfSaved(store, dirtySet, key, value) {
+  if (!key || String(store[key]) !== String(value)) {
+    return;
+  }
+  clearDraft(store, dirtySet, key);
 }
 
 function shouldSuspendAutoRefresh() {
@@ -216,6 +231,20 @@ function buildOwnerText(kingdom) {
   return "AI/无人绑定";
 }
 
+function formatIsoTime(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "无";
+  }
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return text;
+  }
+
+  return date.toLocaleString();
+}
+
 function renderPendingRequests(requests) {
   pendingRequestsEl.innerHTML = "";
   const items = Array.isArray(requests) ? requests : [];
@@ -327,11 +356,11 @@ function renderPolicy(policy) {
       input.type = "number";
       const key = pick(item, "key", "Key");
       input.value = String(getDraftValue(policyDrafts, policyDirtyKeys, key, String(pick(item, "value", "Value") ?? 0)));
-      input.addEventListener("input", () => rememberDraft(policyDrafts, policyDirtyKeys, key, input.value));
+      input.addEventListener("input", () => schedulePolicyAutoSave(key, input.value));
       inputRow.appendChild(input);
 
       const saveButton = createMiniButton("保存", "mini-btn-admin", () => {
-        sendCommand(`#设置政策 ${key} ${input.value.trim()}`);
+        savePolicySetting(key, input.value.trim(), true).catch((error) => appendReply(error.message, false));
       });
       inputRow.appendChild(saveButton);
       box.appendChild(inputRow);
@@ -409,11 +438,11 @@ function renderQqBridge(qqBridge, listenAddresses) {
   const enabledInput = document.createElement("input");
   enabledInput.type = "checkbox";
   enabledInput.checked = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqAdapterEnabled", enabled ? "1" : "0")) === "1";
-  enabledInput.addEventListener("change", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqAdapterEnabled", enabledInput.checked ? "1" : "0"));
+  enabledInput.addEventListener("change", () => scheduleQqAutoSave("qqAdapterEnabled", enabledInput.checked ? "1" : "0"));
   enabledLabel.appendChild(enabledInput);
   enabledLabel.appendChild(document.createTextNode("启用 QQ 群接入"));
   enabledRow.appendChild(enabledLabel);
-  enabledRow.appendChild(createConfigActionButton("保存", () => saveQqSetting("qqAdapterEnabled", enabledInput.checked ? "1" : "0")));
+  enabledRow.appendChild(createConfigActionButton("保存", () => saveQqSetting("qqAdapterEnabled", enabledInput.checked ? "1" : "0", true)));
   baseBody.appendChild(enabledRow);
 
   const replyRow = document.createElement("div");
@@ -423,11 +452,11 @@ function renderQqBridge(qqBridge, listenAddresses) {
   const replyInput = document.createElement("input");
   replyInput.type = "checkbox";
   replyInput.checked = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqReplyAtSender", replyAtSender ? "1" : "0")) === "1";
-  replyInput.addEventListener("change", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqReplyAtSender", replyInput.checked ? "1" : "0"));
+  replyInput.addEventListener("change", () => scheduleQqAutoSave("qqReplyAtSender", replyInput.checked ? "1" : "0"));
   replyLabel.appendChild(replyInput);
   replyLabel.appendChild(document.createTextNode("群回包时自动 @ 发送者"));
   replyRow.appendChild(replyLabel);
-  replyRow.appendChild(createConfigActionButton("保存", () => saveQqSetting("qqReplyAtSender", replyInput.checked ? "1" : "0")));
+  replyRow.appendChild(createConfigActionButton("保存", () => saveQqSetting("qqReplyAtSender", replyInput.checked ? "1" : "0", true)));
   baseBody.appendChild(replyRow);
   baseCard.appendChild(baseBody);
   qqBridgePanelEl.appendChild(baseCard);
@@ -459,7 +488,7 @@ function renderQqBridge(qqBridge, listenAddresses) {
     input.type = item.type;
     input.value = String(getDraftValue(qqDrafts, qqDirtyKeys, item.key, item.value));
     input.placeholder = item.placeholder;
-    input.addEventListener("input", () => rememberDraft(qqDrafts, qqDirtyKeys, item.key, input.value));
+    input.addEventListener("input", () => scheduleQqAutoSave(item.key, input.value));
     field.appendChild(label);
     field.appendChild(input);
     const tip = document.createElement("div");
@@ -467,7 +496,7 @@ function renderQqBridge(qqBridge, listenAddresses) {
     tip.textContent = item.help;
     field.appendChild(tip);
     row.appendChild(field);
-    row.appendChild(createConfigActionButton("保存", () => saveQqSetting(item.key, input.value.trim())));
+    row.appendChild(createConfigActionButton("保存", () => saveQqSetting(item.key, input.value.trim(), true)));
     socketBody.appendChild(row);
   });
   socketCard.appendChild(socketBody);
@@ -495,7 +524,7 @@ function renderQqBridge(qqBridge, listenAddresses) {
   scopeInput.rows = 4;
   scopeInput.value = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqGroupWhitelist", groupWhitelist));
   scopeInput.placeholder = "留空表示所有群都可用；多个群号用逗号、空格或换行分隔";
-  scopeInput.addEventListener("input", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqGroupWhitelist", scopeInput.value));
+  scopeInput.addEventListener("input", () => scheduleQqAutoSave("qqGroupWhitelist", scopeInput.value));
   scopeField.appendChild(scopeLabel);
   scopeField.appendChild(scopeInput);
   const scopeTip = document.createElement("div");
@@ -503,7 +532,7 @@ function renderQqBridge(qqBridge, listenAddresses) {
   scopeTip.textContent = "建议公开发布时默认留空，方便普通用户直接用；需要控群时再填写。";
   scopeField.appendChild(scopeTip);
   scopeRow.appendChild(scopeField);
-  scopeRow.appendChild(createConfigActionButton("保存白名单", () => saveQqSetting("qqGroupWhitelist", scopeInput.value)));
+  scopeRow.appendChild(createConfigActionButton("保存白名单", () => saveQqSetting("qqGroupWhitelist", scopeInput.value, true)));
   scopeBody.appendChild(scopeRow);
   scopeCard.appendChild(scopeBody);
   qqBridgePanelEl.appendChild(scopeCard);
@@ -530,7 +559,7 @@ function renderQqBridge(qqBridge, listenAddresses) {
   adminInput.rows = 4;
   adminInput.value = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqAdminWhitelist", adminWhitelist));
   adminInput.placeholder = "留空表示群里的 # 管理员指令全部拒绝；多个 QQ 号用逗号、空格或换行分隔";
-  adminInput.addEventListener("input", () => rememberDraft(qqDrafts, qqDirtyKeys, "qqAdminWhitelist", adminInput.value));
+  adminInput.addEventListener("input", () => scheduleQqAutoSave("qqAdminWhitelist", adminInput.value));
   adminField.appendChild(adminLabel);
   adminField.appendChild(adminInput);
   const adminTip = document.createElement("div");
@@ -538,10 +567,72 @@ function renderQqBridge(qqBridge, listenAddresses) {
   adminTip.textContent = "只有这里的 QQ 号才允许在群里执行 # 开头的管理员指令；网页端不受这个白名单限制。";
   adminField.appendChild(adminTip);
   adminRow.appendChild(adminField);
-  adminRow.appendChild(createConfigActionButton("保存管理员白名单", () => saveQqSetting("qqAdminWhitelist", adminInput.value)));
+  adminRow.appendChild(createConfigActionButton("保存管理员白名单", () => saveQqSetting("qqAdminWhitelist", adminInput.value, true)));
   adminBody.appendChild(adminRow);
   adminCard.appendChild(adminBody);
   qqBridgePanelEl.appendChild(adminCard);
+}
+
+function renderScoreboard(scoreboard) {
+  scoreTableBodyEl.innerHTML = "";
+  const items = Array.isArray(scoreboard) ? scoreboard : [];
+  if (items.length === 0) {
+    const emptyRow = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.className = "table-empty";
+    cell.textContent = "当前还没有玩家积分记录。";
+    emptyRow.appendChild(cell);
+    scoreTableBodyEl.appendChild(emptyRow);
+    return;
+  }
+
+  items.forEach((record, index) => {
+    const userId = pick(record, "userId", "UserId") || "";
+    const playerName = pick(record, "playerName", "PlayerName") || userId;
+    const wins = Number(pick(record, "wins", "Wins") ?? 0);
+    const row = document.createElement("tr");
+
+    const rankCell = document.createElement("td");
+    rankCell.textContent = String(index + 1);
+    row.appendChild(rankCell);
+
+    const userCell = document.createElement("td");
+    userCell.className = "wide-cell";
+    userCell.textContent = userId;
+    row.appendChild(userCell);
+
+    const nameCell = document.createElement("td");
+    const nameInput = document.createElement("input");
+    nameInput.className = "score-inline-input";
+    nameInput.type = "text";
+    nameInput.value = playerName;
+    nameCell.appendChild(nameInput);
+    row.appendChild(nameCell);
+
+    const winsCell = document.createElement("td");
+    const winsInput = document.createElement("input");
+    winsInput.className = "score-inline-input score-wins-input";
+    winsInput.type = "number";
+    winsInput.min = "0";
+    winsInput.value = String(Math.max(0, wins));
+    winsCell.appendChild(winsInput);
+    row.appendChild(winsCell);
+
+    const lastWinCell = document.createElement("td");
+    lastWinCell.textContent = formatIsoTime(pick(record, "lastWinUtc", "LastWinUtc"));
+    row.appendChild(lastWinCell);
+
+    const actionCell = document.createElement("td");
+    actionCell.className = "action-cell";
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    actions.appendChild(createMiniButton("保存", "mini-btn-admin", () => saveScore(userId, nameInput.value, winsInput.value)));
+    actions.appendChild(createMiniButton("删除", "mini-btn-danger", () => deleteScore(userId, playerName)));
+    actionCell.appendChild(actions);
+    row.appendChild(actionCell);
+    scoreTableBodyEl.appendChild(row);
+  });
 }
 
 function renderKingdoms(kingdoms) {
@@ -634,6 +725,7 @@ async function refreshDashboard() {
   renderAddresses(listenAddresses);
   renderKingdoms(pick(snapshot, "kingdoms", "Kingdoms"));
   renderPendingRequests(pick(snapshot, "pendingRequests", "PendingRequests"));
+  renderScoreboard(pick(snapshot, "scoreboard", "Scoreboard"));
   renderPolicy(pick(snapshot, "policy", "Policy"));
   renderQqBridge(pick(snapshot, "qqBridge", "QqBridge"), listenAddresses);
 
@@ -648,16 +740,112 @@ async function refreshDashboard() {
   aiStatusEl.textContent = `AI：${pick(snapshot, "aiEnabled", "AiEnabled") ? "已开启" : "已关闭"}`;
 }
 
-async function saveQqSetting(key, value) {
+function schedulePolicyAutoSave(key, value) {
+  rememberDraft(policyDrafts, policyDirtyKeys, key, value);
+  clearTimeout(policySaveTimers[key]);
+  policySaveTimers[key] = setTimeout(() => {
+    savePolicySetting(key, value, false).catch((error) => appendReply(error.message, false));
+  }, AUTO_SAVE_DELAY_MS);
+}
+
+async function savePolicySetting(key, value, refreshAfter = false) {
+  const response = await fetch(`/api/policy/set?key=${encodeURIComponent(key)}&value=${encodeURIComponent(value)}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`政策保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.ok) {
+    appendReply(payload.text || "政策保存失败。", false);
+    return;
+  }
+
+  clearDraftIfSaved(policyDrafts, policyDirtyKeys, key, value);
+  if (refreshAfter) {
+    appendReply(payload.text || "政策已保存。", true);
+    await refreshDashboard();
+  }
+}
+
+function scheduleQqAutoSave(key, value) {
+  rememberDraft(qqDrafts, qqDirtyKeys, key, value);
+  clearTimeout(qqSaveTimers[key]);
+  qqSaveTimers[key] = setTimeout(() => {
+    saveQqSetting(key, value, false).catch((error) => appendReply(error.message, false));
+  }, AUTO_SAVE_DELAY_MS);
+}
+
+async function saveQqSetting(key, value, refreshAfter = false) {
   const response = await fetch(`/api/qq-config/set?key=${encodeURIComponent(key)}&value=${encodeURIComponent(value)}`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`QQ 配置保存失败：${response.status}`);
   }
 
   const payload = await response.json();
-  clearDraft(qqDrafts, qqDirtyKeys, key);
-  appendReply(payload.text || "QQ 配置已保存。", !!payload.ok);
-  await refreshDashboard();
+  if (!payload.ok) {
+    appendReply(payload.text || "QQ 配置保存失败。", false);
+    return;
+  }
+
+  clearDraftIfSaved(qqDrafts, qqDirtyKeys, key, value);
+  if (refreshAfter) {
+    appendReply(payload.text || "QQ 配置已保存。", true);
+    await refreshDashboard();
+  }
+}
+
+async function saveScore(userId, playerName, wins) {
+  const normalizedUserId = String(userId || "").trim();
+  const normalizedWins = Number.parseInt(String(wins || "0"), 10);
+  if (!normalizedUserId) {
+    appendReply("积分保存失败：userId 不能为空。", false);
+    return;
+  }
+  if (!Number.isInteger(normalizedWins) || normalizedWins < 0) {
+    appendReply("积分保存失败：胜场必须是非负整数。", false);
+    return;
+  }
+
+  const url = `/api/score/set?userId=${encodeURIComponent(normalizedUserId)}&playerName=${encodeURIComponent(String(playerName || "").trim())}&wins=${encodeURIComponent(String(normalizedWins))}`;
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`积分保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  appendReply(payload.text || (payload.ok ? "积分已保存。" : "积分保存失败。"), !!payload.ok);
+  if (payload.ok) {
+    scoreUserIdEl.value = "";
+    scorePlayerNameEl.value = "";
+    scoreWinsEl.value = "0";
+    renderScoreboard(pick(payload, "scoreboard", "Scoreboard"));
+    await refreshDashboard();
+  }
+}
+
+async function deleteScore(userId, playerName) {
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) {
+    appendReply("积分删除失败：userId 不能为空。", false);
+    return;
+  }
+
+  const label = playerName && playerName !== normalizedUserId ? `${playerName}(${normalizedUserId})` : normalizedUserId;
+  if (!window.confirm(`确定删除 ${label} 的积分记录？这不会删除当前绑定国家。`)) {
+    return;
+  }
+
+  const response = await fetch(`/api/score/delete?userId=${encodeURIComponent(normalizedUserId)}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`积分删除失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  appendReply(payload.text || (payload.ok ? "积分记录已删除。" : "积分删除失败。"), !!payload.ok);
+  if (payload.ok) {
+    renderScoreboard(pick(payload, "scoreboard", "Scoreboard"));
+    await refreshDashboard();
+  }
 }
 
 function connectWebSocket() {
@@ -736,6 +924,10 @@ viewBindingButtonEl.addEventListener("click", () => {
 sendButtonEl.addEventListener("click", () => sendCommand());
 refreshButtonEl.addEventListener("click", () => {
   refreshDashboard().catch((error) => appendReply(error.message, false));
+});
+
+scoreSaveButtonEl.addEventListener("click", () => {
+  saveScore(scoreUserIdEl.value, scorePlayerNameEl.value, scoreWinsEl.value).catch((error) => appendReply(error.message, false));
 });
 
 commandTextEl.addEventListener("keydown", (event) => {

@@ -247,24 +247,7 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            city.checkArmyExistence();
-            if (!city.hasArmy() && city.hasAnyWarriors())
-            {
-                World.world.armies.newArmy(recruited[0], city);
-            }
-
-            if (city.hasArmy())
-            {
-                Army army = city.getArmy();
-                foreach (Actor actor in recruited)
-                {
-                    if (!actor.hasArmy())
-                    {
-                        actor.setArmy(army);
-                    }
-                }
-                army.checkCity();
-            }
+            AssignRecruitedToArmy(city, recruited);
 
             message = $"{FormatCityLabel(city)} 已征集 {recruited.Count} 名士兵，消耗 {cost} 金币，当前军队人数 {GetArmySizeText(city)}。";
             return true;
@@ -317,6 +300,59 @@ namespace XianniAutoPan.Services
             AutoPanKingdomService.ClearSnapshotCache(targetKingdom.getID());
             message = $"{FormatCityLabel(city)} 已移交给 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)}，消耗 {AutoPanConfigHooks.TransferCityCost} 金币。";
             return true;
+        }
+
+        /// <summary>
+        /// 随机移交当前国家的一座非首都城市给目标国家。
+        /// </summary>
+        public static bool TryTransferRandomNonCapitalCity(Kingdom kingdom, string rawTargetKingdomName, out string message)
+        {
+            message = string.Empty;
+            List<City> candidates = GetOwnedCities(kingdom)
+                .Where(city => city != null && city.isAlive() && !city.isCapitalCity())
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                message = "当前国家没有可随机移交的非首都城市。";
+                return false;
+            }
+
+            City selectedCity = candidates[Randy.randomInt(0, candidates.Count)];
+            return TryTransferCity(kingdom, FormatCityLabel(selectedCity), rawTargetKingdomName, out message);
+        }
+
+        /// <summary>
+        /// 全民皆兵生效时，把全国可征集成年平民补入当地军队。
+        /// </summary>
+        public static int ApplyNationalMilitiaDraft(Kingdom kingdom)
+        {
+            int total = 0;
+            foreach (City city in GetOwnedCities(kingdom))
+            {
+                List<Actor> recruited = city.units
+                    .Where(IsEligibleConscript)
+                    .Where(city.checkCanMakeWarrior)
+                    .ToList();
+                if (recruited.Count == 0)
+                {
+                    continue;
+                }
+
+                List<Actor> actualRecruited = new List<Actor>();
+                foreach (Actor actor in recruited)
+                {
+                    if (city.checkCanMakeWarrior(actor))
+                    {
+                        city.makeWarrior(actor);
+                        actualRecruited.Add(actor);
+                        total++;
+                    }
+                }
+
+                AssignRecruitedToArmy(city, actualRecruited);
+            }
+
+            return total;
         }
 
         /// <summary>
@@ -416,6 +452,35 @@ namespace XianniAutoPan.Services
             }
 
             return army.units.Count(unit => unit != null && unit.isAlive());
+        }
+
+        private static void AssignRecruitedToArmy(City city, List<Actor> recruited)
+        {
+            if (city == null || recruited == null || recruited.Count == 0)
+            {
+                return;
+            }
+
+            city.checkArmyExistence();
+            if (!city.hasArmy() && city.hasAnyWarriors())
+            {
+                World.world.armies.newArmy(recruited[0], city);
+            }
+
+            if (!city.hasArmy())
+            {
+                return;
+            }
+
+            Army army = city.getArmy();
+            foreach (Actor actor in recruited)
+            {
+                if (actor != null && actor.isAlive() && !actor.hasArmy())
+                {
+                    actor.setArmy(army);
+                }
+            }
+            army.checkCity();
         }
 
         private static List<string> BuildEquipmentSetIds(string tierSuffix)
