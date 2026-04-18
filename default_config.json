@@ -7,12 +7,6 @@
       "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnEnableLlmAiChanged"
     },
     {
-      "Id": "autopan_open_web_panel",
-      "Type": "SWITCH",
-      "BoolVal": false,
-      "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnOpenWebPanelToggled"
-    },
-    {
       "Id": "autopan_http_port",
       "Type": "TEXT",
       "TextVal": "19051",
@@ -45,5 +39,12 @@
       "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnLlmApiKeyChanged"
     }
   ],
-  "autopan_config_policy": []
+  "autopan_config_policy": [
+    {
+      "Id": "autopan_open_web_panel",
+      "Type": "SWITCH",
+      "BoolVal": false,
+      "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnOpenWebPanelToggled"
+    }
+  ]
 }
