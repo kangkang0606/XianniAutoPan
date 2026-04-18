@@ -20,6 +20,8 @@ const scoreSaveButtonEl = document.getElementById("scoreSaveButton");
 const sendButtonEl = document.getElementById("sendButton");
 const refreshButtonEl = document.getElementById("refreshButton");
 const viewBindingButtonEl = document.getElementById("viewBindingButton");
+const aiEnableToggleEl = document.getElementById("aiEnableToggle");
+const aiQqChatToggleEl = document.getElementById("aiQqChatToggle");
 const pageTabEls = Array.from(document.querySelectorAll("[data-page-target]"));
 const pageViewEls = Array.from(document.querySelectorAll("[data-page-view]"));
 
@@ -573,6 +575,18 @@ function renderQqBridge(qqBridge, listenAddresses) {
   qqBridgePanelEl.appendChild(adminCard);
 }
 
+function renderAiControls(snapshot) {
+  const aiEnabled = !!pick(snapshot, "aiEnabled", "AiEnabled");
+  const aiQqChatEnabled = !!pick(snapshot, "aiQqChatEnabled", "AiQqChatEnabled");
+  aiStatusEl.textContent = `AI：${aiEnabled ? "已开启" : "已关闭"}`;
+  if (aiEnableToggleEl) {
+    aiEnableToggleEl.checked = aiEnabled;
+  }
+  if (aiQqChatToggleEl) {
+    aiQqChatToggleEl.checked = aiQqChatEnabled;
+  }
+}
+
 function renderScoreboard(scoreboard) {
   scoreTableBodyEl.innerHTML = "";
   const items = Array.isArray(scoreboard) ? scoreboard : [];
@@ -737,7 +751,7 @@ async function refreshDashboard() {
     commandBookEl.textContent = bookResponse.ok ? await bookResponse.text() : "";
   }
 
-  aiStatusEl.textContent = `AI：${pick(snapshot, "aiEnabled", "AiEnabled") ? "已开启" : "已关闭"}`;
+  renderAiControls(snapshot);
 }
 
 function schedulePolicyAutoSave(key, value) {
@@ -877,6 +891,9 @@ function connectWebSocket() {
       appendReply(payload.text, !!payload.ok);
       updateBinding(payload.binding);
       aiStatusEl.textContent = `AI：${payload.aiEnabled ? "已开启" : "已关闭"}`;
+      if (aiEnableToggleEl) {
+        aiEnableToggleEl.checked = !!payload.aiEnabled;
+      }
       await refreshDashboard().catch((error) => appendReply(error.message, false));
     }
   });
@@ -886,11 +903,11 @@ function sendCommand(command) {
   const text = (command || commandTextEl.value).trim();
   if (!text) {
     appendReply("请输入要发送的命令。", false);
-    return;
+    return false;
   }
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     appendReply("WebSocket 尚未连接成功。", false);
-    return;
+    return false;
   }
 
   socket.send(JSON.stringify({
@@ -902,6 +919,7 @@ function sendCommand(command) {
   if (!command) {
     commandTextEl.value = "";
   }
+  return true;
 }
 
 document.querySelectorAll("[data-command]").forEach((button) => {
@@ -925,6 +943,22 @@ sendButtonEl.addEventListener("click", () => sendCommand());
 refreshButtonEl.addEventListener("click", () => {
   refreshDashboard().catch((error) => appendReply(error.message, false));
 });
+
+if (aiEnableToggleEl) {
+  aiEnableToggleEl.addEventListener("change", () => {
+    const nextChecked = aiEnableToggleEl.checked;
+    if (!sendCommand(nextChecked ? "#全局AI 开" : "#全局AI 关")) {
+      aiEnableToggleEl.checked = !nextChecked;
+    }
+  });
+}
+
+if (aiQqChatToggleEl) {
+  aiQqChatToggleEl.addEventListener("change", () => {
+    savePolicySetting("aiQqChatEnabled", aiQqChatToggleEl.checked ? "1" : "0", true)
+      .catch((error) => appendReply(error.message, false));
+  });
+}
 
 scoreSaveButtonEl.addEventListener("click", () => {
   saveScore(scoreUserIdEl.value, scorePlayerNameEl.value, scoreWinsEl.value).catch((error) => appendReply(error.message, false));

@@ -524,6 +524,16 @@ namespace XianniAutoPan.Services
         public static int AiDecisionStartYear { get; private set; } = 1;
 
         /// <summary>
+        /// AI 决策强度，控制年度调度频率和每次最多动作数。
+        /// </summary>
+        public static int AiDecisionIntensity { get; private set; } = 3;
+
+        /// <summary>
+        /// AI 决策结果是否允许向 QQ 群发送回包。
+        /// </summary>
+        public static int AiQqChatEnabled { get; private set; }
+
+        /// <summary>
         /// 玩家从哪一年开始允许执行宣战指令。
         /// </summary>
         public static int PlayerDecisionStartYear { get; private set; } = 1;
@@ -1173,7 +1183,9 @@ namespace XianniAutoPan.Services
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
 
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家国家才允许宣战；其它玩家指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionIntensity", "AI决策强度", "范围 1~5；强度越高，AI 调度越频繁且每次最多执行更多动作。", "档", 1, 5, () => AiDecisionIntensity, value => AiDecisionIntensity = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiQqChatEnabled", "AI QQ回包", "0=关闭，1=开启；开启后 AI 决策摘要会发送到最近活跃 QQ 群。", "", 0, 1, () => AiQqChatEnabled, value => AiQqChatEnabled = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家和 AI 国家才允许宣战；其它指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
 
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenPunishCost", "天运惩罚成本", "执行天运惩罚消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenPunishCost, value => HeavenPunishCost = value);
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenBlessCost", "天运赐福成本", "执行天运赐福消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenBlessCost, value => HeavenBlessCost = value);

@@ -179,6 +179,10 @@ namespace XianniAutoPan.Services
             AutoPanKingdomSpeechService.ShowSpeech(target, "外交请求", $"{AutoPanKingdomService.FormatKingdomLabel(source)} 请求结盟", isCommand: true);
             message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。";
             AutoPanNotificationService.NotifyKingdomOwners(target, $"{AutoPanKingdomService.FormatKingdomLabel(source)} 向你的国家发出结盟请求，请在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。");
+            if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
+            {
+                message += "\n" + aiResponseText;
+            }
             return true;
         }
 
@@ -220,6 +224,10 @@ namespace XianniAutoPan.Services
             AutoPanKingdomSpeechService.ShowSpeech(target, "比武邀请", $"{AutoPanKingdomService.FormatKingdomLabel(source)} {duelTitle}", isCommand: true);
             message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。";
             AutoPanNotificationService.NotifyKingdomOwners(target, $"{AutoPanKingdomService.FormatKingdomLabel(source)} 向你的国家发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，请在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。");
+            if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
+            {
+                message += "\n" + aiResponseText;
+            }
             return true;
         }
 
@@ -333,6 +341,36 @@ namespace XianniAutoPan.Services
 
             error = $"当前没有来自 {AutoPanKingdomService.FormatKingdomLabel(source)} 的{GetTypeText(type)}请求。";
             return null;
+        }
+
+        private static bool TryAutoRespondByAi(PendingRequest request, Kingdom source, Kingdom target, out string message)
+        {
+            message = string.Empty;
+            if (!AutoPanConfigHooks.EnableLlmAi || request == null || source == null || target == null || AutoPanStateRepository.IsPlayerOwnedKingdom(target))
+            {
+                return false;
+            }
+
+            bool accept = ShouldAiAcceptRequest(request, source, target);
+            if (!TryRespondRequest(target, AutoPanKingdomService.FormatKingdomLabel(source), request.Type, accept, out string responseText))
+            {
+                message = $"Ai:{target.name}回应失败";
+                return true;
+            }
+
+            string actionText = accept ? "同意" : "拒绝";
+            message = $"Ai:{target.name}已{actionText}{GetTypeText(request.Type)}";
+            return true;
+        }
+
+        private static bool ShouldAiAcceptRequest(PendingRequest request, Kingdom source, Kingdom target)
+        {
+            if (request.Type == AutoPanPendingRequestType.Alliance)
+            {
+                return target.getWars().Count() <= 2 && !target.isEnemy(source);
+            }
+
+            return !AutoPanDuelService.IsRunning;
         }
 
         private static PendingRequest FindDuplicate(long sourceKingdomId, long targetKingdomId, AutoPanPendingRequestType type)

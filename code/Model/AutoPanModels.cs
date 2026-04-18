@@ -499,6 +499,16 @@ namespace XianniAutoPan.Model
         public bool AiEnabled { get; set; }
 
         /// <summary>
+        /// AI 决策强度。
+        /// </summary>
+        public int AiDecisionIntensity { get; set; }
+
+        /// <summary>
+        /// AI 是否允许向 QQ 群发送决策回包。
+        /// </summary>
+        public bool AiQqChatEnabled { get; set; }
+
+        /// <summary>
         /// 当前可访问地址。
         /// </summary>
         public List<string> ListenAddresses { get; set; } = new List<string>();
@@ -713,6 +723,36 @@ namespace XianniAutoPan.Model
     internal sealed class AutoPanAiRequestContext
     {
         /// <summary>
+        /// 当前世界年份。
+        /// </summary>
+        public int CurrentYear { get; set; }
+
+        /// <summary>
+        /// 玩家与 AI 国家允许宣战的起始年份。
+        /// </summary>
+        public int DeclareWarStartYear { get; set; }
+
+        /// <summary>
+        /// 当前年份是否允许宣战。
+        /// </summary>
+        public bool CanDeclareWar { get; set; }
+
+        /// <summary>
+        /// 结盟、约斗等待回应的秒数。
+        /// </summary>
+        public int RequestTimeoutSeconds { get; set; }
+
+        /// <summary>
+        /// AI 决策强度。
+        /// </summary>
+        public int DecisionIntensity { get; set; }
+
+        /// <summary>
+        /// 本轮最多允许输出的动作数。
+        /// </summary>
+        public int MaxActions { get; set; }
+
+        /// <summary>
         /// 国家 ID。
         /// </summary>
         public long KingdomId { get; set; }
@@ -758,9 +798,39 @@ namespace XianniAutoPan.Model
         public int TotalAura { get; set; }
 
         /// <summary>
+        /// 军队数量。
+        /// </summary>
+        public int ArmyCount { get; set; }
+
+        /// <summary>
+        /// 国家当前占领政策。
+        /// </summary>
+        public string OccupationPolicy { get; set; }
+
+        /// <summary>
+        /// 所属联盟名称。
+        /// </summary>
+        public string AllianceName { get; set; }
+
+        /// <summary>
+        /// 是否处于战争中。
+        /// </summary>
+        public bool AtWar { get; set; }
+
+        /// <summary>
         /// 聚灵是否生效。
         /// </summary>
         public bool GatherSpiritActive { get; set; }
+
+        /// <summary>
+        /// 聚灵剩余年份。
+        /// </summary>
+        public int GatherSpiritRemainYears { get; set; }
+
+        /// <summary>
+        /// 全民皆兵剩余年份。
+        /// </summary>
+        public int MilitiaRemainYears { get; set; }
 
         /// <summary>
         /// 当前敌对国家。
@@ -786,6 +856,97 @@ namespace XianniAutoPan.Model
         /// 妖兽候选描述。
         /// </summary>
         public List<string> BeastChoices { get; set; } = new List<string>();
+
+        /// <summary>
+        /// 当前世界全部文明国家摘要。
+        /// </summary>
+        public List<AutoPanAiKingdomSummary> AllKingdoms { get; set; } = new List<AutoPanAiKingdomSummary>();
+    }
+
+    /// <summary>
+    /// AI 可读取的单个国家摘要。
+    /// </summary>
+    internal sealed class AutoPanAiKingdomSummary
+    {
+        /// <summary>
+        /// 带 kingdomId 的国家标签。
+        /// </summary>
+        public string Label { get; set; }
+
+        /// <summary>
+        /// 是否为当前 AI 自己。
+        /// </summary>
+        public bool IsSelf { get; set; }
+
+        /// <summary>
+        /// 是否为玩家绑定国家。
+        /// </summary>
+        public bool IsPlayerOwned { get; set; }
+
+        /// <summary>
+        /// 玩家拥有者显示名。
+        /// </summary>
+        public string OwnerName { get; set; }
+
+        /// <summary>
+        /// 与当前 AI 国家的关系。
+        /// </summary>
+        public string RelationToSelf { get; set; }
+
+        /// <summary>
+        /// 国库金币。
+        /// </summary>
+        public int Treasury { get; set; }
+
+        /// <summary>
+        /// 国家等级。
+        /// </summary>
+        public int NationLevel { get; set; }
+
+        /// <summary>
+        /// 修真国等级。
+        /// </summary>
+        public int XiuzhenguoLevel { get; set; }
+
+        /// <summary>
+        /// 城市数量。
+        /// </summary>
+        public int CityCount { get; set; }
+
+        /// <summary>
+        /// 人口数量。
+        /// </summary>
+        public int Population { get; set; }
+
+        /// <summary>
+        /// 军队数量。
+        /// </summary>
+        public int ArmyCount { get; set; }
+
+        /// <summary>
+        /// 有效灵气。
+        /// </summary>
+        public int TotalAura { get; set; }
+
+        /// <summary>
+        /// 预计年收入。
+        /// </summary>
+        public int AnnualIncome { get; set; }
+
+        /// <summary>
+        /// 国家政策。
+        /// </summary>
+        public string OccupationPolicy { get; set; }
+
+        /// <summary>
+        /// 联盟名称。
+        /// </summary>
+        public string AllianceName { get; set; }
+
+        /// <summary>
+        /// 是否处于任意战争。
+        /// </summary>
+        public bool AtWar { get; set; }
     }
 
     /// <summary>
@@ -799,9 +960,24 @@ namespace XianniAutoPan.Model
         public long KingdomId { get; set; }
 
         /// <summary>
+        /// 发起该次决策时的世界年份。
+        /// </summary>
+        public int DecisionYear { get; set; }
+
+        /// <summary>
         /// 决策使用的动作文本。
         /// </summary>
         public List<string> Commands { get; set; } = new List<string>();
+
+        /// <summary>
+        /// AI 对本轮国情的简短分析。
+        /// </summary>
+        public string AnalysisText { get; set; }
+
+        /// <summary>
+        /// 允许发送到 QQ 群的 AI 回包文案。
+        /// </summary>
+        public string ChatText { get; set; }
 
         /// <summary>
         /// 是否使用了兜底规则。

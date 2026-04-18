@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using NeoModLoader.api;
+using XianniAutoPan.AI;
 using XianniAutoPan.Model;
 using XianniAutoPan.Services;
 using xn.api;
@@ -34,6 +35,26 @@ namespace XianniAutoPan.Commands
             AutoPanCommandType.ScoreRank,
             AutoPanCommandType.CurrentSituationScreenshot,
             AutoPanCommandType.AdminCurrentSituationScreenshot
+        };
+
+        private static readonly HashSet<AutoPanCommandType> AiAllowedCommands = new HashSet<AutoPanCommandType>
+        {
+            AutoPanCommandType.UpgradeNation,
+            AutoPanCommandType.UpgradeXiuzhenguo,
+            AutoPanCommandType.ChangeKingdomPolicy,
+            AutoPanCommandType.GatherSpirit,
+            AutoPanCommandType.NationalMilitia,
+            AutoPanCommandType.AddPopulation,
+            AutoPanCommandType.DeclareWar,
+            AutoPanCommandType.SeekPeace,
+            AutoPanCommandType.BloodlineCreate,
+            AutoPanCommandType.KingdomBlessing,
+            AutoPanCommandType.CultivatorRetreat,
+            AutoPanCommandType.CultivatorRealmUp,
+            AutoPanCommandType.AncientTrain,
+            AutoPanCommandType.AncientStarUp,
+            AutoPanCommandType.BeastTrain,
+            AutoPanCommandType.BeastStageUp
         };
 
         private static readonly WorldTimeScaleAsset CustomWorldSpeedAsset = new WorldTimeScaleAsset
@@ -81,6 +102,11 @@ namespace XianniAutoPan.Commands
                     result.Success = true;
                     result.Text = $"已在 {chatKingdom.name} 上方显示聊天内容。";
                     result.SuppressQqReply = message.SourceType == AutoPanInputSourceType.QqGroup;
+                    if (message.SourceType == AutoPanInputSourceType.QqGroup && AutoPanAiService.TryBuildPlayerChatReply(chatKingdom, playerName, command.RawText, out string aiChatReply))
+                    {
+                        result.Text = aiChatReply;
+                        result.SuppressQqReply = false;
+                    }
                     return result;
                 }
 
@@ -171,7 +197,7 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            if (IsPlayerCommandBlockedByYear(command, out string yearLimitText))
+            if (IsDeclareWarBlockedByYear(command, "玩家国家", out string yearLimitText))
             {
                 result.Text = yearLimitText;
                 return result;
@@ -196,8 +222,29 @@ namespace XianniAutoPan.Commands
                 message = "AI 国家已失效。";
                 return false;
             }
+            if (!AutoPanConfigHooks.EnableLlmAi)
+            {
+                message = "全局自动盘 AI 未开启。";
+                return false;
+            }
 
             AutoPanParsedCommand command = AutoPanCommandParser.Parse(commandText);
+            if (command.CommandType == AutoPanCommandType.Unknown)
+            {
+                message = $"AI 指令无法解析：{commandText}";
+                return false;
+            }
+            if (!AiAllowedCommands.Contains(command.CommandType))
+            {
+                message = $"AI 指令不在允许范围内：{commandText}";
+                return false;
+            }
+            if (IsDeclareWarBlockedByYear(command, "AI 国家", out string yearLimitText))
+            {
+                message = yearLimitText;
+                return false;
+            }
+
             AutoPanCommandResult result = new AutoPanCommandResult
             {
                 UserId = $"ai:{kingdom.getID()}",
@@ -1122,6 +1169,7 @@ namespace XianniAutoPan.Commands
         {
             ModConfig config = XianniAutoPanMain.Instance.GetConfig();
             config["autopan_config_basic"]["autopan_enable_llm_ai"].SetValue(enabled);
+            AutoPanConfigHooks.OnEnableLlmAiChanged(enabled);
             config.Save();
             result.Success = true;
             result.Text = enabled ? "全局自动盘 AI 已开启。" : "全局自动盘 AI 已关闭。";
@@ -1162,7 +1210,7 @@ namespace XianniAutoPan.Commands
             return result;
         }
 
-        private static bool IsPlayerCommandBlockedByYear(AutoPanParsedCommand command, out string message)
+        private static bool IsDeclareWarBlockedByYear(AutoPanParsedCommand command, string actorText, out string message)
         {
             message = string.Empty;
             if (command.CommandType != AutoPanCommandType.DeclareWar)
@@ -1177,7 +1225,7 @@ namespace XianniAutoPan.Commands
                 return false;
             }
 
-            message = $"当前为第 {currentYear} 年，玩家国家需到第 {startYear} 年后才能宣战；其它玩家指令不受该年份限制。";
+            message = $"当前为第 {currentYear} 年，{actorText}需到第 {startYear} 年后才能宣战；其它指令不受该年份限制。";
             return true;
         }
 

@@ -444,6 +444,8 @@ namespace XianniAutoPan.Services
             {
                 ServerRunning = serverRunning,
                 AiEnabled = AutoPanConfigHooks.EnableLlmAi,
+                AiDecisionIntensity = AutoPanConfigHooks.AiDecisionIntensity,
+                AiQqChatEnabled = AutoPanConfigHooks.AiQqChatEnabled > 0,
                 CommandBookText = commandBookText,
                 RecentLogs = AutoPanLogService.GetRecentEntries(),
                 Kingdoms = AutoPanKingdomService.BuildDashboardKingdoms(),

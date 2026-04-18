@@ -595,6 +595,11 @@ namespace XianniAutoPan.Services
             }
 
             List<string> lines = new List<string> { "当前全部国家信息：" };
+            Dictionary<long, string> aiShortcuts = AutoPanConfigHooks.EnableLlmAi
+                ? GetAiShortcutKingdoms()
+                    .Select((item, index) => new { KingdomId = item.getID(), Label = $"ai{index + 1}" })
+                    .ToDictionary(item => item.KingdomId, item => item.Label)
+                : new Dictionary<long, string>();
             foreach (Kingdom kingdom in kingdoms)
             {
                 kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, null);
@@ -602,7 +607,8 @@ namespace XianniAutoPan.Services
                 string ownerText = !string.IsNullOrWhiteSpace(ownerName)
                     ? $"{ownerName}({(!string.IsNullOrWhiteSpace(ownerUserId) ? ownerUserId : "未知QQ")})"
                     : "AI/无人绑定";
-                lines.Add($"{BuildKingdomInfoText(kingdom)}，拥有者 {ownerText}。");
+                string aiShortcutText = aiShortcuts.TryGetValue(kingdom.getID(), out string shortcut) ? $"，AI快捷 {shortcut}/ai({shortcut.Substring(2)})" : string.Empty;
+                lines.Add($"{BuildKingdomInfoText(kingdom)}，拥有者 {ownerText}{aiShortcutText}。");
             }
 
             return string.Join("\n", lines);
@@ -859,6 +865,15 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (TryResolveAiShortcut(rawName, out kingdom, out error))
+            {
+                return true;
+            }
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
             if (TryExtractTaggedId(rawName, out long explicitKingdomId))
             {
                 kingdom = World.world.kingdoms.get(explicitKingdomId);
@@ -926,6 +941,55 @@ namespace XianniAutoPan.Services
 
             error = "找不到目标国家。当前可选国家：" + string.Join("，", aliveKingdoms.Select(FormatKingdomLabel).Take(10).ToArray());
             return false;
+        }
+
+        private static bool TryResolveAiShortcut(string rawName, out Kingdom kingdom, out string error)
+        {
+            kingdom = null;
+            error = string.Empty;
+            Match match = Regex.Match((rawName ?? string.Empty).Trim(), @"^ai(?:[\(（](\d+)[\)）]|(\d+))$", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                return false;
+            }
+            if (!AutoPanConfigHooks.EnableLlmAi)
+            {
+                error = "全局自动盘 AI 未开启，无法使用 ai 快捷目标。";
+                return false;
+            }
+
+            string indexText = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+            if (!int.TryParse(indexText, out int shortcutIndex) || shortcutIndex <= 0)
+            {
+                error = "AI 快捷目标格式错误，请使用 ai1、ai(1) 或 ai（1）。";
+                return false;
+            }
+
+            List<Kingdom> aiKingdoms = GetAiShortcutKingdoms();
+            if (shortcutIndex > aiKingdoms.Count)
+            {
+                error = $"当前只有 {aiKingdoms.Count} 个 AI 国家可用，找不到 ai{shortcutIndex}。";
+                return false;
+            }
+
+            kingdom = aiKingdoms[shortcutIndex - 1];
+            return true;
+        }
+
+        private static List<Kingdom> GetAiShortcutKingdoms()
+        {
+            if (World.world?.kingdoms == null)
+            {
+                return new List<Kingdom>();
+            }
+
+            return World.world.kingdoms
+                .Where(item => item != null && item.isAlive() && item.isCiv() && !AutoPanStateRepository.IsPlayerOwnedKingdom(item))
+                .OrderByDescending(item => item.countCities())
+                .ThenByDescending(item => item.getPopulationTotal())
+                .ThenBy(item => item.name)
+                .ThenBy(item => item.getID())
+                .ToList();
         }
 
         private static bool TryResolveKingdomByMention(string rawName, out Kingdom kingdom, out string error)
@@ -1452,7 +1516,10 @@ namespace XianniAutoPan.Services
             }
         }
 
-        private static int CountArmyUnits(Kingdom kingdom)
+        /// <summary>
+        /// 统计国家当前军队数量。
+        /// </summary>
+        public static int CountArmyUnits(Kingdom kingdom)
         {
             if (kingdom == null || !kingdom.isAlive())
             {
@@ -1497,9 +1564,17 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static AutoPanAiRequestContext BuildAiContext(Kingdom kingdom)
         {
+            int currentYear = Date.getCurrentYear();
             XianniKingdomSnapshot snapshot = GetSnapshot(kingdom, forceRefresh: true);
+            Alliance alliance = kingdom.getAlliance();
             AutoPanAiRequestContext context = new AutoPanAiRequestContext
             {
+                CurrentYear = currentYear,
+                DeclareWarStartYear = AutoPanConfigHooks.PlayerDecisionStartYear,
+                CanDeclareWar = currentYear >= AutoPanConfigHooks.PlayerDecisionStartYear,
+                RequestTimeoutSeconds = AutoPanConfigHooks.RequestTimeoutSeconds,
+                DecisionIntensity = AutoPanConfigHooks.AiDecisionIntensity,
+                MaxActions = Math.Max(1, Math.Min(5, AutoPanConfigHooks.AiDecisionIntensity)),
                 KingdomId = kingdom.getID(),
                 KingdomName = kingdom.name,
                 Treasury = GetTreasury(kingdom),
@@ -1509,7 +1584,13 @@ namespace XianniAutoPan.Services
                 CityCount = kingdom.countCities(),
                 Population = kingdom.getPopulationTotal(),
                 TotalAura = GetEffectiveAura(kingdom),
-                GatherSpiritActive = IsGatherSpiritActive(kingdom)
+                ArmyCount = CountArmyUnits(kingdom),
+                OccupationPolicy = GetOccupationPolicyText(kingdom),
+                AllianceName = alliance?.name ?? string.Empty,
+                AtWar = kingdom.getWars().Any(),
+                GatherSpiritActive = IsGatherSpiritActive(kingdom),
+                GatherSpiritRemainYears = Math.Max(0, GetGatherSpiritUntilYear(kingdom) - currentYear),
+                MilitiaRemainYears = Math.Max(0, GetMilitiaUntilYear(kingdom) - currentYear)
             };
 
             foreach (War war in kingdom.getWars())
@@ -1523,21 +1604,79 @@ namespace XianniAutoPan.Services
 
             foreach (Kingdom other in World.world.kingdoms)
             {
-                if (other == null || !other.isAlive() || other == kingdom)
+                if (other == null || !other.isAlive() || !other.isCiv() || other == kingdom)
                 {
                     continue;
                 }
 
-                if (!kingdom.isEnemy(other))
+                if (context.CanDeclareWar && !kingdom.isEnemy(other) && !Alliance.isSame(kingdom.getAlliance(), other.getAlliance()))
                 {
                     context.CandidateKingdomNames.Add(FormatKingdomLabel(other));
                 }
             }
 
-            context.CultivatorChoices = snapshot.Cultivators.Select((item, index) => $"{index + 1}. {item.ActorName} / 境界索引{item.StageIndex} / 修为{item.PowerValue}").ToList();
-            context.AncientChoices = snapshot.Ancients.Select((item, index) => $"{index + 1}. {item.ActorName} / {item.StageValue}星 / 古神之力{item.PowerValue}").ToList();
-            context.BeastChoices = snapshot.Beasts.Select((item, index) => $"{index + 1}. {item.ActorName} / {item.StageValue}阶 / 妖力{item.PowerValue}").ToList();
+            foreach (Kingdom other in World.world.kingdoms)
+            {
+                if (other == null || !other.isAlive() || !other.isCiv())
+                {
+                    continue;
+                }
+
+                XianniKingdomSnapshot otherSnapshot = GetSnapshot(other);
+                other.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, string.Empty);
+                Alliance otherAlliance = other.getAlliance();
+                context.AllKingdoms.Add(new AutoPanAiKingdomSummary
+                {
+                    Label = FormatKingdomLabel(other),
+                    IsSelf = other == kingdom,
+                    IsPlayerOwned = AutoPanStateRepository.IsPlayerOwnedKingdom(other),
+                    OwnerName = ownerName ?? string.Empty,
+                    RelationToSelf = BuildAiRelationText(kingdom, other),
+                    Treasury = GetTreasury(other),
+                    NationLevel = GetLevel(other),
+                    XiuzhenguoLevel = otherSnapshot.XiuzhenguoLevel,
+                    CityCount = other.countCities(),
+                    Population = other.getPopulationTotal(),
+                    ArmyCount = CountArmyUnits(other),
+                    TotalAura = GetEffectiveAura(other),
+                    AnnualIncome = ComputeYearlyIncome(other),
+                    OccupationPolicy = GetOccupationPolicyText(other),
+                    AllianceName = otherAlliance?.name ?? string.Empty,
+                    AtWar = other.getWars().Any()
+                });
+            }
+
+            context.CultivatorChoices = snapshot.Cultivators.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / 境界索引{item.StageIndex} / 修为{item.PowerValue} / 可用：修士 {item.ActorId} 闭关、修士 {item.ActorId} 升境").ToList();
+            context.AncientChoices = snapshot.Ancients.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / {item.StageValue}星 / 古神之力{item.PowerValue} / 可用：古神 {item.ActorId} 炼体、古神 {item.ActorId} 升星").ToList();
+            context.BeastChoices = snapshot.Beasts.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / {item.StageValue}阶 / 妖力{item.PowerValue} / 可用：妖兽 {item.ActorId} 养成、妖兽 {item.ActorId} 升阶").ToList();
+            context.AllKingdoms = context.AllKingdoms
+                .OrderByDescending(item => item.IsSelf)
+                .ThenByDescending(item => item.CityCount)
+                .ThenByDescending(item => item.Population)
+                .ThenBy(item => item.Label)
+                .ToList();
             return context;
+        }
+
+        private static string BuildAiRelationText(Kingdom self, Kingdom other)
+        {
+            if (self == null || other == null)
+            {
+                return "未知";
+            }
+            if (self == other)
+            {
+                return "本国";
+            }
+            if (self.isEnemy(other))
+            {
+                return "战争";
+            }
+            if (Alliance.isSame(self.getAlliance(), other.getAlliance()))
+            {
+                return "同盟";
+            }
+            return "可外交";
         }
 
         /// <summary>
