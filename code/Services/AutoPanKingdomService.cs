@@ -733,7 +733,7 @@ namespace XianniAutoPan.Services
             int gatherSpiritUntil = GetGatherSpiritUntilYear(kingdom);
             int gatherSpiritRemain = Math.Max(0, gatherSpiritUntil - Date.getCurrentYear());
             int militiaRemain = Math.Max(0, GetMilitiaUntilYear(kingdom) - Date.getCurrentYear());
-            return $"{FormatKingdomLabel(kingdom)}：国库 {GetTreasury(kingdom)}，国家等级 {GetLevel(kingdom)}，修真国等级 {snapshot.XiuzhenguoLevel}，城市 {kingdom.countCities()}，人口 {kingdom.getPopulationTotal()}，军队 {CountArmyUnits(kingdom)}，灵气 {GetEffectiveAura(kingdom)}，年收入 {ComputeYearlyIncome(kingdom)}，国家政策 {GetOccupationPolicyText(kingdom)}，聚灵剩余 {gatherSpiritRemain} 年，全民皆兵剩余 {militiaRemain} 年。";
+            return $"{FormatKingdomLabel(kingdom)}：国库 {GetTreasury(kingdom)}，国家等级 {GetLevel(kingdom)}，修真国等级 {snapshot.XiuzhenguoLevel}，城市 {kingdom.countCities()}，人口 {kingdom.getPopulationTotal()}，军队 {CountArmyUnits(kingdom)}，灵气 {GetEffectiveAura(kingdom)}，年收入 {ComputeYearlyIncome(kingdom)}，国家政策 {GetOccupationPolicyText(kingdom)}，聚灵剩余 {gatherSpiritRemain} 年，全民皆兵剩余 {militiaRemain} 年，{BuildDiplomacySummaryText(kingdom)}。";
         }
 
         /// <summary>
@@ -1655,6 +1655,34 @@ namespace XianniAutoPan.Services
             };
         }
 
+        private static string BuildDiplomacySummaryText(Kingdom kingdom)
+        {
+            List<string> enemyNames = GetActiveEnemyKingdoms(kingdom)
+                .Select(FormatKingdomLabel)
+                .ToList();
+            List<string> allyNames = GetAllianceMembers(kingdom)
+                .Select(FormatKingdomLabel)
+                .ToList();
+            string enemiesText = enemyNames.Count > 0 ? string.Join("、", enemyNames) : "无";
+            string alliesText = allyNames.Count > 0 ? string.Join("、", allyNames) : "无";
+            return $"战争中敌国 {enemiesText}，结盟国家 {alliesText}";
+        }
+
+        private static List<Kingdom> GetAllianceMembers(Kingdom kingdom)
+        {
+            Alliance alliance = kingdom?.getAlliance();
+            if (alliance == null)
+            {
+                return new List<Kingdom>();
+            }
+
+            return alliance.kingdoms_list
+                .Where(item => item != null && item.isAlive() && item.isCiv() && item != kingdom)
+                .OrderBy(item => item.name)
+                .ThenBy(item => item.getID())
+                .ToList();
+        }
+
         private static void UpdateNationalMilitiaForYear(Kingdom kingdom, int year)
         {
             int untilYear = GetMilitiaUntilYear(kingdom);
@@ -1700,9 +1728,13 @@ namespace XianniAutoPan.Services
             int duration = Math.Max(5, durationSeconds);
             DateTime expireAt = DateTime.UtcNow.AddSeconds(duration + 5);
             int total = 0;
+            Dictionary<long, int> assignedByEnemyKingdom = enemyCities
+                .Where(city => city?.kingdom != null)
+                .GroupBy(city => city.kingdom.getID())
+                .ToDictionary(group => group.Key, _ => 0);
             foreach (City city in kingdom.getCities().Where(IsMobilizableArmyCity).ToList())
             {
-                City targetCity = PickArmyTargetCity(city, enemyCities);
+                City targetCity = PickArmyTargetCity(city, enemyCities, assignedByEnemyKingdom);
                 TileZone targetZone = PickAttackZone(city, targetCity);
                 if (targetCity == null || targetZone == null)
                 {
@@ -1712,6 +1744,13 @@ namespace XianniAutoPan.Services
                 city.target_attack_city = targetCity;
                 city.target_attack_zone = targetZone;
                 MobilizedCityExpiryUtc[city.getID()] = expireAt;
+                if (targetCity.kingdom != null)
+                {
+                    long targetKingdomId = targetCity.kingdom.getID();
+                    assignedByEnemyKingdom[targetKingdomId] = assignedByEnemyKingdom.TryGetValue(targetKingdomId, out int current) ? current + 1 : 1;
+                }
+
+                ForceArmyAttackTask(city);
                 total++;
             }
 
@@ -1759,7 +1798,7 @@ namespace XianniAutoPan.Services
             return cities;
         }
 
-        private static City PickArmyTargetCity(City sourceCity, List<City> enemyCities)
+        private static City PickArmyTargetCity(City sourceCity, List<City> enemyCities, Dictionary<long, int> assignedByEnemyKingdom)
         {
             if (sourceCity == null || enemyCities == null || enemyCities.Count == 0)
             {
@@ -1770,7 +1809,13 @@ namespace XianniAutoPan.Services
             List<City> sameIsland = enemyCities
                 .Where(city => city?.getTile() != null && sourceTile != null && city.getTile().isSameIsland(sourceTile))
                 .ToList();
-            return (sameIsland.Count > 0 ? sameIsland : enemyCities)[Randy.randomInt(0, sameIsland.Count > 0 ? sameIsland.Count : enemyCities.Count)];
+            List<City> candidates = sameIsland.Count > 0 ? sameIsland : enemyCities;
+            return candidates
+                .OrderBy(city => GetAssignedEnemyCount(city, assignedByEnemyKingdom))
+                .ThenBy(city => GetCityDistanceScore(sourceTile, city))
+                .ThenBy(city => city.kingdom?.getID() ?? long.MaxValue)
+                .ThenBy(city => city.getID())
+                .FirstOrDefault();
         }
 
         private static TileZone PickAttackZone(City sourceCity, City targetCity)
@@ -1788,6 +1833,54 @@ namespace XianniAutoPan.Services
                 ? sameIslandZones
                 : targetCity.zones.Where(zone => zone != null).ToList();
             return candidates.Count > 0 ? candidates[Randy.randomInt(0, candidates.Count)] : null;
+        }
+
+        private static int GetAssignedEnemyCount(City city, Dictionary<long, int> assignedByEnemyKingdom)
+        {
+            if (city?.kingdom == null || assignedByEnemyKingdom == null)
+            {
+                return int.MaxValue;
+            }
+
+            return assignedByEnemyKingdom.TryGetValue(city.kingdom.getID(), out int count) ? count : 0;
+        }
+
+        private static int GetCityDistanceScore(WorldTile sourceTile, City targetCity)
+        {
+            WorldTile targetTile = targetCity?.getTile();
+            if (sourceTile == null || targetTile == null)
+            {
+                return int.MaxValue;
+            }
+
+            int dx = sourceTile.x - targetTile.x;
+            int dy = sourceTile.y - targetTile.y;
+            return dx * dx + dy * dy;
+        }
+
+        private static void ForceArmyAttackTask(City city)
+        {
+            Army army = city?.army;
+            if (army == null || !army.isAlive() || !army.hasCaptain())
+            {
+                return;
+            }
+
+            Actor captain = army.getCaptain();
+            if (captain != null && captain.isAlive() && captain.hasCity() && captain.city == city)
+            {
+                captain.setTask("warrior_army_leader_move_to_attack_target", pClean: true, pCleanJob: true, pForceAction: true);
+            }
+
+            foreach (Actor unit in army.getUnits())
+            {
+                if (unit == null || unit == captain || !unit.isAlive() || !unit.hasCity() || unit.city != city)
+                {
+                    continue;
+                }
+
+                unit.setTask("warrior_army_follow_leader", pClean: true, pCleanJob: true, pForceAction: true);
+            }
         }
 
         private static List<Kingdom> GetActiveEnemyKingdoms(Kingdom kingdom)
