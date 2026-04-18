@@ -218,7 +218,7 @@
 7. “玩家宣战开始年份”只限制宣战指令；其它玩家指令与普通聊天不受该年份限制。
 8. `roundEndYear` 控制自动结盘年份；默认 100 年。
 9. 配置页的“玩家积分榜”只编辑 `autopan_scoreboard.json` 中的结盘胜场记录，不会删除当前绑定国家、QQ 路由或世界存档。
-10. `currentSituationCooldownSeconds` 控制 QQ 群“当前局势”冷却；`occupationPolicyChangeCost`、`nationalMilitiaCost`、`nationalMilitiaDurationYears`、`occupationSubsidyMin`、`occupationSubsidyMax` 控制国家政策、全民皆兵与开放占领补助。
+10. 网页端“政策配置”会单独显示“占领政策”模块；`occupationSubsidyMin` 与 `occupationSubsidyMax` 分别控制被占城随机奖励金币的最小值和最大值。`currentSituationCooldownSeconds` 控制 QQ 群“当前局势”冷却；`occupationPolicyChangeCost`、`nationalMilitiaCost`、`nationalMilitiaDurationYears` 控制国家政策和全民皆兵。
 
 九、QQ群接入
 1. 自动盘支持标准 OneBot 11 反向 WebSocket，兼容 NapCat、LLOneBot 等常见 QQ 协议端。
