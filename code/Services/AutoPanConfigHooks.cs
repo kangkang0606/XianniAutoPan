@@ -305,6 +305,16 @@ namespace XianniAutoPan.Services
         public static int NationalMilitiaDurationYears { get; private set; } = 3;
 
         /// <summary>
+        /// 战争动员成本。
+        /// </summary>
+        public static int MobilizeCost { get; private set; } = 50;
+
+        /// <summary>
+        /// 战争动员军令持续秒数。
+        /// </summary>
+        public static int MobilizeOrderSeconds { get; private set; } = 120;
+
+        /// <summary>
         /// 每座被占领城市的开放占领补助最小值。
         /// </summary>
         public static int OccupationSubsidyMin { get; private set; } = 20;
@@ -1159,11 +1169,13 @@ namespace XianniAutoPan.Services
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritAuraBonusPerCity", "聚灵每城灵气", "国策“聚灵”生效时，每座城市临时视作增加的灵气。", "灵气", 0, 1_000_000_000, () => GatherSpiritAuraBonusPerCity, value => GatherSpiritAuraBonusPerCity = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritDurationYears", "聚灵持续年数", "每次执行“国策 聚灵”后持续生效的年数。", "年", 1, 1000, () => GatherSpiritDurationYears, value => GatherSpiritDurationYears = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritCost", "聚灵成本", "执行“国策 聚灵”需要消耗的金币。", "金币", 0, 1_000_000_000, () => GatherSpiritCost, value => GatherSpiritCost = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵与被占城随机补助相关指令配置。", "occupationPolicyChangeCost", "国家政策变更成本", "执行“政策 开放占领/坚守城池”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => OccupationPolicyChangeCost, value => OccupationPolicyChangeCost = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵与被占城随机补助相关指令配置。", "nationalMilitiaCost", "全民皆兵成本", "执行“全民皆兵”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => NationalMilitiaCost, value => NationalMilitiaCost = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵与被占城随机补助相关指令配置。", "nationalMilitiaDurationYears", "全民皆兵持续年数", "全民皆兵开启后持续生效的年数；生效期内每年会把可征集平民补进军队。", "年", 1, 1000, () => NationalMilitiaDurationYears, value => NationalMilitiaDurationYears = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵与被占城随机补助相关指令配置。", "occupationSubsidyMin", "被占城奖励最小金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励下限。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMin, value => OccupationSubsidyMin = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵与被占城随机补助相关指令配置。", "occupationSubsidyMax", "被占城奖励最大金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励上限；实际奖励会在最小值和最大值之间随机。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMax, value => OccupationSubsidyMax = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationPolicyChangeCost", "国家政策变更成本", "执行“政策 开放占领/坚守城池”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => OccupationPolicyChangeCost, value => OccupationPolicyChangeCost = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "nationalMilitiaCost", "全民皆兵成本", "执行“全民皆兵”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => NationalMilitiaCost, value => NationalMilitiaCost = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "nationalMilitiaDurationYears", "全民皆兵持续年数", "全民皆兵开启后持续生效的年数；生效期内该国平民按愤怒村民机制参与本国战争，不再把平民补进军队。", "年", 1, 1000, () => NationalMilitiaDurationYears, value => NationalMilitiaDurationYears = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "mobilizeCost", "动员成本", "执行“动员”时需要消耗的金币；仅战争状态可用。", "金币", 0, 1_000_000_000, () => MobilizeCost, value => MobilizeCost = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "mobilizeOrderSeconds", "动员军令秒数", "动员后临时强制城市军队执行战争进攻目标的持续秒数。", "秒", 5, 3600, () => MobilizeOrderSeconds, value => MobilizeOrderSeconds = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationSubsidyMin", "被占城奖励最小金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励下限。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMin, value => OccupationSubsidyMin = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationSubsidyMax", "被占城奖励最大金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励上限；实际奖励会在最小值和最大值之间随机。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMax, value => OccupationSubsidyMax = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、胜场累计与新局启动相关配置。", "roundEndYear", "自动结盘年份", "世界年份达到该值后，自动计算本局胜者并开启新一局。", "年", 1, 100000, () => RoundEndYear, value => RoundEndYear = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、胜场累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群“当前局势”截图指令的同群冷却秒数；管理员“#当前局势”不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
 

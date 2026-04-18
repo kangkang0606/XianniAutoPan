@@ -132,6 +132,10 @@ namespace XianniAutoPan.Commands
                 case "全民皆兵":
                     command.CommandType = AutoPanCommandType.NationalMilitia;
                     return command;
+                case "动员":
+                case "战争动员":
+                    command.CommandType = AutoPanCommandType.Mobilize;
+                    return command;
                 case "放置遗迹":
                     command.CommandType = AutoPanCommandType.PlaceRuins;
                     command.NumericValue = 1;

@@ -24,6 +24,7 @@
 政策 坚守城池
 国策 聚灵
 全民皆兵
+动员
 增加人数 5
 增加人数 10
 放置遗迹 1
@@ -129,6 +130,7 @@
 政策变更：国家政策变更成本
 国策 聚灵：聚灵成本
 全民皆兵：全民皆兵成本
+动员：动员成本（仅战争状态可用）
 增加人数：增员成本 × 人数（单次最多 10 人）
 放置遗迹：遗迹成本 × 座数
 转账：无手续费
@@ -174,7 +176,8 @@
 升级修真国：单独推进修真国 1 级，并按下一级门槛召来达标修士；本轮直接推进，失败会退回金币。
 政策 开放占领：允许城镇被占领，被占领时按配置领取逐城补助。
 政策 坚守城池：城镇被攻破后不会被占领，只会被摧毁；切换政策需要消耗金币。
-全民皆兵：开启持续状态，持续期内每年把本国可征集成年平民补进当地军队，到期自动结束。
+全民皆兵：开启持续状态，不再把平民补进军队；持续期内本国平民按原版愤怒村民机制参与本国战争，到期自动结束。
+动员：战争状态下给本国城市军队下达进攻交战国城市的军令，并在军令期间允许未满编军队出征。
 削灵：削减目标国家总灵气，优先从灵气更高的城市扣除。
 斩首：直接击杀目标国家当前最强者。
 诅咒：对目标国家前排强者施加诅咒。
@@ -225,7 +228,7 @@
 8. `roundEndYear` 控制自动结盘年份；默认 100 年。
 9. 配置页的“玩家积分榜”只编辑 `autopan_scoreboard.json` 中的结盘胜场记录，不会删除当前绑定国家、QQ 路由或世界存档。
 10. `aiDecisionIntensity` 控制 AI 决策强度，范围 1~5；`aiQqChatEnabled` 控制 AI 决策摘要和 AI 聊天回包是否发往 QQ 群。
-10. 网页端“政策配置”会单独显示“占领政策”模块；`occupationSubsidyMin` 与 `occupationSubsidyMax` 分别控制被占城随机奖励金币的最小值和最大值。`currentSituationCooldownSeconds` 控制 QQ 群“当前局势”冷却；`occupationPolicyChangeCost`、`nationalMilitiaCost`、`nationalMilitiaDurationYears` 控制国家政策和全民皆兵。
+11. 网页端“政策配置”会单独显示“占领政策”模块；`occupationSubsidyMin` 与 `occupationSubsidyMax` 分别控制被占城随机奖励金币的最小值和最大值。`currentSituationCooldownSeconds` 控制 QQ 群“当前局势”冷却；`occupationPolicyChangeCost`、`nationalMilitiaCost`、`nationalMilitiaDurationYears` 控制国家政策和全民皆兵；`mobilizeCost` 与 `mobilizeOrderSeconds` 控制“动员”的成本和军令持续秒数。
 
 九、QQ群接入
 1. 自动盘支持标准 OneBot 11 反向 WebSocket，兼容 NapCat、LLOneBot 等常见 QQ 协议端。

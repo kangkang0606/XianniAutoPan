@@ -22,6 +22,7 @@ namespace XianniAutoPan.Model
         ChangeKingdomPolicy,
         GatherSpirit,
         NationalMilitia,
+        Mobilize,
         AddPopulation,
         PlaceRuins,
         TransferTreasury,

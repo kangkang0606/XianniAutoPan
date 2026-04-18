@@ -55,6 +55,7 @@ namespace XianniAutoPan.Services
         }
 
         private static readonly Dictionary<long, SnapshotCacheEntry> SnapshotCache = new Dictionary<long, SnapshotCacheEntry>();
+        private static readonly Dictionary<long, DateTime> MobilizedCityExpiryUtc = new Dictionary<long, DateTime>();
         private static readonly XiuzhenguoLevelRequirement[] XiuzhenguoRequirements =
         {
             new XiuzhenguoLevelRequirement { Level = 0, RequiredRealmIndex = -1, RequiredCount = 0, SecondaryRealmIndex = -1, SecondaryCount = 0 },
@@ -442,7 +443,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 开启全民皆兵状态，并立即执行一次全国征兵。
+        /// 开启全民皆兵状态；该国平民按愤怒村民法则参与本国战争。
         /// </summary>
         public static bool TryActivateNationalMilitia(Kingdom kingdom, out string message)
         {
@@ -464,9 +465,144 @@ namespace XianniAutoPan.Services
             int baseYear = Math.Max(currentYear, GetMilitiaUntilYear(kingdom));
             int untilYear = baseYear + AutoPanConfigHooks.NationalMilitiaDurationYears;
             kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, untilYear);
-            int drafted = AutoPanCityService.ApplyNationalMilitiaDraft(kingdom);
-            message = $"{FormatKingdomLabel(kingdom)} 已开启全民皆兵，持续到第 {untilYear} 年，本次补充军队 {drafted} 人，消耗 {cost} 金币。";
+            message = $"{FormatKingdomLabel(kingdom)} 已开启全民皆兵，持续到第 {untilYear} 年；该国平民会按愤怒村民机制参与本国战争，消耗 {cost} 金币。";
             return true;
+        }
+
+        /// <summary>
+        /// 在战争状态下给本国城市军队下达进攻交战国的军令。
+        /// </summary>
+        public static bool TryMobilizeForWar(Kingdom kingdom, out string message)
+        {
+            message = string.Empty;
+            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            {
+                message = "当前国家状态无效。";
+                return false;
+            }
+
+            List<Kingdom> enemies = GetActiveEnemyKingdoms(kingdom);
+            if (enemies.Count == 0)
+            {
+                message = "当前国家没有处于战争状态，无法动员。";
+                return false;
+            }
+
+            int mobilizableCityCount = CountMobilizableArmyCities(kingdom);
+            if (mobilizableCityCount <= 0)
+            {
+                message = "当前国家没有可动员的城市军队。";
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.MobilizeCost;
+            if (!TrySpendTreasury(kingdom, cost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            int mobilized = ApplyArmyWarMobilization(kingdom, enemies, AutoPanConfigHooks.MobilizeOrderSeconds);
+            if (mobilized <= 0)
+            {
+                AddTreasury(kingdom, cost);
+                message = "未找到可进攻的敌方城市，已退回动员成本。";
+                return false;
+            }
+
+            message = $"{FormatKingdomLabel(kingdom)} 战争动员完成，{mobilized} 座城市军队已收到进攻交战国军令，持续 {AutoPanConfigHooks.MobilizeOrderSeconds} 秒，消耗 {cost} 金币。";
+            return true;
+        }
+
+        /// <summary>
+        /// 判断原版平民攻击限制是否应被国家级全民皆兵放开。
+        /// </summary>
+        public static bool ShouldAllowMilitiaCivilianAttack(BaseSimObject attackerObject, BaseSimObject target, bool attackBuildings)
+        {
+            if (attackerObject == null || target == null || !attackerObject.isActor() || !attackerObject.isAlive() || !target.isAlive())
+            {
+                return false;
+            }
+
+            Actor attacker = attackerObject.a;
+            if (attacker == null || !attacker.isKingdomCiv() || attacker.profession_asset == null || !attacker.profession_asset.is_civilian || attacker.hasStatusTantrum())
+            {
+                return false;
+            }
+
+            Kingdom attackerKingdom = attacker.kingdom;
+            Kingdom targetKingdom = target.kingdom;
+            if (attackerKingdom == null || targetKingdom == null || !attackerKingdom.isAlive() || !targetKingdom.isAlive() || !attackerKingdom.isCiv() || !targetKingdom.isCiv())
+            {
+                return false;
+            }
+
+            if (!IsMilitiaActive(attackerKingdom) || !attackerKingdom.isInWarWith(targetKingdom))
+            {
+                return false;
+            }
+
+            if (target.isActor())
+            {
+                Actor targetActor = target.a;
+                if (targetActor == null || !targetActor.isAlive() || !targetActor.isKingdomCiv() || targetActor.asset == null || targetActor.hasStatusTantrum() || !targetActor.asset.can_be_killed_by_stuff)
+                {
+                    return false;
+                }
+
+                if (targetActor.isInsideSomething() || targetActor.isInMagnet())
+                {
+                    return false;
+                }
+
+                if (targetActor.ai != null && targetActor.ai.action != null && targetActor.ai.action.special_prevent_can_be_attacked)
+                {
+                    return false;
+                }
+
+                return !targetActor.isFlying() || attacker.hasRangeAttack();
+            }
+
+            if (target.isBuilding())
+            {
+                if (!attackBuildings)
+                {
+                    return false;
+                }
+
+                Building building = target.b;
+                return building != null && building.isAlive() && building.asset != null && building.asset.city_building;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 判断城市是否处在自动盘战争动员军令窗口内，允许未满编军队出征。
+        /// </summary>
+        public static bool ShouldAllowMobilizedArmyDeparture(City city)
+        {
+            if (city == null || !city.isAlive() || !city.hasAttackZoneOrder() || city.target_attack_city == null)
+            {
+                return false;
+            }
+
+            if (!MobilizedCityExpiryUtc.TryGetValue(city.getID(), out DateTime expireAt))
+            {
+                return false;
+            }
+
+            if (expireAt < DateTime.UtcNow)
+            {
+                MobilizedCityExpiryUtc.Remove(city.getID());
+                return false;
+            }
+
+            return city.kingdom != null
+                && city.target_attack_city.kingdom != null
+                && city.kingdom.isAlive()
+                && city.target_attack_city.kingdom.isAlive()
+                && city.kingdom.isInWarWith(city.target_attack_city.kingdom);
         }
 
         /// <summary>
@@ -1535,12 +1671,158 @@ namespace XianniAutoPan.Services
                 AutoPanNotificationService.NotifyKingdomOwners(kingdom, text);
                 return;
             }
+        }
 
-            int drafted = AutoPanCityService.ApplyNationalMilitiaDraft(kingdom);
-            if (drafted > 0)
+        private static int CountMobilizableArmyCities(Kingdom kingdom)
+        {
+            if (kingdom == null || !kingdom.isAlive())
             {
-                AutoPanLogService.Info($"{kingdom.name} 全民皆兵年度补充 {drafted} 人。");
+                return 0;
             }
+
+            return kingdom.getCities().Count(IsMobilizableArmyCity);
+        }
+
+        private static int ApplyArmyWarMobilization(Kingdom kingdom, List<Kingdom> enemies, int durationSeconds)
+        {
+            if (kingdom == null || !kingdom.isAlive() || enemies == null || enemies.Count == 0)
+            {
+                return 0;
+            }
+
+            CleanupExpiredMobilizedCities();
+            List<City> enemyCities = CollectEnemyCities(enemies);
+            if (enemyCities.Count == 0)
+            {
+                return 0;
+            }
+
+            int duration = Math.Max(5, durationSeconds);
+            DateTime expireAt = DateTime.UtcNow.AddSeconds(duration + 5);
+            int total = 0;
+            foreach (City city in kingdom.getCities().Where(IsMobilizableArmyCity).ToList())
+            {
+                City targetCity = PickArmyTargetCity(city, enemyCities);
+                TileZone targetZone = PickAttackZone(city, targetCity);
+                if (targetCity == null || targetZone == null)
+                {
+                    continue;
+                }
+
+                city.target_attack_city = targetCity;
+                city.target_attack_zone = targetZone;
+                MobilizedCityExpiryUtc[city.getID()] = expireAt;
+                total++;
+            }
+
+            return total;
+        }
+
+        private static void CleanupExpiredMobilizedCities()
+        {
+            if (MobilizedCityExpiryUtc.Count == 0)
+            {
+                return;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            foreach (long cityId in MobilizedCityExpiryUtc.Where(item => item.Value < now).Select(item => item.Key).ToList())
+            {
+                MobilizedCityExpiryUtc.Remove(cityId);
+            }
+        }
+
+        private static bool IsMobilizableArmyCity(City city)
+        {
+            if (city == null || !city.isAlive())
+            {
+                return false;
+            }
+
+            city.checkArmyExistence();
+            return city.hasArmy() && city.army != null && city.army.isAlive() && city.army.countUnits() > 0 && city.army.hasCaptain();
+        }
+
+        private static List<City> CollectEnemyCities(List<Kingdom> enemies)
+        {
+            List<City> cities = new List<City>();
+            foreach (Kingdom enemy in enemies)
+            {
+                if (enemy == null || !enemy.isAlive())
+                {
+                    continue;
+                }
+
+                cities.AddRange(enemy.getCities().Where(city => city != null && city.isAlive()));
+            }
+
+            return cities;
+        }
+
+        private static City PickArmyTargetCity(City sourceCity, List<City> enemyCities)
+        {
+            if (sourceCity == null || enemyCities == null || enemyCities.Count == 0)
+            {
+                return null;
+            }
+
+            WorldTile sourceTile = sourceCity.getTile();
+            List<City> sameIsland = enemyCities
+                .Where(city => city?.getTile() != null && sourceTile != null && city.getTile().isSameIsland(sourceTile))
+                .ToList();
+            return (sameIsland.Count > 0 ? sameIsland : enemyCities)[Randy.randomInt(0, sameIsland.Count > 0 ? sameIsland.Count : enemyCities.Count)];
+        }
+
+        private static TileZone PickAttackZone(City sourceCity, City targetCity)
+        {
+            WorldTile sourceTile = sourceCity?.getTile();
+            if (sourceCity == null || targetCity == null || sourceTile == null)
+            {
+                return null;
+            }
+
+            List<TileZone> sameIslandZones = targetCity.zones
+                .Where(zone => zone != null && zone.centerTile != null && zone.centerTile.isSameIsland(sourceTile))
+                .ToList();
+            List<TileZone> candidates = sameIslandZones.Count > 0
+                ? sameIslandZones
+                : targetCity.zones.Where(zone => zone != null).ToList();
+            return candidates.Count > 0 ? candidates[Randy.randomInt(0, candidates.Count)] : null;
+        }
+
+        private static List<Kingdom> GetActiveEnemyKingdoms(Kingdom kingdom)
+        {
+            List<Kingdom> enemies = new List<Kingdom>();
+            if (kingdom == null || !kingdom.isAlive())
+            {
+                return enemies;
+            }
+
+            foreach (War war in kingdom.getWars())
+            {
+                if (war == null || !war.isAlive() || war.hasEnded())
+                {
+                    continue;
+                }
+
+                IEnumerable<Kingdom> oppositeSide = war.isAttacker(kingdom)
+                    ? war.getDefenders()
+                    : war.isDefender(kingdom) ? war.getAttackers() : Enumerable.Empty<Kingdom>();
+                foreach (Kingdom enemy in oppositeSide)
+                {
+                    if (enemy == null || !enemy.isAlive() || !enemy.isCiv() || enemy == kingdom)
+                    {
+                        continue;
+                    }
+
+                    if (enemies.All(item => item.getID() != enemy.getID()))
+                    {
+                        enemies.Add(enemy);
+                    }
+                }
+            }
+
+            return enemies;
         }
 
         /// <summary>

@@ -279,8 +279,14 @@ namespace XianniAutoPan.AI
             List<string> commands = new List<string>();
             int maxActions = GetMaxActionsPerDecision();
             int remainingTreasury = context.Treasury;
+            if (context.EnemyKingdomNames.Count > 0 && remainingTreasury >= AutoPanConfigHooks.MobilizeCost)
+            {
+                commands.Add("动员");
+                remainingTreasury -= AutoPanConfigHooks.MobilizeCost;
+            }
+
             int upgradeCost = AutoPanConfigHooks.NationUpgradeCostPerLevel * Math.Max(1, context.NationLevel);
-            if (remainingTreasury >= upgradeCost)
+            if (commands.Count < maxActions && remainingTreasury >= upgradeCost)
             {
                 commands.Add("升级国运");
                 remainingTreasury -= upgradeCost;
@@ -341,6 +347,11 @@ namespace XianniAutoPan.AI
                 suggestions.Add($"可执行“国策 聚灵”，消耗 {AutoPanConfigHooks.GatherSpiritCost} 金币");
             }
 
+            if (suggestions.Count < 3 && context.EnemyKingdomNames.Count > 0 && context.Treasury >= AutoPanConfigHooks.MobilizeCost)
+            {
+                suggestions.Add($"战争中可执行“动员”，消耗 {AutoPanConfigHooks.MobilizeCost} 金币");
+            }
+
             if (suggestions.Count < 3 && context.EnemyKingdomNames.Count > 0 && context.Treasury >= AutoPanConfigHooks.SeekPeaceCost * 2)
             {
                 suggestions.Add($"若想停战，可对 {context.EnemyKingdomNames[0]} 求和，需准备 {AutoPanConfigHooks.SeekPeaceCost * 2} 金币");
@@ -366,6 +377,7 @@ namespace XianniAutoPan.AI
             int policyCost = AutoPanConfigHooks.OccupationPolicyChangeCost;
             int gatherCost = AutoPanConfigHooks.GatherSpiritCost;
             int militiaCost = AutoPanConfigHooks.NationalMilitiaCost;
+            int mobilizeCost = AutoPanConfigHooks.MobilizeCost;
             int warCost = AutoPanConfigHooks.DeclareWarCost;
             int peaceCost = AutoPanConfigHooks.SeekPeaceCost;
             int allianceCost = AutoPanConfigHooks.AllianceRequestCost;
@@ -386,11 +398,11 @@ namespace XianniAutoPan.AI
             int beastCost = AutoPanConfigHooks.BeastTrainCost;
 
             return $"你是 WorldBox 国家自动盘 AI，负责为一个国家做战略决策。分析 user JSON 后选择 0~{maxActions} 个动作。" +
-                   "【决策优先级从高到低】1.升级国运/修真国（国力根基）2.宣战/求和/结盟/约斗（外交互动）3.聚灵/全民皆兵/增加人数（内政发展）4.天运/削灵/斩首/诅咒/扰动/降低国运（对敌干扰）5.修士闭关/升境、古神炼体/升星、妖兽养成/升阶（个体培养，国库充裕时才考虑）。" +
+                   "【决策优先级从高到低】1.战争中军队未推进时先动员 2.升级国运/修真国（国力根基）3.宣战/求和/结盟/约斗（外交互动）4.聚灵/全民皆兵/增加人数（内政发展）5.天运/削灵/斩首/诅咒/扰动/降低国运（对敌干扰）6.修士闭关/升境、古神炼体/升星、妖兽养成/升阶（个体培养，国库充裕时才考虑）。" +
                    "你应该积极与其他国家互动（结盟、约斗、宣战、天运等），不要只做内政。AllKingdoms 中 IsPlayerOwned=true 的是玩家国家，也可以互动。" +
                    "约束：国库不足不选；目标不存在不选；同盟不宣战；CanDeclareWar=false 不宣战；宣战目标必须来自 CandidateKingdomNames；求和目标必须来自 EnemyKingdomNames。" +
-                   "动作格式：升级国运、升级修真国、政策 开放占领、政策 坚守城池、国策 聚灵、全民皆兵、宣战 国家名 [kingdomId]、求和 国家名 [kingdomId]、结盟 国家名 [kingdomId]、退盟、约斗 国家名 [kingdomId]、增加人数 数字(1~10)、血脉创立、国家祝福 5、国家祝福 全员、削灵 国家名 [kingdomId] 数量、斩首 国家名 [kingdomId]、诅咒 国家名 [kingdomId] 人数、天运惩罚 国家名 [kingdomId]、天运赐福 国家名 [kingdomId]、扰动国家 国家名 [kingdomId]、降低国运 国家名 [kingdomId] 级数、修士 单位id 闭关、修士 单位id 升境、古神 单位id 炼体、古神 单位id 升星、妖兽 单位id 养成、妖兽 单位id 升阶。" +
-                   $"成本（金币）：升级国运={nationUpCost}×当前等级；升级修真国={xiuzhenUpCost}×下一级；政策变更={policyCost}；聚灵={gatherCost}；全民皆兵={militiaCost}；宣战={warCost}；求和={peaceCost}×2；结盟={allianceCost}；退盟={leaveAllianceCost}；约斗={duelCost}；增加人数={popCost}×人数；削灵≥{sabotageMin}；斩首={assassinBase}+层级加价；诅咒={curseBase}+{cursePer}×人数；天运惩罚={heavenPunish}；天运赐福={heavenBless}；扰动={disturbCost}(成功率{disturbRate}%)；降低国运={lowerCost}×级数；修士闭关={retreatCost}；古神炼体={ancientCost}；妖兽养成={beastCost}；血脉创立和国家祝福按目标计价。" +
+                   "动作格式：升级国运、升级修真国、政策 开放占领、政策 坚守城池、国策 聚灵、全民皆兵、动员、宣战 国家名 [kingdomId]、求和 国家名 [kingdomId]、结盟 国家名 [kingdomId]、退盟、约斗 国家名 [kingdomId]、增加人数 数字(1~10)、血脉创立、国家祝福 5、国家祝福 全员、削灵 国家名 [kingdomId] 数量、斩首 国家名 [kingdomId]、诅咒 国家名 [kingdomId] 人数、天运惩罚 国家名 [kingdomId]、天运赐福 国家名 [kingdomId]、扰动国家 国家名 [kingdomId]、降低国运 国家名 [kingdomId] 级数、修士 单位id 闭关、修士 单位id 升境、古神 单位id 炼体、古神 单位id 升星、妖兽 单位id 养成、妖兽 单位id 升阶。" +
+                   $"成本（金币）：升级国运={nationUpCost}×当前等级；升级修真国={xiuzhenUpCost}×下一级；政策变更={policyCost}；聚灵={gatherCost}；全民皆兵={militiaCost}；动员={mobilizeCost}；宣战={warCost}；求和={peaceCost}×2；结盟={allianceCost}；退盟={leaveAllianceCost}；约斗={duelCost}；增加人数={popCost}×人数；削灵≥{sabotageMin}；斩首={assassinBase}+层级加价；诅咒={curseBase}+{cursePer}×人数；天运惩罚={heavenPunish}；天运赐福={heavenBless}；扰动={disturbCost}(成功率{disturbRate}%)；降低国运={lowerCost}×级数；修士闭关={retreatCost}；古神炼体={ancientCost}；妖兽养成={beastCost}；血脉创立和国家祝福按目标计价。" +
                    "返回严格 JSON：{\"analysis\":\"一句话国情分析\",\"chat\":\"一句话聊天，可挑衅可友好，不要编造\",\"actions\":[\"动作1\"]}。没有合适动作时 actions 返回空数组。";
         }
 

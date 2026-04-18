@@ -87,6 +87,54 @@ namespace XianniAutoPan
     }
 
     /// <summary>
+    /// 让开启全民皆兵的国家按原版愤怒村民法则参与战争。
+    /// </summary>
+    [HarmonyPatch(typeof(BaseSimObject), nameof(BaseSimObject.canAttackTarget))]
+    internal static class AutoPanMilitiaCivilianAttackPatch
+    {
+        /// <summary>
+        /// 仅在原版平民攻击限制挡住目标时，给全民皆兵国家一个局部放行。
+        /// </summary>
+        [HarmonyPostfix]
+        public static void Postfix(BaseSimObject __instance, BaseSimObject pTarget, bool pCheckForFactions, bool pAttackBuildings, ref bool __result)
+        {
+            if (__result || !pCheckForFactions)
+            {
+                return;
+            }
+
+            if (AutoPanKingdomService.ShouldAllowMilitiaCivilianAttack(__instance, pTarget, pAttackBuildings))
+            {
+                __result = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 战争动员期间允许城市军队低于原版满编阈值也执行进攻目标。
+    /// </summary>
+    [HarmonyPatch(typeof(City), nameof(City.isOkToSendArmy))]
+    internal static class AutoPanMobilizedArmyDeparturePatch
+    {
+        /// <summary>
+        /// 动员军令只对已设置敌方攻城目标的城市生效。
+        /// </summary>
+        [HarmonyPostfix]
+        public static void Postfix(City __instance, ref bool __result)
+        {
+            if (__result)
+            {
+                return;
+            }
+
+            if (AutoPanKingdomService.ShouldAllowMobilizedArmyDeparture(__instance))
+            {
+                __result = true;
+            }
+        }
+    }
+
+    /// <summary>
     /// 接管城市占领结算：坚守城池时禁止占领并摧毁城市，开放占领时按被占城市发放补助。
     /// </summary>
     [HarmonyPatch(typeof(City), nameof(City.finishCapture))]

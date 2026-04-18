@@ -44,6 +44,7 @@ namespace XianniAutoPan.Commands
             AutoPanCommandType.ChangeKingdomPolicy,
             AutoPanCommandType.GatherSpirit,
             AutoPanCommandType.NationalMilitia,
+            AutoPanCommandType.Mobilize,
             AutoPanCommandType.AddPopulation,
             AutoPanCommandType.DeclareWar,
             AutoPanCommandType.SeekPeace,
@@ -295,6 +296,8 @@ namespace XianniAutoPan.Commands
                     return ExecuteGatherSpirit(kingdom, operatorName, isAi, result);
                 case AutoPanCommandType.NationalMilitia:
                     return ExecuteNationalMilitia(kingdom, operatorName, isAi, result);
+                case AutoPanCommandType.Mobilize:
+                    return ExecuteMobilize(kingdom, operatorName, isAi, result);
                 case AutoPanCommandType.AddPopulation:
                     return ExecuteAddPopulation(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.PlaceRuins:
@@ -645,6 +648,18 @@ namespace XianniAutoPan.Commands
             {
                 XianniAutoPanApi.Broadcast($"{kingdom.name} 开启全民皆兵，持续 {AutoPanConfigHooks.NationalMilitiaDurationYears} 年");
                 AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 全民皆兵：{kingdom.name}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteMobilize(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanKingdomService.TryMobilizeForWar(kingdom, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发起战争动员");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 动员：{kingdom.name}");
             }
             return result;
         }
@@ -1427,6 +1442,7 @@ namespace XianniAutoPan.Commands
                 "政策 开放占领 / 政策 坚守城池",
                 "国策 聚灵",
                 "全民皆兵",
+                "动员",
                 "增加人数 10",
                 "放置遗迹 1",
                 "转账 目标国家 [kingdomId] 1000",

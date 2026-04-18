@@ -322,40 +322,6 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 全民皆兵生效时，把全国可征集成年平民补入当地军队。
-        /// </summary>
-        public static int ApplyNationalMilitiaDraft(Kingdom kingdom)
-        {
-            int total = 0;
-            foreach (City city in GetOwnedCities(kingdom))
-            {
-                List<Actor> recruited = city.units
-                    .Where(IsEligibleConscript)
-                    .Where(city.checkCanMakeWarrior)
-                    .ToList();
-                if (recruited.Count == 0)
-                {
-                    continue;
-                }
-
-                List<Actor> actualRecruited = new List<Actor>();
-                foreach (Actor actor in recruited)
-                {
-                    if (city.checkCanMakeWarrior(actor))
-                    {
-                        city.makeWarrior(actor);
-                        actualRecruited.Add(actor);
-                        total++;
-                    }
-                }
-
-                AssignRecruitedToArmy(city, actualRecruited);
-            }
-
-            return total;
-        }
-
-        /// <summary>
         /// 按档位为指定城市的军队批量更换整套装备。
         /// </summary>
         public static bool TryEquipArmy(Kingdom kingdom, string rawCityName, string tierText, int requestedCount, out string message)
