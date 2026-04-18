@@ -1,9 +1,13 @@
 {
   "autopan_config_basic": "基础设置",
   "autopan_config_ai": "AI 设置",
+  "autopan_config_policy": "政策设置",
 
   "autopan_enable_llm_ai": "启用 AI 决策",
   "autopan_enable_llm_ai Description": "开启后，自动盘将通过 LLM 接口为玩家生成 AI 决策建议。",
+
+  "autopan_open_web_panel": "打开网页面板",
+  "autopan_open_web_panel Description": "开启后自动在浏览器中打开自动盘网页配置面板。",
 
   "autopan_http_port": "网页端口",
   "autopan_http_port Description": "本地网页前端监听端口，默认 19051。修改后自动重启服务。",

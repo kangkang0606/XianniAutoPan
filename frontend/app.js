@@ -982,6 +982,131 @@ function startDashboardPolling() {
   }, 3000);
 }
 
+const exportConfigButtonEl = document.getElementById("exportConfigButton");
+const importConfigButtonEl = document.getElementById("importConfigButton");
+const importConfigFileEl = document.getElementById("importConfigFile");
+
+async function exportConfig() {
+  try {
+    const response = await fetch(`/api/dashboard?userId=${encodeURIComponent(userIdEl.value.trim())}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`获取配置失败：${response.status}`);
+    }
+    const snapshot = await response.json();
+
+    const policy = pick(snapshot, "policy", "Policy");
+    const modules = pick(policy, "modules", "Modules") || [];
+    const policyData = {};
+    modules.forEach((module) => {
+      const items = pick(module, "items", "Items") || [];
+      items.forEach((item) => {
+        const key = pick(item, "key", "Key");
+        const value = pick(item, "value", "Value");
+        if (key != null) {
+          policyData[key] = value;
+        }
+      });
+    });
+
+    const qqBridge = pick(snapshot, "qqBridge", "QqBridge") || {};
+    const qqData = {
+      qqAdapterEnabled: !!pick(qqBridge, "enabled", "Enabled"),
+      qqOneBotWsPath: pick(qqBridge, "wsPath", "WsPath") || "/onebot/ws",
+      qqBotSelfId: pick(qqBridge, "botSelfId", "BotSelfId") || "",
+      qqReplyAtSender: !!pick(qqBridge, "replyAtSender", "ReplyAtSender"),
+      qqGroupWhitelist: pick(qqBridge, "groupWhitelist", "GroupWhitelist") || "",
+      qqAdminWhitelist: pick(qqBridge, "adminWhitelist", "AdminWhitelist") || ""
+    };
+
+    const exportData = {
+      _exportVersion: 1,
+      _exportTime: new Date().toISOString(),
+      policy: policyData,
+      qqBridge: qqData
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `xianni-autopan-config-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    appendReply("配置已导出。", true);
+  } catch (error) {
+    appendReply(error.message, false);
+  }
+}
+
+async function importConfig() {
+  const file = importConfigFileEl.files[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || typeof data !== "object") {
+      throw new Error("无效的配置文件格式。");
+    }
+
+    let count = 0;
+    const errors = [];
+
+    if (data.policy && typeof data.policy === "object") {
+      for (const [key, value] of Object.entries(data.policy)) {
+        try {
+          await savePolicySetting(key, String(value), false);
+          count++;
+        } catch (error) {
+          errors.push(`政策 ${key}: ${error.message}`);
+        }
+      }
+    }
+
+    if (data.qqBridge && typeof data.qqBridge === "object") {
+      const qqMap = {
+        qqAdapterEnabled: data.qqBridge.qqAdapterEnabled ? "1" : "0",
+        qqOneBotWsPath: data.qqBridge.qqOneBotWsPath || "",
+        qqBotSelfId: data.qqBridge.qqBotSelfId || "",
+        qqReplyAtSender: data.qqBridge.qqReplyAtSender ? "1" : "0",
+        qqGroupWhitelist: data.qqBridge.qqGroupWhitelist || "",
+        qqAdminWhitelist: data.qqBridge.qqAdminWhitelist || ""
+      };
+      for (const [key, value] of Object.entries(qqMap)) {
+        if (value === "") {
+          continue;
+        }
+        try {
+          await saveQqSetting(key, value, false);
+          count++;
+        } catch (error) {
+          errors.push(`QQ ${key}: ${error.message}`);
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      appendReply(`导入完成，成功 ${count} 项，失败 ${errors.length} 项：${errors.join("；")}`, false);
+    } else {
+      appendReply(`配置导入成功，共 ${count} 项已应用。`, true);
+    }
+
+    await refreshDashboard();
+  } catch (error) {
+    appendReply(`导入失败：${error.message}`, false);
+  }
+
+  importConfigFileEl.value = "";
+}
+
+exportConfigButtonEl.addEventListener("click", exportConfig);
+importConfigButtonEl.addEventListener("click", () => importConfigFileEl.click());
+importConfigFileEl.addEventListener("change", importConfig);
+
 switchPage(currentPage);
 connectWebSocket();
 refreshDashboard().catch((error) => appendReply(error.message, false));

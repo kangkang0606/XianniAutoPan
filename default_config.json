@@ -7,6 +7,12 @@
       "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnEnableLlmAiChanged"
     },
     {
+      "Id": "autopan_open_web_panel",
+      "Type": "SWITCH",
+      "BoolVal": false,
+      "Callback": "XianniAutoPan.Services.AutoPanConfigHooks:OnOpenWebPanelToggled"
+    },
+    {
       "Id": "autopan_http_port",
       "Type": "TEXT",
       "TextVal": "19051",

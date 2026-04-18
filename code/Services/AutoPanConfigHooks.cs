@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -524,9 +525,19 @@ namespace XianniAutoPan.Services
         public static int AiDecisionStartYear { get; private set; } = 1;
 
         /// <summary>
-        /// AI 决策强度，控制年度调度频率和每次最多动作数。
+        /// AI 决策强度，控制每次最多动作数和每轮最多调度国家数。
         /// </summary>
         public static int AiDecisionIntensity { get; private set; } = 3;
+
+        /// <summary>
+        /// AI 自动决策间隔年数，每隔多少年触发一次 AI 自动决策。
+        /// </summary>
+        public static int AiDecisionIntervalYears { get; private set; } = 2;
+
+        /// <summary>
+        /// 新盘开启时自动生成的 AI 国家数量（0=不自动生成，需 AI 决策开启才生效）。
+        /// </summary>
+        public static int AiAutoJoinCount { get; private set; } = 0;
 
         /// <summary>
         /// AI 决策结果是否允许向 QQ 群发送回包。
@@ -881,6 +892,27 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 打开自动盘网页面板的开关回调，打开后立即关回。
+        /// </summary>
+        public static void OnOpenWebPanelToggled(bool value)
+        {
+            if (!value)
+            {
+                return;
+            }
+
+            try
+            {
+                string url = $"http://localhost:{HttpPort}";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"打开网页面板失败：{ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// LLM AI 开关配置回调。
         /// </summary>
         public static void OnEnableLlmAiChanged(bool value)
@@ -1183,7 +1215,9 @@ namespace XianniAutoPan.Services
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
 
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionIntensity", "AI决策强度", "范围 1~5；强度越高，AI 调度越频繁且每次最多执行更多动作。", "档", 1, 5, () => AiDecisionIntensity, value => AiDecisionIntensity = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionIntensity", "AI决策强度", "范围 1~5；强度越高，每次最多执行更多动作，每轮调度更多国家。", "档", 1, 5, () => AiDecisionIntensity, value => AiDecisionIntensity = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionIntervalYears", "AI决策间隔年数", "每隔多少年触发一次 AI 自动决策，不影响手动响应（结盟、约斗等）。", "年", 1, 100, () => AiDecisionIntervalYears, value => AiDecisionIntervalYears = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiAutoJoinCount", "新盘AI自动加入数", "新盘开启时自动生成的 AI 国家数量，0=不自动生成；需 AI 决策开启才生效，随机种族。", "个", 0, 4, () => AiAutoJoinCount, value => AiAutoJoinCount = value);
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiQqChatEnabled", "AI QQ回包", "0=关闭，1=开启；开启后 AI 决策摘要会发送到最近活跃 QQ 群。", "", 0, 1, () => AiQqChatEnabled, value => AiQqChatEnabled = value);
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家和 AI 国家才允许宣战；其它指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
 

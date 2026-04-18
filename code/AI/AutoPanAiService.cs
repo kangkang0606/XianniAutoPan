@@ -114,12 +114,11 @@ namespace XianniAutoPan.AI
                     if (AutoPanCommandExecutor.TryExecuteAiCommand(kingdom, command, out string executeText))
                     {
                         AutoPanLogService.Info($"AI 国家 {kingdom.name} 执行：{command} -> {executeText}");
-                        executionTexts.Add($"成功：{command}（{executeText}）");
+                        executionTexts.Add(command + " 成功");
                     }
                     else
                     {
                         AutoPanLogService.Error($"AI 国家 {kingdom.name} 执行失败：{command} -> {executeText}");
-                        executionTexts.Add($"失败：{command}（{executeText}）");
                     }
                 }
 
@@ -362,18 +361,42 @@ namespace XianniAutoPan.AI
         private static string BuildSystemPrompt()
         {
             int maxActions = GetMaxActionsPerDecision();
-            return $"你是 WorldBox 国家自动盘 AI。你必须先分析 user JSON 里的本国国库、年收入、城市、人口、军队、灵气、国家政策、战争关系、全图国家摘要和强者候选，再选择 0 到 {maxActions} 个动作。" +
-                   "你不能随机乱选；国库不足、目标不存在、同盟目标、已在战争中的重复宣战、未到宣战年份时都不要输出对应动作。" +
-                   "玩家宣战开始年份也约束 AI：只有 CanDeclareWar=true 才能宣战，宣战目标必须来自 CandidateKingdomNames；求和目标必须来自 EnemyKingdomNames。" +
-                   "只能输出这些动作格式：升级国运、升级修真国、政策 开放占领、政策 坚守城池、国策 聚灵、全民皆兵、宣战 国家名 [kingdomId]、求和 国家名 [kingdomId]、增加人数 数字(1到10，例如 增加人数 5)、血脉创立、国家祝福 5、国家祝福 全员、修士 单位id 闭关、修士 单位id 升境、古神 单位id 炼体、古神 单位id 升星、妖兽 单位id 养成、妖兽 单位id 升阶。" +
-                   $"成本规则：升级国运={AutoPanConfigHooks.NationUpgradeCostPerLevel}*当前国家等级；升级修真国={AutoPanConfigHooks.XiuzhenguoUpgradeCostPerLevel}*下一级修真国等级；政策变更={AutoPanConfigHooks.OccupationPolicyChangeCost}；聚灵={AutoPanConfigHooks.GatherSpiritCost}；全民皆兵={AutoPanConfigHooks.NationalMilitiaCost}；宣战={AutoPanConfigHooks.DeclareWarCost}；求和={AutoPanConfigHooks.SeekPeaceCost}*2；增加人数={AutoPanConfigHooks.AddPopulationCostPerUnit}*人数；血脉创立按强者层级计价；国家祝福按目标数计价；修士闭关={AutoPanConfigHooks.CultivatorRetreatCost}；古神炼体={AutoPanConfigHooks.AncientTrainCost}；妖兽养成={AutoPanConfigHooks.BeastTrainCost}。" +
-                   "返回严格 JSON，不要 Markdown，不要额外说明。格式：{\"analysis\":\"一句话国情分析\",\"chat\":\"可发到QQ群的一句话，避免挑衅和编造\",\"actions\":[\"动作1\"]}。如果没有合适动作，actions 返回空数组。";
+            int nationUpCost = AutoPanConfigHooks.NationUpgradeCostPerLevel;
+            int xiuzhenUpCost = AutoPanConfigHooks.XiuzhenguoUpgradeCostPerLevel;
+            int policyCost = AutoPanConfigHooks.OccupationPolicyChangeCost;
+            int gatherCost = AutoPanConfigHooks.GatherSpiritCost;
+            int militiaCost = AutoPanConfigHooks.NationalMilitiaCost;
+            int warCost = AutoPanConfigHooks.DeclareWarCost;
+            int peaceCost = AutoPanConfigHooks.SeekPeaceCost;
+            int allianceCost = AutoPanConfigHooks.AllianceRequestCost;
+            int leaveAllianceCost = AutoPanConfigHooks.LeaveAllianceCost;
+            int duelCost = AutoPanConfigHooks.DuelRequestCost;
+            int popCost = AutoPanConfigHooks.AddPopulationCostPerUnit;
+            int sabotageMin = AutoPanConfigHooks.AuraSabotageMinCost;
+            int assassinBase = AutoPanConfigHooks.AssassinateBaseCost;
+            int curseBase = AutoPanConfigHooks.CurseBaseCost;
+            int cursePer = AutoPanConfigHooks.CurseCostPerTarget;
+            int heavenPunish = AutoPanConfigHooks.HeavenPunishCost;
+            int heavenBless = AutoPanConfigHooks.HeavenBlessCost;
+            int disturbCost = AutoPanConfigHooks.DisturbKingdomCost;
+            int disturbRate = AutoPanConfigHooks.DisturbSuccessRate;
+            int lowerCost = AutoPanConfigHooks.LowerNationCostPerLevel;
+            int retreatCost = AutoPanConfigHooks.CultivatorRetreatCost;
+            int ancientCost = AutoPanConfigHooks.AncientTrainCost;
+            int beastCost = AutoPanConfigHooks.BeastTrainCost;
+
+            return $"你是 WorldBox 国家自动盘 AI，负责为一个国家做战略决策。分析 user JSON 后选择 0~{maxActions} 个动作。" +
+                   "【决策优先级从高到低】1.升级国运/修真国（国力根基）2.宣战/求和/结盟/约斗（外交互动）3.聚灵/全民皆兵/增加人数（内政发展）4.天运/削灵/斩首/诅咒/扰动/降低国运（对敌干扰）5.修士闭关/升境、古神炼体/升星、妖兽养成/升阶（个体培养，国库充裕时才考虑）。" +
+                   "你应该积极与其他国家互动（结盟、约斗、宣战、天运等），不要只做内政。AllKingdoms 中 IsPlayerOwned=true 的是玩家国家，也可以互动。" +
+                   "约束：国库不足不选；目标不存在不选；同盟不宣战；CanDeclareWar=false 不宣战；宣战目标必须来自 CandidateKingdomNames；求和目标必须来自 EnemyKingdomNames。" +
+                   "动作格式：升级国运、升级修真国、政策 开放占领、政策 坚守城池、国策 聚灵、全民皆兵、宣战 国家名 [kingdomId]、求和 国家名 [kingdomId]、结盟 国家名 [kingdomId]、退盟、约斗 国家名 [kingdomId]、增加人数 数字(1~10)、血脉创立、国家祝福 5、国家祝福 全员、削灵 国家名 [kingdomId] 数量、斩首 国家名 [kingdomId]、诅咒 国家名 [kingdomId] 人数、天运惩罚 国家名 [kingdomId]、天运赐福 国家名 [kingdomId]、扰动国家 国家名 [kingdomId]、降低国运 国家名 [kingdomId] 级数、修士 单位id 闭关、修士 单位id 升境、古神 单位id 炼体、古神 单位id 升星、妖兽 单位id 养成、妖兽 单位id 升阶。" +
+                   $"成本（金币）：升级国运={nationUpCost}×当前等级；升级修真国={xiuzhenUpCost}×下一级；政策变更={policyCost}；聚灵={gatherCost}；全民皆兵={militiaCost}；宣战={warCost}；求和={peaceCost}×2；结盟={allianceCost}；退盟={leaveAllianceCost}；约斗={duelCost}；增加人数={popCost}×人数；削灵≥{sabotageMin}；斩首={assassinBase}+层级加价；诅咒={curseBase}+{cursePer}×人数；天运惩罚={heavenPunish}；天运赐福={heavenBless}；扰动={disturbCost}(成功率{disturbRate}%)；降低国运={lowerCost}×级数；修士闭关={retreatCost}；古神炼体={ancientCost}；妖兽养成={beastCost}；血脉创立和国家祝福按目标计价。" +
+                   "返回严格 JSON：{\"analysis\":\"一句话国情分析\",\"chat\":\"一句话聊天，可挑衅可友好，不要编造\",\"actions\":[\"动作1\"]}。没有合适动作时 actions 返回空数组。";
         }
 
         private static int GetDecisionIntervalYears()
         {
-            int intensity = Math.Max(1, Math.Min(5, AutoPanConfigHooks.AiDecisionIntensity));
-            return Math.Max(1, 5 - intensity);
+            return Math.Max(1, AutoPanConfigHooks.AiDecisionIntervalYears);
         }
 
         private static int GetMaxActionsPerDecision()
@@ -399,16 +422,15 @@ namespace XianniAutoPan.AI
             }
 
             bool hasExecution = executionTexts != null && executionTexts.Count > 0;
-            if (!hasExecution && string.IsNullOrWhiteSpace(result.ChatText) && string.IsNullOrWhiteSpace(result.AnalysisText))
+            if (!hasExecution)
             {
                 return;
             }
 
-            string summary = !string.IsNullOrWhiteSpace(result.ChatText)
-                ? result.ChatText
-                : (!string.IsNullOrWhiteSpace(result.AnalysisText) ? result.AnalysisText : "本轮没有合适动作。");
-            string actionText = hasExecution ? $" 决策{executionTexts.Count}项" : string.Empty;
-            AutoPanNotificationService.BroadcastToKnownGroups("Ai:" + TrimForNotice($"{kingdom.name}：{summary}{actionText}", 50));
+            string commandList = string.Join("、", executionTexts);
+            string chat = !string.IsNullOrWhiteSpace(result.ChatText) ? $"「{result.ChatText.Trim()}」" : string.Empty;
+            string notice = $"{kingdom.name} 决策{executionTexts.Count}项：{commandList}{chat}";
+            AutoPanNotificationService.BroadcastToKnownGroups("Ai:" + TrimForNotice(notice, 200));
         }
 
         private static string ExtractActorId(string choiceText)

@@ -123,9 +123,46 @@ namespace XianniAutoPan.Services
             }
 
             _pendingNewRoundNotice = false;
+            SpawnAiKingdomsIfConfigured();
             const string text = "新一局游戏已经开启。";
             XianniAutoPanApi.Broadcast(text);
             AutoPanNotificationService.BroadcastToKnownGroups(text);
+        }
+
+        private static readonly string[] AvailableRaces = { "人类", "兽人", "精灵", "矮人" };
+
+        /// <summary>
+        /// 根据配置在新盘开启时自动生成 AI 国家。
+        /// </summary>
+        private static void SpawnAiKingdomsIfConfigured()
+        {
+            int count = AutoPanConfigHooks.AiAutoJoinCount;
+            if (count <= 0 || !AutoPanConfigHooks.EnableLlmAi)
+            {
+                return;
+            }
+
+            int spawned = 0;
+            for (int i = 0; i < count; i++)
+            {
+                string race = AvailableRaces[Randy.randomInt(0, AvailableRaces.Length)];
+                if (AutoPanKingdomService.TrySpawnUnboundKingdom(race, out string message))
+                {
+                    spawned++;
+                    AutoPanLogService.Info($"新盘自动生成 AI 国家 ({i + 1}/{count})：{message}");
+                }
+                else
+                {
+                    AutoPanLogService.Error($"新盘自动生成 AI 国家失败 ({i + 1}/{count})：{message}");
+                }
+            }
+
+            if (spawned > 0)
+            {
+                string notice = $"新盘已自动生成 {spawned} 个 AI 国家。";
+                XianniAutoPanApi.Broadcast(notice);
+                AutoPanNotificationService.BroadcastToKnownGroups(notice);
+            }
         }
 
         private static string BuildRoundResult(string reason, string operatorName)

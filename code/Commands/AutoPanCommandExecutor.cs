@@ -47,8 +47,18 @@ namespace XianniAutoPan.Commands
             AutoPanCommandType.AddPopulation,
             AutoPanCommandType.DeclareWar,
             AutoPanCommandType.SeekPeace,
+            AutoPanCommandType.Alliance,
+            AutoPanCommandType.LeaveAlliance,
+            AutoPanCommandType.ChallengeDuel,
             AutoPanCommandType.BloodlineCreate,
             AutoPanCommandType.KingdomBlessing,
+            AutoPanCommandType.AuraSabotage,
+            AutoPanCommandType.AssassinateStrongest,
+            AutoPanCommandType.CurseEnemy,
+            AutoPanCommandType.HeavenPunish,
+            AutoPanCommandType.HeavenBless,
+            AutoPanCommandType.DisturbKingdom,
+            AutoPanCommandType.LowerNation,
             AutoPanCommandType.CultivatorRetreat,
             AutoPanCommandType.CultivatorRealmUp,
             AutoPanCommandType.AncientTrain,
@@ -102,11 +112,6 @@ namespace XianniAutoPan.Commands
                     result.Success = true;
                     result.Text = $"已在 {chatKingdom.name} 上方显示聊天内容。";
                     result.SuppressQqReply = message.SourceType == AutoPanInputSourceType.QqGroup;
-                    if (message.SourceType == AutoPanInputSourceType.QqGroup && AutoPanAiService.TryBuildPlayerChatReply(chatKingdom, playerName, command.RawText, out string aiChatReply))
-                    {
-                        result.Text = aiChatReply;
-                        result.SuppressQqReply = false;
-                    }
                     return result;
                 }
 
@@ -1408,10 +1413,9 @@ namespace XianniAutoPan.Commands
             {
                 "玩家指令总览：",
                 "加入人类 / 加入兽人 / 加入精灵 / 加入矮人",
-                "帮助",
                 "我的国家",
                 "国家信息",
-                "当前局势（QQ群截图，冷却由后台配置） / #当前局势（管理员无冷却）",
+                "当前局势",
                 "查看所有国家信息",
                 "玩家排名",
                 "国家改名 新名字",
@@ -1430,8 +1434,7 @@ namespace XianniAutoPan.Commands
                 "求和 目标国家 [kingdomId] 或 求和 @对方",
                 "结盟 目标国家 [kingdomId] 或 结盟 @对方",
                 "同意结盟 / 拒绝结盟 / 退盟",
-                "约斗 目标国家 [kingdomId] 5000",
-                "同意约斗 / 拒绝约斗",
+                "约斗 目标国家 [kingdomId] 500",
                 "血脉创立 单位id",
                 "天榜 / 战力榜",
                 "削灵 目标国家 [kingdomId] 500",
@@ -1450,11 +1453,9 @@ namespace XianniAutoPan.Commands
                 "移交城市 城市名 [cityId] 给 目标国家 [kingdomId]",
                 "移交 目标国家 [kingdomId]随机一座城市",
                 "军备 城市名 [cityId] 精金 全军",
-                "天运惩罚 目标国家（可@）",
-                "天运赐福 目标国家（可@）",
+                "天运惩罚(赐福) 目标国家（可@）",
                 "扰动国家 目标国家（可@）",
-                "#结盘（管理员）",
-                "QQ群中的 # 管理员指令仅 QQ 管理员白名单可用。"
+                "#结盘（管理员）"
             });
         }
     }

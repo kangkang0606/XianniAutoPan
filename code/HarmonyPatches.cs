@@ -139,6 +139,14 @@ namespace XianniAutoPan
             string text = $"{AutoPanKingdomService.FormatKingdomLabel(previousKingdom)} 采用坚守城池政策，{__instance.name} 被 {attackerText} 攻破后不会被占领，已被摧毁。";
             __instance.clearCapture();
             World.world.cities.removeObject(__instance);
+
+            // 最后一个城市被摧毁时，杀掉该国家所有单位防止无家可归者重建城市
+            if (previousKingdom.countCities() <= 0)
+            {
+                text += $" {previousKingdom.name} 已无城可守，全体国民覆灭。";
+                AutoPanKingdomService.KillAllUnits(previousKingdom);
+            }
+
             XianniAutoPanApi.Broadcast(text);
             AutoPanNotificationService.NotifyKingdomOwners(previousKingdom, text);
             AutoPanLogService.Info(text);

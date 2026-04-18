@@ -47,10 +47,6 @@ namespace XianniAutoPan.Services
             {
                 Debug.LogError(line);
             }
-            else
-            {
-                Debug.Log(line);
-            }
 
             lock (Sync)
             {

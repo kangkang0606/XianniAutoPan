@@ -233,6 +233,33 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 杀掉国家所有单位，用于坚守城池最后城市被摧毁时防止无家可归者重建。
+        /// </summary>
+        public static void KillAllUnits(Kingdom kingdom)
+        {
+            if (kingdom == null || World.world?.units == null)
+            {
+                return;
+            }
+
+            List<Actor> toKill = new List<Actor>();
+            foreach (Actor actor in World.world.units)
+            {
+                if (actor != null && actor.isAlive() && actor.kingdom == kingdom)
+                {
+                    toKill.Add(actor);
+                }
+            }
+
+            foreach (Actor actor in toKill)
+            {
+                actor.die(pDestroy: true, AttackType.Other);
+            }
+
+            AutoPanLogService.Info($"坚守城池灭国：{kingdom.name} 共清除 {toKill.Count} 个单位。");
+        }
+
+        /// <summary>
         /// 清理即将销毁国家上的自动盘经济与绑定字段，避免复用对象时继承旧国库。
         /// </summary>
         public static void ClearRuntimeEconomyState(Kingdom kingdom)
