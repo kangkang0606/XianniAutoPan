@@ -1,4 +1,6 @@
+using ai.behaviours;
 using HarmonyLib;
+using System.Collections.Generic;
 using UnityEngine;
 using XianniAutoPan.Commands;
 using XianniAutoPan.Model;
@@ -185,14 +187,43 @@ namespace XianniAutoPan
 
             string attackerText = pNewKingdom != null ? AutoPanKingdomService.FormatKingdomLabel(pNewKingdom) : "敌军";
             string text = $"{AutoPanKingdomService.FormatKingdomLabel(previousKingdom)} 采用坚守城池政策，{__instance.name} 被 {attackerText} 攻破后不会被占领，已被摧毁。";
+            bool wasLastCity = previousKingdom.countCities() <= 1;
+            WorldTile originTile = __instance.getTile();
+            List<Actor> displacedUnits = new List<Actor>();
+            if (wasLastCity && World.world?.units != null)
+            {
+                foreach (Actor unit in World.world.units)
+                {
+                    if (unit != null && unit.isAlive() && unit.kingdom == previousKingdom)
+                    {
+                        displacedUnits.Add(unit);
+                    }
+                }
+            }
+            else
+            {
+                foreach (Actor unit in __instance.units)
+                {
+                    if (unit != null && unit.isAlive() && unit.kingdom == previousKingdom)
+                    {
+                        displacedUnits.Add(unit);
+                    }
+                }
+            }
+
             __instance.clearCapture();
             World.world.cities.removeObject(__instance);
 
-            // 最后一个城市被摧毁时，杀掉该国家所有单位防止无家可归者重建城市
-            if (previousKingdom.countCities() <= 0)
+            int migrated = AutoPanKingdomService.RelocateDefendCitySurvivors(previousKingdom, pNewKingdom, displacedUnits, originTile);
+            if (migrated > 0)
             {
-                text += $" {previousKingdom.name} 已无城可守，全体国民覆灭。";
-                AutoPanKingdomService.KillAllUnits(previousKingdom);
+                text += $" {migrated} 名无家可归者已迁入现有城市。";
+            }
+
+            if (wasLastCity || previousKingdom.countCities() <= 0)
+            {
+                AutoPanKingdomService.MarkDefendKingdomDefeated(previousKingdom);
+                text += $" {previousKingdom.name} 已无城可守，幸存者不会再创建新国家。";
             }
 
             XianniAutoPanApi.Broadcast(text);
@@ -219,6 +250,72 @@ namespace XianniAutoPan
             }
 
             AutoPanKingdomService.GrantOccupationSubsidy(__state.PreviousKingdom, newKingdom, __state.CityName);
+        }
+    }
+
+    /// <summary>
+    /// 阻止坚守城池灭国后的无城单位通过普通建城任务重建城市。
+    /// </summary>
+    [HarmonyPatch(typeof(BehCheckBuildCity), nameof(BehCheckBuildCity.execute))]
+    internal static class AutoPanDefeatedDefendBuildCityPatch
+    {
+        /// <summary>
+        /// 在原版建城任务真正建城前迁移漏网单位。
+        /// </summary>
+        [HarmonyPrefix]
+        private static bool Prefix(Actor pActor, ref BehResult __result)
+        {
+            if (!AutoPanKingdomService.TryRelocateDefeatedDefendSettler(pActor, "无城建城任务"))
+            {
+                return true;
+            }
+
+            __result = BehResult.Stop;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 阻止坚守城池灭国后的单位启动新文明。
+    /// </summary>
+    [HarmonyPatch(typeof(BehCheckStartCivilization), nameof(BehCheckStartCivilization.execute))]
+    internal static class AutoPanDefeatedDefendStartCivilizationPatch
+    {
+        /// <summary>
+        /// 在原版新文明任务真正创建国家前迁移漏网单位。
+        /// </summary>
+        [HarmonyPrefix]
+        private static bool Prefix(Actor pActor, ref BehResult __result)
+        {
+            if (!AutoPanKingdomService.TryRelocateDefeatedDefendSettler(pActor, "新文明任务"))
+            {
+                return true;
+            }
+
+            __result = BehResult.Stop;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 兜底阻止代码路径直接检查并创建新文明。
+    /// </summary>
+    [HarmonyPatch(typeof(CityManager), nameof(CityManager.canStartNewCityCivilizationHere))]
+    internal static class AutoPanDefeatedDefendCivilizationCheckPatch
+    {
+        /// <summary>
+        /// 让漏网单位无法通过 canStartNewCityCivilizationHere 检查。
+        /// </summary>
+        [HarmonyPrefix]
+        private static bool Prefix(Actor pActor, ref bool __result)
+        {
+            if (!AutoPanKingdomService.TryRelocateDefeatedDefendSettler(pActor, "新文明检查"))
+            {
+                return true;
+            }
+
+            __result = false;
+            return false;
         }
     }
 

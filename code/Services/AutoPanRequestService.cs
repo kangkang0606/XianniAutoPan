@@ -178,7 +178,6 @@ namespace XianniAutoPan.Services
             PendingRequests.Add(request);
             AutoPanKingdomSpeechService.ShowSpeech(target, "外交请求", $"{AutoPanKingdomService.FormatKingdomLabel(source)} 请求结盟", isCommand: true);
             message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。";
-            AutoPanNotificationService.NotifyKingdomOwners(target, $"{AutoPanKingdomService.FormatKingdomLabel(source)} 向你的国家发出结盟请求，请在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。");
             if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
             {
                 message += "\n" + aiResponseText;
@@ -223,7 +222,6 @@ namespace XianniAutoPan.Services
             string duelTitle = request.BetAmount > 0 ? $"发起约斗，赌注 {request.BetAmount} 金币" : "发起约斗";
             AutoPanKingdomSpeechService.ShowSpeech(target, "比武邀请", $"{AutoPanKingdomService.FormatKingdomLabel(source)} {duelTitle}", isCommand: true);
             message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。";
-            AutoPanNotificationService.NotifyKingdomOwners(target, $"{AutoPanKingdomService.FormatKingdomLabel(source)} 向你的国家发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，请在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。");
             if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
             {
                 message += "\n" + aiResponseText;

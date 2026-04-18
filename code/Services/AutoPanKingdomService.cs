@@ -56,6 +56,8 @@ namespace XianniAutoPan.Services
 
         private static readonly Dictionary<long, SnapshotCacheEntry> SnapshotCache = new Dictionary<long, SnapshotCacheEntry>();
         private static readonly Dictionary<long, DateTime> MobilizedCityExpiryUtc = new Dictionary<long, DateTime>();
+        private static readonly HashSet<long> DefeatedDefendKingdomIds = new HashSet<long>();
+        private static readonly Dictionary<long, long> DefeatedDefendUnitKingdomIds = new Dictionary<long, long>();
         private static readonly XiuzhenguoLevelRequirement[] XiuzhenguoRequirements =
         {
             new XiuzhenguoLevelRequirement { Level = 0, RequiredRealmIndex = -1, RequiredCount = 0, SecondaryRealmIndex = -1, SecondaryCount = 0 },
@@ -234,30 +236,195 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 杀掉国家所有单位，用于坚守城池最后城市被摧毁时防止无家可归者重建。
+        /// 将坚守城池被毁城市的居民迁入现有城市，优先本国剩余城市，其次攻方城市，最后同种族城市。
         /// </summary>
-        public static void KillAllUnits(Kingdom kingdom)
+        public static int RelocateDefendCitySurvivors(Kingdom originalKingdom, Kingdom attackerKingdom, IEnumerable<Actor> survivors, WorldTile originTile)
         {
-            if (kingdom == null || World.world?.units == null)
+            if (survivors == null)
+            {
+                return 0;
+            }
+
+            int migrated = 0;
+            foreach (Actor actor in survivors)
+            {
+                if (actor == null || !actor.isAlive() || actor.asset == null || actor.asset.is_boat)
+                {
+                    continue;
+                }
+
+                City destination = FindDefendSurvivorMigrationCity(actor, originalKingdom, attackerKingdom, originTile);
+                if (destination == null)
+                {
+                    MarkDefeatedDefendUnit(actor, originalKingdom);
+                    continue;
+                }
+
+                actor.stopBeingWarrior();
+                actor.joinCity(destination);
+                actor.cancelAllBeh();
+                DefeatedDefendUnitKingdomIds.Remove(actor.getID());
+                migrated++;
+            }
+
+            return migrated;
+        }
+
+        /// <summary>
+        /// 记录坚守城池国家最后一城被毁时的国家和单位，防止原版无家可归者之后重建城市或新国家。
+        /// </summary>
+        public static void MarkDefendKingdomDefeated(Kingdom kingdom)
+        {
+            if (kingdom == null)
             {
                 return;
             }
 
-            List<Actor> toKill = new List<Actor>();
+            long kingdomId = kingdom.getID();
+            DefeatedDefendKingdomIds.Add(kingdomId);
+            if (World.world?.units == null)
+            {
+                return;
+            }
+
             foreach (Actor actor in World.world.units)
             {
                 if (actor != null && actor.isAlive() && actor.kingdom == kingdom)
                 {
-                    toKill.Add(actor);
+                    DefeatedDefendUnitKingdomIds[actor.getID()] = kingdomId;
                 }
             }
+        }
 
-            foreach (Actor actor in toKill)
+        private static void MarkDefeatedDefendUnit(Actor actor, Kingdom fallbackKingdom)
+        {
+            if (actor == null)
             {
-                actor.die(pDestroy: true, AttackType.Other);
+                return;
             }
 
-            AutoPanLogService.Info($"坚守城池灭国：{kingdom.name} 共清除 {toKill.Count} 个单位。");
+            Kingdom kingdom = actor.kingdom ?? fallbackKingdom;
+            if (kingdom == null)
+            {
+                return;
+            }
+
+            long kingdomId = kingdom.getID();
+            DefeatedDefendKingdomIds.Add(kingdomId);
+            DefeatedDefendUnitKingdomIds[actor.getID()] = kingdomId;
+        }
+
+        private static City FindDefendSurvivorMigrationCity(Actor actor, Kingdom originalKingdom, Kingdom attackerKingdom, WorldTile originTile)
+        {
+            if (actor == null || World.world?.cities == null)
+            {
+                return null;
+            }
+
+            List<City> candidates = World.world.cities
+                .Where(city => IsValidMigrationCity(city, actor))
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                return null;
+            }
+
+            long originalKingdomId = originalKingdom?.getID() ?? -1L;
+            long attackerKingdomId = attackerKingdom?.getID() ?? -1L;
+            string actorSpecies = actor.asset?.id;
+            return candidates
+                .OrderBy(city => city.kingdom?.getID() == originalKingdomId ? 0 : city.kingdom?.getID() == attackerKingdomId ? 1 : 2)
+                .ThenBy(city => string.Equals(city.kingdom?.getSpecies(), actorSpecies, StringComparison.Ordinal) ? 0 : 1)
+                .ThenBy(city => GetCityDistanceScore(originTile, city))
+                .ThenBy(city => city.getID())
+                .FirstOrDefault();
+        }
+
+        private static bool IsValidMigrationCity(City city, Actor actor)
+        {
+            return city != null
+                && city.isAlive()
+                && city.kingdom != null
+                && city.kingdom.isAlive()
+                && city.kingdom.isCiv()
+                && actor != null
+                && actor.city != city;
+        }
+
+        /// <summary>
+        /// 世界切换后清空坚守城池灭国拦截状态，避免旧世界单位 id 影响新局。
+        /// </summary>
+        public static void ClearDefeatedDefendSettlementGuards()
+        {
+            DefeatedDefendKingdomIds.Clear();
+            DefeatedDefendUnitKingdomIds.Clear();
+        }
+
+        /// <summary>
+        /// 判断并迁移试图建城的坚守城池灭国漏网单位；无可迁入城市时只拦截建城。
+        /// </summary>
+        public static bool TryRelocateDefeatedDefendSettler(Actor actor, string source)
+        {
+            if (!ShouldBlockDefeatedDefendSettlement(actor))
+            {
+                return false;
+            }
+
+            string actorName = actor.getName();
+            long actorId = actor.getID();
+            City destination = FindDefendSurvivorMigrationCity(actor, actor.kingdom, null, actor.current_tile);
+            if (destination != null)
+            {
+                actor.stopBeingWarrior();
+                actor.joinCity(destination);
+                actor.cancelAllBeh();
+                DefeatedDefendUnitKingdomIds.Remove(actorId);
+                AutoPanLogService.Info($"坚守城池灭国：阻止漏网单位 {actorName}[{actorId}] 通过 {source} 重建城市，已迁入 {destination.name}。");
+                return true;
+            }
+
+            actor.cancelAllBeh();
+            AutoPanLogService.Info($"坚守城池灭国：阻止漏网单位 {actorName}[{actorId}] 通过 {source} 重建城市；当前无可迁入城市，单位保留。");
+            return true;
+        }
+
+        /// <summary>
+        /// 判断单位是否属于坚守城池灭国后的漏网重建路径。
+        /// </summary>
+        public static bool ShouldBlockDefeatedDefendSettlement(Actor actor)
+        {
+            if (actor == null || !actor.isAlive())
+            {
+                return false;
+            }
+
+            long actorId = actor.getID();
+            if (DefeatedDefendUnitKingdomIds.ContainsKey(actorId))
+            {
+                return true;
+            }
+
+            Kingdom kingdom = actor.kingdom;
+            if (kingdom == null || !kingdom.isCiv())
+            {
+                return false;
+            }
+
+            long kingdomId = kingdom.getID();
+            if (DefeatedDefendKingdomIds.Contains(kingdomId))
+            {
+                DefeatedDefendUnitKingdomIds[actorId] = kingdomId;
+                return true;
+            }
+
+            if (kingdom.countCities() > 0 || !IsDefendCityPolicy(kingdom))
+            {
+                return false;
+            }
+
+            DefeatedDefendKingdomIds.Add(kingdomId);
+            DefeatedDefendUnitKingdomIds[actorId] = kingdomId;
+            return true;
         }
 
         /// <summary>

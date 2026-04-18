@@ -40,6 +40,9 @@ namespace XianniAutoPan
             _harmony.PatchAll(typeof(AutoPanMapFinishingUpLoadingPatch));
             _harmony.PatchAll(typeof(AutoPanWarEndPatch));
             _harmony.PatchAll(typeof(AutoPanCityCapturePatch));
+            _harmony.PatchAll(typeof(AutoPanDefeatedDefendBuildCityPatch));
+            _harmony.PatchAll(typeof(AutoPanDefeatedDefendStartCivilizationPatch));
+            _harmony.PatchAll(typeof(AutoPanDefeatedDefendCivilizationCheckPatch));
             _harmony.PatchAll(typeof(AutoPanKingdomNameplatePatch));
             _harmony.PatchAll(typeof(AutoPanNameplateManagerUpdatePatch));
 
@@ -96,6 +99,7 @@ namespace XianniAutoPan
             ResetFreshWorldYearIfNeeded();
             AutoPanStateRepository.CleanupDeadBindings();
             ClearLegacyXiuzhenguoOffsets();
+            AutoPanKingdomService.ClearDefeatedDefendSettlementGuards();
             AutoPanRequestService.ClearAll();
             AutoPanDuelService.ClearAll();
             AutoPanKingdomSpeechService.ClearAll();
