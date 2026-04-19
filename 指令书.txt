@@ -85,7 +85,7 @@
 17. 玩家排名/积分排名/胜场排名会显示跨局累计结盘积分。
 18. 自动结盘年份由 `roundEndYear` 配置控制，默认第 100 年；管理员可发送 `#结盘` 立即结盘。
 19. 结盘排名允许无绑定国家参与；第 1 名若无绑定玩家，则本轮记为 AI 胜利。
-20. 结盘按前 3 名发放积分，具体分值由 `roundFirstPlacePoints`、`roundSecondPlacePoints`、`roundThirdPlacePoints` 配置控制，并自动开启新一局冰山尺寸“盒中世界”地图。
+20. 结盘按前 3 名发放玩家积分，具体分值由 `roundFirstPlacePoints`、`roundSecondPlacePoints`、`roundThirdPlacePoints` 配置控制；AI 可以占据名次但不计积分，名次不顺延。
 21. 新一局会使用原版“盒中世界”模板，加载完成后自动隐藏权能条并清理当前交互。
 22. QQ 群指令“当前局势”会发送一张当前游戏全屏截图，冷却秒数以后端政策 `currentSituationCooldownSeconds` 为准；管理员 `#当前局势` 不受冷却限制。
 23. 国家灭亡时会清空该国家上的自动盘国库状态，避免后续国家复用旧金币。
@@ -226,7 +226,7 @@
 十一、结盘与新局
 1. 自动结盘或 `#结盘` 会统计当前存活文明国家，包含无绑定国家；无绑定国家按 AI 阵营参与排名。
 2. 城市数并列时，依次比较国家等级、人口，仍并列则取 kingdomId 更小的国家。
-3. 结盘第 1~3 名分别按 `roundFirstPlacePoints`、`roundSecondPlacePoints`、`roundThirdPlacePoints` 累计积分，可用“玩家排名 / 积分排名 / 胜场排名”查看。
+3. 结盘第 1~3 名分别按 `roundFirstPlacePoints`、`roundSecondPlacePoints`、`roundThirdPlacePoints` 给玩家国家累计积分；AI 国家只抢占名次，不计入积分，也不会把该名次积分顺延给后面的玩家。
 4. 结盘后自动生成新一局冰山尺寸地图，地图模板为原版“盒中世界”。
 5. 新局加载完成后自动隐藏权能条并清理当前交互。
 6. 新局加载完成后自动开启盖亚契约和百人，关闭外交组法则与演化事件法则，并暂停纪元更迭。

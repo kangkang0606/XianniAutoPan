@@ -11,7 +11,6 @@ namespace XianniAutoPan.Services
     /// </summary>
     internal static class AutoPanRoundService
     {
-        private const string AiScoreUserId = "ai";
         private const string AiScorePlayerName = "AI";
 
         private sealed class RoundCandidate
@@ -188,6 +187,12 @@ namespace XianniAutoPan.Services
             {
                 RoundCandidate candidate = topThree[index];
                 int points = GetPlacePoints(index);
+                if (candidate.IsAi)
+                {
+                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：占据名次，AI 不计入积分。");
+                    continue;
+                }
+
                 if (points <= 0)
                 {
                     awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：+0 分。");
@@ -256,7 +261,7 @@ namespace XianniAutoPan.Services
                 bool isAi = string.IsNullOrWhiteSpace(ownerUserId);
                 result.Add(new RoundCandidate
                 {
-                    UserId = isAi ? AiScoreUserId : ownerUserId,
+                    UserId = isAi ? string.Empty : ownerUserId,
                     PlayerName = isAi ? AiScorePlayerName : string.IsNullOrWhiteSpace(ownerName) ? ownerUserId : ownerName,
                     IsAi = isAi,
                     KingdomId = kingdom.getID(),

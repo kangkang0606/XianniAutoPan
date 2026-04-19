@@ -8,14 +8,14 @@ using XianniAutoPan.Model;
 namespace XianniAutoPan.Services
 {
     /// <summary>
-    /// 管理跨局累计积分榜。
+    /// 管理玩家跨局累计积分榜。
     /// </summary>
     internal static class AutoPanScoreService
     {
         private sealed class PersistedScoreFile
         {
             /// <summary>
-            /// 玩家或 AI 积分记录。
+            /// 玩家积分记录。
             /// </summary>
             public List<AutoPanScoreRecord> Scores { get; set; } = new List<AutoPanScoreRecord>();
         }
@@ -62,12 +62,12 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 为玩家或 AI 增加结盘积分。
+        /// 为玩家增加结盘积分。
         /// </summary>
         public static int AddPoints(string userId, string playerName, int points)
         {
             string normalizedUserId = (userId ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(normalizedUserId) || points <= 0)
+            if (string.IsNullOrWhiteSpace(normalizedUserId) || IsAiScoreUser(normalizedUserId) || points <= 0)
             {
                 return 0;
             }
@@ -112,7 +112,7 @@ namespace XianniAutoPan.Services
             lock (Sync)
             {
                 rankings = ScoresByUser.Values
-                    .Where(item => item != null && item.Wins > 0)
+                    .Where(item => item != null && !IsAiScoreUser(item.UserId) && item.Wins > 0)
                     .OrderByDescending(item => item.Wins)
                     .ThenByDescending(item => item.LastWinUtc, StringComparer.Ordinal)
                     .ThenBy(item => item.PlayerName ?? item.UserId, StringComparer.Ordinal)
@@ -122,7 +122,7 @@ namespace XianniAutoPan.Services
 
             if (rankings.Count == 0)
             {
-                return "当前还没有玩家或 AI 获得结盘积分。";
+                return "当前还没有玩家获得结盘积分。";
             }
 
             List<string> lines = new List<string> { "玩家积分排名：" };
@@ -143,7 +143,7 @@ namespace XianniAutoPan.Services
             lock (Sync)
             {
                 return ScoresByUser.Values
-                    .Where(item => item != null)
+                    .Where(item => item != null && !IsAiScoreUser(item.UserId))
                     .OrderByDescending(item => item.Wins)
                     .ThenByDescending(item => item.LastWinUtc, StringComparer.Ordinal)
                     .ThenBy(item => item.PlayerName ?? item.UserId, StringComparer.Ordinal)
@@ -159,7 +159,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 手动设置玩家或 AI 积分榜分数与显示名。
+        /// 手动设置玩家积分榜分数与显示名。
         /// </summary>
         public static bool TrySetScore(string userId, string playerName, int wins, out string message)
         {
@@ -168,6 +168,12 @@ namespace XianniAutoPan.Services
             if (string.IsNullOrWhiteSpace(normalizedUserId))
             {
                 message = "保存积分失败：userId 不能为空。";
+                return false;
+            }
+
+            if (IsAiScoreUser(normalizedUserId))
+            {
+                message = "保存积分失败：AI 只参与结盘名次，不计入积分。";
                 return false;
             }
 
@@ -199,7 +205,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 删除玩家或 AI 积分榜记录。
+        /// 删除玩家积分榜记录。
         /// </summary>
         public static bool TryDeleteScore(string userId, out string message)
         {
@@ -288,6 +294,13 @@ namespace XianniAutoPan.Services
             {
                 AutoPanLogService.Error($"保存积分榜失败：{ex.Message}");
             }
+        }
+
+        private static bool IsAiScoreUser(string userId)
+        {
+            string normalizedUserId = (userId ?? string.Empty).Trim();
+            return string.Equals(normalizedUserId, "ai", StringComparison.OrdinalIgnoreCase)
+                || normalizedUserId.StartsWith("ai:", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
