@@ -216,19 +216,19 @@
         <div class="group-head">
           <div>
             <p class="group-tag">积分管理</p>
-            <h2>玩家积分榜</h2>
+            <h2>玩家 / AI 积分榜</h2>
           </div>
-          <span class="muted">只修改结盘胜场积分，不删除当前绑定国家或 QQ 路由</span>
+          <span class="muted">只修改结盘积分，不删除当前绑定国家或 QQ 路由</span>
         </div>
         <article class="panel score-panel">
           <div class="score-edit-grid">
             <label>userId
-              <input id="scoreUserId" type="text" placeholder="玩家 userId / QQ号" />
+              <input id="scoreUserId" type="text" placeholder="玩家 userId / QQ号 / ai" />
             </label>
             <label>playerName
               <input id="scorePlayerName" type="text" placeholder="显示名，可留空" />
             </label>
-            <label>胜场
+            <label>积分
               <input id="scoreWins" type="number" min="0" value="0" />
             </label>
             <button id="scoreSaveButton" class="primary-btn" type="button">保存积分</button>
@@ -240,7 +240,7 @@
                   <th>排名</th>
                   <th>userId</th>
                   <th>playerName</th>
-                  <th>胜场</th>
+                  <th>积分</th>
                   <th>最后更新</th>
                   <th>操作</th>
                 </tr>

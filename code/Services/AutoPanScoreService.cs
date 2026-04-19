@@ -8,14 +8,14 @@ using XianniAutoPan.Model;
 namespace XianniAutoPan.Services
 {
     /// <summary>
-    /// 管理玩家跨局累计胜场积分榜。
+    /// 管理跨局累计积分榜。
     /// </summary>
     internal static class AutoPanScoreService
     {
         private sealed class PersistedScoreFile
         {
             /// <summary>
-            /// 玩家胜场记录。
+            /// 玩家或 AI 积分记录。
             /// </summary>
             public List<AutoPanScoreRecord> Scores { get; set; } = new List<AutoPanScoreRecord>();
         }
@@ -33,12 +33,12 @@ namespace XianniAutoPan.Services
             public string PlayerName { get; set; }
 
             /// <summary>
-            /// 累计胜场。
+            /// 累计积分；字段名保留 Wins 以兼容旧积分文件和前端接口。
             /// </summary>
             public int Wins { get; set; }
 
             /// <summary>
-            /// 最近获胜时间，UTC ISO 字符串。
+            /// 最近积分更新时间，UTC ISO 字符串。
             /// </summary>
             public string LastWinUtc { get; set; }
         }
@@ -48,7 +48,7 @@ namespace XianniAutoPan.Services
         private static string _scorePath = string.Empty;
 
         /// <summary>
-        /// 初始化积分榜文件路径并载入已有胜场。
+        /// 初始化积分榜文件路径并载入已有积分。
         /// </summary>
         public static void Initialize(string modFolder)
         {
@@ -62,17 +62,17 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 为玩家增加一场结盘胜利。
+        /// 为玩家或 AI 增加结盘积分。
         /// </summary>
-        public static int AddWin(string userId, string playerName)
+        public static int AddPoints(string userId, string playerName, int points)
         {
             string normalizedUserId = (userId ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(normalizedUserId))
+            if (string.IsNullOrWhiteSpace(normalizedUserId) || points <= 0)
             {
                 return 0;
             }
 
-            int wins;
+            int totalPoints;
             lock (Sync)
             {
                 if (!ScoresByUser.TryGetValue(normalizedUserId, out AutoPanScoreRecord record) || record == null)
@@ -86,17 +86,25 @@ namespace XianniAutoPan.Services
                 }
 
                 record.PlayerName = string.IsNullOrWhiteSpace(playerName) ? normalizedUserId : playerName.Trim();
-                record.Wins++;
+                record.Wins += points;
                 record.LastWinUtc = DateTime.UtcNow.ToString("o");
-                wins = record.Wins;
+                totalPoints = record.Wins;
             }
 
             Save();
-            return wins;
+            return totalPoints;
         }
 
         /// <summary>
-        /// 构建玩家胜场排名文本。
+        /// 旧制胜场入口，按 1 分处理以兼容已有调用。
+        /// </summary>
+        public static int AddWin(string userId, string playerName)
+        {
+            return AddPoints(userId, playerName, 1);
+        }
+
+        /// <summary>
+        /// 构建积分排名文本。
         /// </summary>
         public static string BuildRankingText()
         {
@@ -114,14 +122,14 @@ namespace XianniAutoPan.Services
 
             if (rankings.Count == 0)
             {
-                return "当前还没有玩家获得结盘胜场。";
+                return "当前还没有玩家或 AI 获得结盘积分。";
             }
 
-            List<string> lines = new List<string> { "玩家胜场排名：" };
+            List<string> lines = new List<string> { "玩家积分排名：" };
             for (int index = 0; index < rankings.Count; index++)
             {
                 AutoPanScoreRecord item = rankings[index];
-                lines.Add($"{index + 1}. {item.PlayerName}({item.UserId})：{item.Wins} 胜");
+                lines.Add($"{index + 1}. {item.PlayerName}({item.UserId})：{item.Wins} 分");
             }
 
             return string.Join("\n", lines);
@@ -151,7 +159,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 手动设置玩家积分榜胜场与显示名。
+        /// 手动设置玩家或 AI 积分榜分数与显示名。
         /// </summary>
         public static bool TrySetScore(string userId, string playerName, int wins, out string message)
         {
@@ -165,7 +173,7 @@ namespace XianniAutoPan.Services
 
             if (wins < 0)
             {
-                message = "保存积分失败：胜场不能小于 0。";
+                message = "保存积分失败：积分不能小于 0。";
                 return false;
             }
 
@@ -186,12 +194,12 @@ namespace XianniAutoPan.Services
             }
 
             Save();
-            message = $"已保存玩家 {normalizedUserId} 的积分：{wins} 胜。";
+            message = $"已保存 {normalizedUserId} 的积分：{wins} 分。";
             return true;
         }
 
         /// <summary>
-        /// 删除玩家积分榜记录。
+        /// 删除玩家或 AI 积分榜记录。
         /// </summary>
         public static bool TryDeleteScore(string userId, out string message)
         {
@@ -211,12 +219,12 @@ namespace XianniAutoPan.Services
 
             if (!removed)
             {
-                message = $"删除积分失败：未找到玩家 {normalizedUserId}。";
+                message = $"删除积分失败：未找到 {normalizedUserId}。";
                 return false;
             }
 
             Save();
-            message = $"已删除玩家 {normalizedUserId} 的积分记录。";
+            message = $"已删除 {normalizedUserId} 的积分记录。";
             return true;
         }
 
@@ -245,7 +253,7 @@ namespace XianniAutoPan.Services
                 }
                 catch (Exception ex)
                 {
-                    AutoPanLogService.Error($"读取玩家积分榜失败：{ex.Message}");
+                    AutoPanLogService.Error($"读取积分榜失败：{ex.Message}");
                 }
             }
         }
@@ -278,7 +286,7 @@ namespace XianniAutoPan.Services
             }
             catch (Exception ex)
             {
-                AutoPanLogService.Error($"保存玩家积分榜失败：{ex.Message}");
+                AutoPanLogService.Error($"保存积分榜失败：{ex.Message}");
             }
         }
     }

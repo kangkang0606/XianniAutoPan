@@ -595,7 +595,7 @@ function renderScoreboard(scoreboard) {
     const cell = document.createElement("td");
     cell.colSpan = 6;
     cell.className = "table-empty";
-    cell.textContent = "当前还没有玩家积分记录。";
+    cell.textContent = "当前还没有积分记录。";
     emptyRow.appendChild(cell);
     scoreTableBodyEl.appendChild(emptyRow);
     return;
@@ -816,7 +816,7 @@ async function saveScore(userId, playerName, wins) {
     return;
   }
   if (!Number.isInteger(normalizedWins) || normalizedWins < 0) {
-    appendReply("积分保存失败：胜场必须是非负整数。", false);
+    appendReply("积分保存失败：积分必须是非负整数。", false);
     return;
   }
 

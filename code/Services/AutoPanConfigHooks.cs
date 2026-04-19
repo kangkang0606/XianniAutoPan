@@ -565,6 +565,21 @@ namespace XianniAutoPan.Services
         public static int RoundEndYear { get; private set; } = 100;
 
         /// <summary>
+        /// 结盘第 1 名获得的积分。
+        /// </summary>
+        public static int RoundFirstPlacePoints { get; private set; } = 3;
+
+        /// <summary>
+        /// 结盘第 2 名获得的积分。
+        /// </summary>
+        public static int RoundSecondPlacePoints { get; private set; } = 2;
+
+        /// <summary>
+        /// 结盘第 3 名获得的积分。
+        /// </summary>
+        public static int RoundThirdPlacePoints { get; private set; } = 1;
+
+        /// <summary>
         /// 天运惩罚成本。
         /// </summary>
         public static int HeavenPunishCost { get; private set; } = 150;
@@ -1176,8 +1191,11 @@ namespace XianniAutoPan.Services
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "mobilizeOrderSeconds", "动员军令秒数", "动员后临时强制城市军队执行战争进攻目标的持续秒数。", "秒", 5, 3600, () => MobilizeOrderSeconds, value => MobilizeOrderSeconds = value);
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationSubsidyMin", "被占城奖励最小金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励下限。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMin, value => OccupationSubsidyMin = value);
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationSubsidyMax", "被占城奖励最大金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励上限；实际奖励会在最小值和最大值之间随机。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMax, value => OccupationSubsidyMax = value);
-            RegisterPolicy("round", "结盘积分", "结盘年份、胜场累计与新局启动相关配置。", "roundEndYear", "自动结盘年份", "世界年份达到该值后，自动计算本局胜者并开启新一局。", "年", 1, 100000, () => RoundEndYear, value => RoundEndYear = value);
-            RegisterPolicy("round", "结盘积分", "结盘年份、胜场累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群“当前局势”截图指令的同群冷却秒数；管理员“#当前局势”不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、积分累计与新局启动相关配置。", "roundEndYear", "自动结盘年份", "世界年份达到该值后，自动计算本局排名并开启新一局。", "年", 1, 100000, () => RoundEndYear, value => RoundEndYear = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、积分累计与新局启动相关配置。", "roundFirstPlacePoints", "结盘第1名积分", "结盘排名第 1 的国家给其绑定玩家或 AI 阵营累计的积分。", "分", 0, 1_000_000_000, () => RoundFirstPlacePoints, value => RoundFirstPlacePoints = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、积分累计与新局启动相关配置。", "roundSecondPlacePoints", "结盘第2名积分", "结盘排名第 2 的国家给其绑定玩家或 AI 阵营累计的积分。", "分", 0, 1_000_000_000, () => RoundSecondPlacePoints, value => RoundSecondPlacePoints = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、积分累计与新局启动相关配置。", "roundThirdPlacePoints", "结盘第3名积分", "结盘排名第 3 的国家给其绑定玩家或 AI 阵营累计的积分。", "分", 0, 1_000_000_000, () => RoundThirdPlacePoints, value => RoundThirdPlacePoints = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、积分累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群“当前局势”截图指令的同群冷却秒数；管理员“#当前局势”不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
 
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "declareWarCost", "宣战成本", "执行“宣战 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "seekPeaceCost", "求和成本", "执行“求和 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);

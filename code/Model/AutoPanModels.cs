@@ -540,7 +540,7 @@ namespace XianniAutoPan.Model
         public List<AutoPanKingdomDashboardInfo> Kingdoms { get; set; } = new List<AutoPanKingdomDashboardInfo>();
 
         /// <summary>
-        /// 跨局玩家积分榜。
+        /// 跨局玩家与 AI 积分榜。
         /// </summary>
         public List<AutoPanScoreDashboardRecord> Scoreboard { get; set; } = new List<AutoPanScoreDashboardRecord>();
 
@@ -561,12 +561,12 @@ namespace XianniAutoPan.Model
     }
 
     /// <summary>
-    /// 前端展示用玩家积分记录。
+    /// 前端展示用玩家或 AI 积分记录。
     /// </summary>
     public sealed class AutoPanScoreDashboardRecord
     {
         /// <summary>
-        /// 玩家唯一标识。
+        /// 玩家唯一标识或 AI 阵营标识。
         /// </summary>
         public string UserId { get; set; }
 
@@ -576,12 +576,12 @@ namespace XianniAutoPan.Model
         public string PlayerName { get; set; }
 
         /// <summary>
-        /// 跨局累计胜场。
+        /// 跨局累计积分；字段名保留 Wins 以兼容旧前端接口。
         /// </summary>
         public int Wins { get; set; }
 
         /// <summary>
-        /// 最近获胜或手动修改时间，UTC ISO 字符串。
+        /// 最近积分增加或手动修改时间，UTC ISO 字符串。
         /// </summary>
         public string LastWinUtc { get; set; }
     }

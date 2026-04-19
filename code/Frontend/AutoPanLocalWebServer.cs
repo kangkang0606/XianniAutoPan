@@ -507,7 +507,7 @@ namespace XianniAutoPan.Frontend
                 bool success = int.TryParse(winsText, out int wins) && AutoPanScoreService.TrySetScore(userId, playerName, wins, out message);
                 if (!success && string.IsNullOrWhiteSpace(message))
                 {
-                    message = "保存积分失败：胜场必须是整数。";
+                    message = "保存积分失败：积分必须是整数。";
                 }
 
                 await ServeJsonAsync(stream, new

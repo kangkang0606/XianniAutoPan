@@ -7,21 +7,29 @@ using xn.api;
 namespace XianniAutoPan.Services
 {
     /// <summary>
-    /// 管理自动盘结盘、胜场结算与新局生成。
+    /// 管理自动盘结盘、积分结算与新局生成。
     /// </summary>
     internal static class AutoPanRoundService
     {
+        private const string AiScoreUserId = "ai";
+        private const string AiScorePlayerName = "AI";
+
         private sealed class RoundCandidate
         {
             /// <summary>
-            /// 玩家用户 ID。
+            /// 积分归属用户 ID。
             /// </summary>
             public string UserId;
 
             /// <summary>
-            /// 玩家显示名。
+            /// 积分归属显示名。
             /// </summary>
             public string PlayerName;
+
+            /// <summary>
+            /// 是否为无绑定 AI 国家。
+            /// </summary>
+            public bool IsAi;
 
             /// <summary>
             /// 国家 ID。
@@ -167,26 +175,37 @@ namespace XianniAutoPan.Services
 
         private static string BuildRoundResult(string reason, string operatorName)
         {
-            List<RoundCandidate> candidates = BuildCandidates();
+            List<RoundCandidate> candidates = BuildRankedCandidates();
             if (candidates.Count == 0)
             {
-                return $"本局结盘：{reason}。没有可结算的玩家国家，未增加胜场。";
+                return $"本局结盘：{reason}。没有可结算国家，未增加积分。";
             }
 
-            RoundCandidate winner = candidates
-                .OrderByDescending(item => item.CityCount)
-                .ThenByDescending(item => item.NationLevel)
-                .ThenByDescending(item => item.Population)
-                .ThenBy(item => item.KingdomId)
-                .First();
-            int wins = AutoPanScoreService.AddWin(winner.UserId, winner.PlayerName);
+            RoundCandidate winner = candidates.First();
+            List<RoundCandidate> topThree = candidates.Take(3).ToList();
+            List<string> awardLines = new List<string>();
+            for (int index = 0; index < topThree.Count; index++)
+            {
+                RoundCandidate candidate = topThree[index];
+                int points = GetPlacePoints(index);
+                if (points <= 0)
+                {
+                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：+0 分。");
+                    continue;
+                }
+
+                int totalPoints = AutoPanScoreService.AddPoints(candidate.UserId, candidate.PlayerName, points);
+                awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：+{points} 分，累计 {totalPoints} 分。");
+            }
 
             List<string> lines = new List<string>
             {
                 $"本局结盘：{reason}。",
-                $"胜者：{winner.PlayerName} 的 {winner.KingdomLabel}，城市 {winner.CityCount}，国家等级 {winner.NationLevel}，人口 {winner.Population}。",
+                $"胜者：{BuildCandidateOwnerText(winner)} 的 {winner.KingdomLabel}，城市 {winner.CityCount}，国家等级 {winner.NationLevel}，人口 {winner.Population}。",
+                winner.IsAi ? "本轮结果：AI 胜利。" : $"本轮结果：玩家 {winner.PlayerName} 胜利。",
                 $"裁定规则：城市数优先；并列时按国家等级、人口、kingdomId 小者依次裁定。",
-                $"本玩家累计胜场：{wins}。"
+                "积分发放：",
+                string.Join("\n", awardLines)
             };
 
             if (!string.IsNullOrWhiteSpace(operatorName))
@@ -199,14 +218,21 @@ namespace XianniAutoPan.Services
 
         private static List<string> ExtractWinnerUserIds()
         {
+            return BuildRankedCandidates()
+                .Take(1)
+                .Where(item => !item.IsAi)
+                .Select(item => item.UserId)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToList();
+        }
+
+        private static List<RoundCandidate> BuildRankedCandidates()
+        {
             return BuildCandidates()
                 .OrderByDescending(item => item.CityCount)
                 .ThenByDescending(item => item.NationLevel)
                 .ThenByDescending(item => item.Population)
                 .ThenBy(item => item.KingdomId)
-                .Take(1)
-                .Select(item => item.UserId)
-                .Where(item => !string.IsNullOrWhiteSpace(item))
                 .ToList();
         }
 
@@ -226,16 +252,13 @@ namespace XianniAutoPan.Services
                 }
 
                 kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, string.Empty);
-                if (string.IsNullOrWhiteSpace(ownerUserId))
-                {
-                    continue;
-                }
-
                 kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, ownerUserId);
+                bool isAi = string.IsNullOrWhiteSpace(ownerUserId);
                 result.Add(new RoundCandidate
                 {
-                    UserId = ownerUserId,
-                    PlayerName = string.IsNullOrWhiteSpace(ownerName) ? ownerUserId : ownerName,
+                    UserId = isAi ? AiScoreUserId : ownerUserId,
+                    PlayerName = isAi ? AiScorePlayerName : string.IsNullOrWhiteSpace(ownerName) ? ownerUserId : ownerName,
+                    IsAi = isAi,
                     KingdomId = kingdom.getID(),
                     KingdomLabel = AutoPanKingdomService.FormatKingdomLabel(kingdom),
                     CityCount = kingdom.countCities(),
@@ -245,6 +268,31 @@ namespace XianniAutoPan.Services
             }
 
             return result;
+        }
+
+        private static int GetPlacePoints(int zeroBasedIndex)
+        {
+            switch (zeroBasedIndex)
+            {
+                case 0:
+                    return AutoPanConfigHooks.RoundFirstPlacePoints;
+                case 1:
+                    return AutoPanConfigHooks.RoundSecondPlacePoints;
+                case 2:
+                    return AutoPanConfigHooks.RoundThirdPlacePoints;
+                default:
+                    return 0;
+            }
+        }
+
+        private static string BuildCandidateOwnerText(RoundCandidate candidate)
+        {
+            if (candidate == null)
+            {
+                return "未知";
+            }
+
+            return candidate.IsAi ? AiScorePlayerName : candidate.PlayerName;
         }
 
         private static bool StartNewRound()
