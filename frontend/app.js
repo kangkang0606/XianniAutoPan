@@ -10,6 +10,7 @@ const logBoxEl = document.getElementById("logBox");
 const commandBookEl = document.getElementById("commandBook");
 const kingdomTableBodyEl = document.getElementById("kingdomTableBody");
 const policyModulesEl = document.getElementById("policyModules");
+const policyModuleTabsEl = document.getElementById("policyModuleTabs");
 const qqBridgePanelEl = document.getElementById("qqBridgePanel");
 const pendingRequestsEl = document.getElementById("pendingRequests");
 const scoreTableBodyEl = document.getElementById("scoreTableBody");
@@ -22,21 +23,27 @@ const refreshButtonEl = document.getElementById("refreshButton");
 const viewBindingButtonEl = document.getElementById("viewBindingButton");
 const aiEnableToggleEl = document.getElementById("aiEnableToggle");
 const aiQqChatToggleEl = document.getElementById("aiQqChatToggle");
+const pageSwitchEl = document.querySelector(".page-switch");
 const pageTabEls = Array.from(document.querySelectorAll("[data-page-target]"));
 const pageViewEls = Array.from(document.querySelectorAll("[data-page-view]"));
+const configTabEls = Array.from(document.querySelectorAll("[data-config-target]"));
+const configViewEls = Array.from(document.querySelectorAll("[data-config-view]"));
+const saveDirtyConfigButtonEl = document.getElementById("saveDirtyConfigButton");
+const discardDirtyConfigButtonEl = document.getElementById("discardDirtyConfigButton");
+const configDirtyStatusEl = document.getElementById("configDirtyStatus");
 
 let socket = null;
 let dashboardTimer = null;
 let currentBinding = null;
 let currentKingdoms = [];
 let currentPage = "dashboard";
+let currentConfigModule = "score";
+let currentPolicyModuleKey = "";
+let isSavingDirtyConfig = false;
 const policyDrafts = Object.create(null);
 const policyDirtyKeys = new Set();
 const qqDrafts = Object.create(null);
 const qqDirtyKeys = new Set();
-const policySaveTimers = Object.create(null);
-const qqSaveTimers = Object.create(null);
-const AUTO_SAVE_DELAY_MS = 650;
 
 function pick(obj, camelKey, pascalKey) {
   if (!obj) {
@@ -48,8 +55,15 @@ function pick(obj, camelKey, pascalKey) {
   return obj[pascalKey];
 }
 
-function switchPage(pageName) {
+function switchPage(pageName, force = false) {
+  if (!force && currentPage === pageName) {
+    return;
+  }
+
   currentPage = pageName;
+  if (pageSwitchEl) {
+    pageSwitchEl.dataset.activePage = pageName;
+  }
   pageTabEls.forEach((button) => {
     const isActive = button.dataset.pageTarget === pageName;
     button.classList.toggle("is-active", isActive);
@@ -58,6 +72,31 @@ function switchPage(pageName) {
   pageViewEls.forEach((view) => {
     view.classList.toggle("is-active", view.dataset.pageView === pageName);
   });
+}
+
+function switchConfigModule(moduleName, force = false) {
+  if (!force && currentConfigModule === moduleName) {
+    return;
+  }
+
+  currentConfigModule = moduleName;
+  configTabEls.forEach((button) => {
+    const isActive = button.dataset.configTarget === moduleName;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  configViewEls.forEach((view) => {
+    view.classList.toggle("is-active", view.dataset.configView === moduleName);
+  });
+}
+
+function switchPolicyModule(moduleKey, policy) {
+  if (currentPolicyModuleKey === moduleKey) {
+    return;
+  }
+
+  currentPolicyModuleKey = moduleKey;
+  renderPolicy(policy);
 }
 
 function appendReply(text, ok = true) {
@@ -82,6 +121,7 @@ function rememberDraft(store, dirtySet, key, value) {
   }
   store[key] = value;
   dirtySet.add(key);
+  updateDirtyStatus();
 }
 
 function getDraftValue(store, dirtySet, key, fallbackValue) {
@@ -97,6 +137,7 @@ function clearDraft(store, dirtySet, key) {
   }
   delete store[key];
   dirtySet.delete(key);
+  updateDirtyStatus();
 }
 
 function clearDraftIfSaved(store, dirtySet, key, value) {
@@ -104,6 +145,24 @@ function clearDraftIfSaved(store, dirtySet, key, value) {
     return;
   }
   clearDraft(store, dirtySet, key);
+}
+
+function updateDirtyStatus() {
+  const policyCount = policyDirtyKeys.size;
+  const qqCount = qqDirtyKeys.size;
+  const totalCount = policyCount + qqCount;
+  if (configDirtyStatusEl) {
+    configDirtyStatusEl.textContent = totalCount > 0
+      ? `待保存 ${totalCount} 项（政策 ${policyCount} / QQ ${qqCount}）`
+      : "没有未保存修改";
+    configDirtyStatusEl.classList.toggle("is-dirty", totalCount > 0);
+  }
+  if (saveDirtyConfigButtonEl) {
+    saveDirtyConfigButtonEl.disabled = totalCount === 0 || isSavingDirtyConfig;
+  }
+  if (discardDirtyConfigButtonEl) {
+    discardDirtyConfigButtonEl.disabled = totalCount === 0 || isSavingDirtyConfig;
+  }
 }
 
 function shouldSuspendAutoRefresh() {
@@ -293,6 +352,9 @@ function renderPendingRequests(requests) {
 
 function renderPolicy(policy) {
   policyModulesEl.innerHTML = "";
+  if (policyModuleTabsEl) {
+    policyModuleTabsEl.innerHTML = "";
+  }
   const modules = pick(policy, "modules", "Modules") || [];
   if (!policy || modules.length === 0) {
     const empty = document.createElement("div");
@@ -302,16 +364,36 @@ function renderPolicy(policy) {
     return;
   }
 
-  modules.forEach((module) => {
+  const moduleKeys = modules.map((module, index) => {
+    const displayName = pick(module, "displayName", "DisplayName") || "未命名模块";
+    return String(pick(module, "key", "Key") || pick(module, "id", "Id") || `${index}-${displayName}`);
+  });
+  if (!moduleKeys.includes(currentPolicyModuleKey)) {
+    currentPolicyModuleKey = moduleKeys[0];
+  }
+
+  modules.forEach((module, moduleIndex) => {
+    const moduleKey = moduleKeys[moduleIndex];
+    const displayName = pick(module, "displayName", "DisplayName") || "未命名模块";
+    const isActive = moduleKey === currentPolicyModuleKey;
+    if (policyModuleTabsEl) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = `policy-module-tab ${isActive ? "is-active" : ""}`.trim();
+      tab.textContent = displayName;
+      tab.addEventListener("click", () => switchPolicyModule(moduleKey, policy));
+      policyModuleTabsEl.appendChild(tab);
+    }
+
     const card = document.createElement("section");
-    card.className = "policy-module";
+    card.className = `policy-module policy-module-page ${isActive ? "is-active" : ""}`.trim();
 
     const head = document.createElement("div");
     head.className = "policy-module-head";
 
     const titleWrap = document.createElement("div");
     const title = document.createElement("h3");
-    title.textContent = pick(module, "displayName", "DisplayName") || "未命名模块";
+    title.textContent = displayName;
     titleWrap.appendChild(title);
 
     const desc = document.createElement("p");
@@ -756,10 +838,6 @@ async function refreshDashboard() {
 
 function schedulePolicyAutoSave(key, value) {
   rememberDraft(policyDrafts, policyDirtyKeys, key, value);
-  clearTimeout(policySaveTimers[key]);
-  policySaveTimers[key] = setTimeout(() => {
-    savePolicySetting(key, value, false).catch((error) => appendReply(error.message, false));
-  }, AUTO_SAVE_DELAY_MS);
 }
 
 async function savePolicySetting(key, value, refreshAfter = false) {
@@ -771,7 +849,7 @@ async function savePolicySetting(key, value, refreshAfter = false) {
   const payload = await response.json();
   if (!payload.ok) {
     appendReply(payload.text || "政策保存失败。", false);
-    return;
+    return false;
   }
 
   clearDraftIfSaved(policyDrafts, policyDirtyKeys, key, value);
@@ -779,14 +857,11 @@ async function savePolicySetting(key, value, refreshAfter = false) {
     appendReply(payload.text || "政策已保存。", true);
     await refreshDashboard();
   }
+  return true;
 }
 
 function scheduleQqAutoSave(key, value) {
   rememberDraft(qqDrafts, qqDirtyKeys, key, value);
-  clearTimeout(qqSaveTimers[key]);
-  qqSaveTimers[key] = setTimeout(() => {
-    saveQqSetting(key, value, false).catch((error) => appendReply(error.message, false));
-  }, AUTO_SAVE_DELAY_MS);
 }
 
 async function saveQqSetting(key, value, refreshAfter = false) {
@@ -798,7 +873,7 @@ async function saveQqSetting(key, value, refreshAfter = false) {
   const payload = await response.json();
   if (!payload.ok) {
     appendReply(payload.text || "QQ 配置保存失败。", false);
-    return;
+    return false;
   }
 
   clearDraftIfSaved(qqDrafts, qqDirtyKeys, key, value);
@@ -806,6 +881,64 @@ async function saveQqSetting(key, value, refreshAfter = false) {
     appendReply(payload.text || "QQ 配置已保存。", true);
     await refreshDashboard();
   }
+  return true;
+}
+
+async function saveDirtyConfig() {
+  const policyEntries = Array.from(policyDirtyKeys).map((key) => [key, policyDrafts[key]]);
+  const qqEntries = Array.from(qqDirtyKeys).map((key) => [key, qqDrafts[key]]);
+  if (policyEntries.length + qqEntries.length === 0) {
+    appendReply("没有需要保存的配置修改。", true);
+    return;
+  }
+
+  isSavingDirtyConfig = true;
+  updateDirtyStatus();
+  try {
+    let saved = 0;
+    let failed = 0;
+    for (const [key, value] of policyEntries) {
+      try {
+        if (await savePolicySetting(key, value, false)) {
+          saved++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        failed++;
+        appendReply(error.message, false);
+      }
+    }
+
+    for (const [key, value] of qqEntries) {
+      try {
+        if (await saveQqSetting(key, value, false)) {
+          saved++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        failed++;
+        appendReply(error.message, false);
+      }
+    }
+
+    appendReply(`配置批量保存完成：成功 ${saved} 项，失败 ${failed} 项。`, failed === 0);
+    await refreshDashboard();
+  } finally {
+    isSavingDirtyConfig = false;
+    updateDirtyStatus();
+  }
+}
+
+async function discardDirtyConfig() {
+  Object.keys(policyDrafts).forEach((key) => delete policyDrafts[key]);
+  Object.keys(qqDrafts).forEach((key) => delete qqDrafts[key]);
+  policyDirtyKeys.clear();
+  qqDirtyKeys.clear();
+  updateDirtyStatus();
+  appendReply("已放弃未保存的配置修改。", true);
+  await refreshDashboard();
 }
 
 async function saveScore(userId, playerName, wins) {
@@ -929,6 +1062,22 @@ document.querySelectorAll("[data-command]").forEach((button) => {
 pageTabEls.forEach((button) => {
   button.addEventListener("click", () => switchPage(button.dataset.pageTarget));
 });
+
+configTabEls.forEach((button) => {
+  button.addEventListener("click", () => switchConfigModule(button.dataset.configTarget));
+});
+
+if (saveDirtyConfigButtonEl) {
+  saveDirtyConfigButtonEl.addEventListener("click", () => {
+    saveDirtyConfig().catch((error) => appendReply(error.message, false));
+  });
+}
+
+if (discardDirtyConfigButtonEl) {
+  discardDirtyConfigButtonEl.addEventListener("click", () => {
+    discardDirtyConfig().catch((error) => appendReply(error.message, false));
+  });
+}
 
 viewBindingButtonEl.addEventListener("click", () => {
   const userId = userIdEl.value.trim();
@@ -1107,7 +1256,9 @@ exportConfigButtonEl.addEventListener("click", exportConfig);
 importConfigButtonEl.addEventListener("click", () => importConfigFileEl.click());
 importConfigFileEl.addEventListener("change", importConfig);
 
-switchPage(currentPage);
+switchPage(currentPage, true);
+switchConfigModule(currentConfigModule, true);
+updateDirtyStatus();
 connectWebSocket();
 refreshDashboard().catch((error) => appendReply(error.message, false));
 startDashboardPolling();

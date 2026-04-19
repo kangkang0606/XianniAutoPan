@@ -8,25 +8,25 @@
 </head>
 <body>
   <main class="app-shell">
-    <section class="hero-card">
+    <header class="app-header hero-card">
       <div class="hero-copy">
         <p class="eyebrow">Xianni AutoPan</p>
         <h1>仙逆自动盘后端控制台</h1>
         <p class="subtitle">测试发令区保留，但数值调整已切到后端模块化配置。局域网内可直接查看国家状态、保存政策并立刻生效。</p>
       </div>
       <div class="hero-side">
-        <div class="page-switch" role="tablist" aria-label="页面切换">
+        <nav class="page-switch" role="tablist" aria-label="页面切换" data-active-page="dashboard">
           <button class="page-tab is-active" type="button" data-page-target="dashboard">主控台</button>
           <button class="page-tab" type="button" data-page-target="config">配置页</button>
-        </div>
+        </nav>
         <div class="status-stack">
           <div class="status-pill" id="wsStatus">WebSocket：连接中</div>
           <div class="status-pill" id="aiStatus">AI：未知</div>
         </div>
       </div>
-    </section>
+    </header>
 
-    <div class="page-view is-active" data-page-view="dashboard">
+    <section class="page-view is-active" data-page-view="dashboard">
       <section class="grid dashboard-grid">
         <article class="panel panel-feature">
           <div class="panel-head">
@@ -192,27 +192,40 @@
           </div>
         </section>
       </section>
-    </div>
+    </section>
 
-    <div class="page-view" data-page-view="config">
+    <section class="page-view" data-page-view="config">
       <section class="config-overview">
         <article class="panel overview-card">
           <div class="panel-head">
             <div>
-              <p class="panel-tag">配置总览</p>
-              <h2>配置页说明</h2>
+              <p class="panel-tag">配置中枢</p>
+              <h2>模块化配置</h2>
             </div>
+            <span id="configDirtyStatus" class="config-dirty-status">没有未保存修改</span>
           </div>
-          <p class="muted">这里集中放置长期调整内容：后端政策与指令书。主控台保留即时操作和国家管理，避免频繁切页。</p>
-          <div class="config-io-row">
-            <button id="exportConfigButton" class="ghost-btn" type="button">导出配置</button>
-            <button id="importConfigButton" class="ghost-btn" type="button">导入配置</button>
-            <input id="importConfigFile" type="file" accept=".json" hidden />
+          <p class="muted">配置页拆成独立模块；修改政策或 QQ 配置后会先标记为待保存，可一次性保存所有改动。</p>
+          <nav class="config-module-switch" role="tablist" aria-label="配置模块切换">
+            <button class="config-module-tab is-active" type="button" data-config-target="score">积分</button>
+            <button class="config-module-tab" type="button" data-config-target="qq">QQ 接入</button>
+            <button class="config-module-tab" type="button" data-config-target="policy">政策配置</button>
+            <button class="config-module-tab" type="button" data-config-target="book">指令书</button>
+          </nav>
+          <div class="config-toolbar">
+            <div class="config-io-row">
+              <button id="saveDirtyConfigButton" class="primary-btn" type="button" disabled>保存全部修改</button>
+              <button id="discardDirtyConfigButton" class="ghost-btn" type="button" disabled>放弃未保存修改</button>
+            </div>
+            <div class="config-io-row">
+              <button id="exportConfigButton" class="ghost-btn" type="button">导出配置</button>
+              <button id="importConfigButton" class="ghost-btn" type="button">导入配置</button>
+              <input id="importConfigFile" type="file" accept=".json" hidden />
+            </div>
           </div>
         </article>
       </section>
 
-      <section class="config-group">
+      <section class="config-group config-module-view is-active" data-config-view="score">
         <div class="group-head">
           <div>
             <p class="group-tag">积分管理</p>
@@ -251,7 +264,7 @@
         </article>
       </section>
 
-      <section class="config-group">
+      <section class="config-group config-module-view" data-config-view="qq">
         <div class="group-head">
           <div>
             <p class="group-tag">接入分组</p>
@@ -264,7 +277,7 @@
         </article>
       </section>
 
-      <section class="config-group">
+      <section class="config-group config-module-view" data-config-view="policy">
         <div class="group-head">
           <div>
             <p class="group-tag">配置分组</p>
@@ -273,11 +286,12 @@
           <span class="muted">所有可调指令项按模块拆分展示，悬浮问号可查看说明</span>
         </div>
         <article class="panel policy-panel">
+          <div id="policyModuleTabs" class="policy-module-tabs"></div>
           <div id="policyModules" class="policy-modules"></div>
         </article>
       </section>
 
-      <section class="config-group">
+      <section class="config-group config-module-view" data-config-view="book">
         <div class="group-head">
           <div>
             <p class="group-tag">配置分组</p>
@@ -289,7 +303,7 @@
           <pre id="commandBook" class="command-book"></pre>
         </section>
       </section>
-    </div>
+    </section>
   </main>
 
   <script src="/app.js"></script>
