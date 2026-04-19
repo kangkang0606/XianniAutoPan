@@ -262,14 +262,20 @@ namespace XianniAutoPan.Frontend
                 return;
             }
 
+            string groupId = AutoPanQqBridgeService.NormalizeQqDigits(sessionInfo.ContextId);
+            if (string.IsNullOrWhiteSpace(groupId) || !AutoPanConfigHooks.IsQqGroupAllowed(groupId))
+            {
+                return;
+            }
+
             FrontendInboundMessage sourceMessage = new FrontendInboundMessage
             {
                 SessionId = sessionInfo.SessionId,
                 UserId = userId,
                 PlayerName = sessionInfo.PlayerName,
                 SourceType = AutoPanInputSourceType.QqGroup,
-                ReplyTargetId = sessionInfo.ContextId,
-                ContextId = sessionInfo.ContextId,
+                ReplyTargetId = groupId,
+                ContextId = groupId,
                 BotSelfId = sessionInfo.BotSelfId
             };
             SendReply(sourceMessage, new AutoPanCommandResult
@@ -299,6 +305,11 @@ namespace XianniAutoPan.Frontend
             if (string.IsNullOrWhiteSpace(groupId))
             {
                 AutoPanLogService.Error("QQ 原始消息发送失败：缺少群号。");
+                return false;
+            }
+
+            if (!AutoPanConfigHooks.IsQqGroupAllowed(groupId))
+            {
                 return false;
             }
 

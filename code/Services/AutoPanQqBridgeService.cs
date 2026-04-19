@@ -226,6 +226,11 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (!AutoPanConfigHooks.IsQqGroupAllowed(groupId))
+            {
+                return false;
+            }
+
             replySessionId = ResolveReplySessionId(sourceMessage.SessionId, sourceMessage.BotSelfId);
             if (string.IsNullOrWhiteSpace(replySessionId))
             {

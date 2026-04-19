@@ -122,7 +122,7 @@ namespace XianniAutoPan.Services
                 return;
             }
 
-            if (AutoPanStateRepository.TryGetLatestQqSessionForUser(normalizedUserId, out session))
+            if (AutoPanStateRepository.TryGetLatestQqSessionForUser(normalizedUserId, out session) && IsSessionAllowed(session))
             {
                 AutoPanLocalWebServer.Instance.SendQqNotice(session, normalizedUserId, text);
             }
@@ -180,7 +180,7 @@ namespace XianniAutoPan.Services
             lock (Sync)
             {
                 routes = RoutesByUser.Values
-                    .Where(item => item != null && !string.IsNullOrWhiteSpace(item.GroupId))
+                    .Where(IsRouteAllowed)
                     .GroupBy(item => item.GroupId + "|" + item.BotSelfId, StringComparer.Ordinal)
                     .Select(group => group.OrderByDescending(item => item.LastSeenUtc, StringComparer.Ordinal).First())
                     .ToList();
@@ -203,13 +203,41 @@ namespace XianniAutoPan.Services
                     return false;
                 }
 
+                if (!IsRouteAllowed(route))
+                {
+                    return false;
+                }
+
                 session = ToSessionInfo(route);
                 return true;
             }
         }
 
+        private static bool IsRouteAllowed(AutoPanQqRouteRecord route)
+        {
+            if (route == null)
+            {
+                return false;
+            }
+
+            string groupId = NormalizeDigits(route.GroupId);
+            return !string.IsNullOrWhiteSpace(groupId) && AutoPanConfigHooks.IsQqGroupAllowed(groupId);
+        }
+
+        private static bool IsSessionAllowed(AutoPanSessionInfo session)
+        {
+            if (session == null || session.SourceType != AutoPanInputSourceType.QqGroup)
+            {
+                return false;
+            }
+
+            string groupId = NormalizeDigits(session.ContextId);
+            return !string.IsNullOrWhiteSpace(groupId) && AutoPanConfigHooks.IsQqGroupAllowed(groupId);
+        }
+
         private static AutoPanSessionInfo ToSessionInfo(AutoPanQqRouteRecord route)
         {
+            string groupId = NormalizeDigits(route.GroupId);
             return new AutoPanSessionInfo
             {
                 SessionId = route.SessionId,
@@ -217,7 +245,7 @@ namespace XianniAutoPan.Services
                 PlayerName = route.PlayerName,
                 LastSeenUtc = route.LastSeenUtc,
                 SourceType = AutoPanInputSourceType.QqGroup,
-                ContextId = route.GroupId,
+                ContextId = groupId,
                 BotSelfId = route.BotSelfId
             };
         }

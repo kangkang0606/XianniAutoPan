@@ -642,13 +642,13 @@ function renderQqBridge(qqBridge, listenAddresses) {
   const adminInput = document.createElement("textarea");
   adminInput.rows = 4;
   adminInput.value = String(getDraftValue(qqDrafts, qqDirtyKeys, "qqAdminWhitelist", adminWhitelist));
-  adminInput.placeholder = "留空表示群里的 # 管理员指令全部拒绝；多个 QQ 号用逗号、空格或换行分隔";
+  adminInput.placeholder = "多个 QQ 号用逗号、空格或换行分隔";
   adminInput.addEventListener("input", () => scheduleQqAutoSave("qqAdminWhitelist", adminInput.value));
   adminField.appendChild(adminLabel);
   adminField.appendChild(adminInput);
   const adminTip = document.createElement("div");
   adminTip.className = "qq-setting-help";
-  adminTip.textContent = "只有这里的 QQ 号才允许在群里执行 # 开头的管理员指令；网页端不受这个白名单限制。";
+  adminTip.textContent = "这里填写的是允许执行 # 开头管理员指令的 QQ 号，网页端不受这个白名单限制。";
   adminField.appendChild(adminTip);
   adminRow.appendChild(adminField);
   adminRow.appendChild(createConfigActionButton("保存管理员白名单", () => saveQqSetting("qqAdminWhitelist", adminInput.value, true)));
