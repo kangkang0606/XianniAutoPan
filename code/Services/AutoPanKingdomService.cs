@@ -2904,7 +2904,7 @@ namespace XianniAutoPan.Services
             }
 
             return AssetManager.actor_library.list
-                .Where(item => item != null && !string.IsNullOrWhiteSpace(item.id) && IsCivilizationActorAsset(item))
+                .Where(item => item != null && !string.IsNullOrWhiteSpace(item.id) && item.civ && IsCivilizationActorAsset(item))
                 .OrderBy(item => item.id)
                 .ToList();
         }
