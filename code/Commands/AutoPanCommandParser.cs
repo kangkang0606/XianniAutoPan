@@ -37,7 +37,7 @@ namespace XianniAutoPan.Commands
         private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s+(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex FastAdultRegex = new Regex(@"^快速成年\s+(.+)$", RegexOptions.Compiled);
-        private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队\s+(.+?)\s+(全部|\d+)$", RegexOptions.Compiled);
+        private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队(?:\s+(.+?)\s+(全部|\d+)|\s+(全部|\d+))?$", RegexOptions.Compiled);
         private static readonly Regex TransferCityRegex = new Regex(@"^移交城市\s+(.+?)\s+给\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex RandomTransferCityRegex = new Regex(@"^移交\s+(.+?)\s*随机一座城市$", RegexOptions.Compiled);
         private static readonly Regex EquipArmyRegex = new Regex(@"^军备\s+(.+?)\s+(铜|青铜|白银|铁|钢|秘银|精金)\s+(全军|\d+)$", RegexOptions.Compiled);
@@ -357,7 +357,8 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.ConscriptArmy;
                 command.TargetName = match.Groups[1].Value.Trim();
-                command.TextArg = match.Groups[2].Value.Trim();
+                string countText = !string.IsNullOrWhiteSpace(match.Groups[2].Value) ? match.Groups[2].Value.Trim() : match.Groups[3].Value.Trim();
+                command.TextArg = string.IsNullOrWhiteSpace(countText) ? "全部" : countText;
                 command.NumericValue = command.TextArg == "全部" ? -1 : int.Parse(command.TextArg);
                 return command;
             }

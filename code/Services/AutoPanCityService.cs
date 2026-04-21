@@ -254,6 +254,75 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 对国家所有城市执行征集军队。
+        /// </summary>
+        public static bool TryConscriptArmyAllCities(Kingdom kingdom, int requestedCountPerCity, out string message)
+        {
+            message = string.Empty;
+            List<City> cities = GetOwnedCities(kingdom);
+            if (cities.Count == 0)
+            {
+                message = "当前国家没有可管理的城市。";
+                return false;
+            }
+
+            int totalRecruited = 0;
+            int totalCost = 0;
+            List<string> details = new List<string>();
+            foreach (City city in cities)
+            {
+                List<Actor> candidates = city.units
+                    .Where(IsEligibleConscript)
+                    .Where(city.checkCanMakeWarrior)
+                    .ToList();
+                if (candidates.Count == 0)
+                {
+                    continue;
+                }
+
+                int recruitCount = requestedCountPerCity <= 0 ? candidates.Count : Math.Min(requestedCountPerCity, candidates.Count);
+                int cost = recruitCount * AutoPanConfigHooks.ConscriptCostPerUnit;
+                if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out _))
+                {
+                    break;
+                }
+
+                List<Actor> recruited = new List<Actor>();
+                for (int index = 0; index < recruitCount; index++)
+                {
+                    Actor actor = candidates[index];
+                    if (!city.checkCanMakeWarrior(actor))
+                    {
+                        continue;
+                    }
+
+                    city.makeWarrior(actor);
+                    recruited.Add(actor);
+                }
+
+                if (recruited.Count == 0)
+                {
+                    AutoPanKingdomService.AddTreasury(kingdom, cost);
+                    continue;
+                }
+
+                AssignRecruitedToArmy(city, recruited);
+                totalRecruited += recruited.Count;
+                totalCost += cost;
+                details.Add($"{FormatCityLabel(city)} {recruited.Count}人");
+            }
+
+            if (totalRecruited == 0)
+            {
+                message = "所有城市均无可征集的成年平民，或国库金币不足。";
+                return false;
+            }
+
+            message = $"全国征集完成：共征集 {totalRecruited} 名士兵，消耗 {totalCost} 金币。\n{string.Join("、", details)}";
+            return true;
+        }
+
+        /// <summary>
         /// 将非首都城市移交给其他国家。
         /// </summary>
         public static bool TryTransferCity(Kingdom kingdom, string rawCityName, string rawTargetKingdomName, out string message)

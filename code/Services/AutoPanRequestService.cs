@@ -178,7 +178,7 @@ namespace XianniAutoPan.Services
             PendingRequest request = CreateRequest(source, target, AutoPanPendingRequestType.Alliance, cost);
             PendingRequests.Add(request);
             AutoPanKingdomSpeechService.ShowSpeech(target, "外交请求", $"{AutoPanKingdomService.FormatKingdomLabel(source)} 请求结盟", isCommand: true);
-            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意结盟”或“拒绝结盟”。";
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送"同意结盟"或"拒绝结盟"。";
             if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
             {
                 message += "\n" + aiResponseText;
@@ -216,6 +216,8 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            // 未指定赌注时默认为发起费的两倍，强制要求赌注参与
+            int resolvedBet = betAmount > 0 ? betAmount : AutoPanConfigHooks.DuelRequestCost * 2;
             int cost = AutoPanConfigHooks.DuelRequestCost;
             if (!AutoPanKingdomService.TrySpendTreasury(source, cost, out string spendError))
             {
@@ -224,11 +226,12 @@ namespace XianniAutoPan.Services
             }
 
             PendingRequest request = CreateRequest(source, target, AutoPanPendingRequestType.Duel, cost);
-            request.BetAmount = Mathf.Max(0, betAmount);
+            request.BetAmount = resolvedBet;
             PendingRequests.Add(request);
-            string duelTitle = request.BetAmount > 0 ? $"发起约斗，赌注 {request.BetAmount} 金币" : "发起约斗";
+            string duelTitle = $"发起约斗，赌注 {request.BetAmount} 金币";
             AutoPanKingdomSpeechService.ShowSpeech(target, "比武邀请", $"{AutoPanKingdomService.FormatKingdomLabel(source)} {duelTitle}", isCommand: true);
-            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出约斗请求{(request.BetAmount > 0 ? $"，赌注 {request.BetAmount} 金币" : string.Empty)}，开战后双方各从国家战力前 5 随机出战，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送“同意约斗”或“拒绝约斗”。";
+            string defaultBetNote = betAmount <= 0 ? $"（未指定赌注，已按默认赌注 {resolvedBet} 金币计算）" : string.Empty;
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出约斗请求，赌注 {request.BetAmount} 金币{defaultBetNote}，开战后双方各从国家战力前 5 随机出战，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内回复「同意约斗」或「拒绝约斗」。";
             if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
             {
                 message += "\n" + aiResponseText;
@@ -335,7 +338,7 @@ namespace XianniAutoPan.Services
                     return candidates[0];
                 }
 
-                error = $"你收到多个{GetTypeText(type)}请求，请改用“同意{GetTypeText(type)} 国家名 [kingdomId]”或“拒绝{GetTypeText(type)} 国家名 [kingdomId]”。";
+                error = $"你收到多个{GetTypeText(type)}请求，请改用"同意{GetTypeText(type)} 国家名 [kingdomId]"或"拒绝{GetTypeText(type)} 国家名 [kingdomId]"。";
                 return null;
             }
 
