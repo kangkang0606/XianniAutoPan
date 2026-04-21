@@ -216,6 +216,10 @@ namespace XianniAutoPan.Commands
                     result.Success = true;
                     result.Text = AutoPanRoundService.EndRound("管理员手动结盘", playerName);
                     return result;
+                case AutoPanCommandType.AdminEndRoundNoScore:
+                    result.Success = true;
+                    result.Text = AutoPanRoundService.EndRoundNoScore("管理员手动结盘（不计积分）", playerName);
+                    return result;
                 case AutoPanCommandType.AdminCurrentSituationScreenshot:
                     result.Success = AutoPanScreenshotService.TrySendCurrentSituation(message, bypassCooldown: true, out string adminScreenshotText);
                     result.Text = adminScreenshotText;

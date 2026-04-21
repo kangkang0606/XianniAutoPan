@@ -112,6 +112,32 @@ namespace XianniAutoPan.Services
         /// <summary>
         /// 结算当前局并启动新一局。
         /// </summary>
+        /// <summary>
+        /// 管理员结盘，所有国家不计入积分。
+        /// </summary>
+        public static string EndRoundNoScore(string reason, string operatorName)
+        {
+            if (_isEndingRound || _isGeneratingNewRound)
+            {
+                return "当前正在结盘或生成新一局，请稍后再试。";
+            }
+
+            _isEndingRound = true;
+            try
+            {
+                string resultText = BuildRoundResult(reason, operatorName, skipScore: true);
+                XianniAutoPanApi.Broadcast(resultText);
+                AutoPanNotificationService.BroadcastToKnownGroups(resultText, ExtractWinnerUserIds());
+                AutoPanLogService.Info(resultText.Replace("\n", " "));
+                bool started = StartNewRound();
+                return resultText + (started ? "\n新一局正在生成。" : "\n新一局生成未启动：当前世界仍在加载或 MapBox 未就绪。");
+            }
+            finally
+            {
+                _isEndingRound = false;
+            }
+        }
+
         public static string EndRound(string reason, string operatorName)
         {
             if (_isEndingRound || _isGeneratingNewRound)
@@ -122,7 +148,7 @@ namespace XianniAutoPan.Services
             _isEndingRound = true;
             try
             {
-                string resultText = BuildRoundResult(reason, operatorName);
+                string resultText = BuildRoundResult(reason, operatorName, skipScore: false);
                 XianniAutoPanApi.Broadcast(resultText);
                 AutoPanNotificationService.BroadcastToKnownGroups(resultText, ExtractWinnerUserIds());
                 AutoPanLogService.Info(resultText.Replace("\n", " "));
@@ -189,7 +215,7 @@ namespace XianniAutoPan.Services
             }
         }
 
-        private static string BuildRoundResult(string reason, string operatorName)
+        private static string BuildRoundResult(string reason, string operatorName, bool skipScore = false)
         {
             List<RoundCandidate> candidates = BuildRankedCandidates();
             if (candidates.Count == 0)
@@ -205,6 +231,12 @@ namespace XianniAutoPan.Services
                 RoundCandidate candidate = topThree[index];
                 int points = GetPlacePoints(index);
                 string rankStats = $"领土 {candidate.TerritoryCount}，战力榜前三 {candidate.TopPowerScore}，人口 {candidate.Population}，军队 {candidate.ArmyCount}，综合分 {candidate.Score:0.###}";
+                if (skipScore)
+                {
+                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：{rankStats}，本局不计积分。");
+                    continue;
+                }
+
                 if (candidate.IsAi)
                 {
                     awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：{rankStats}，AI 不计入积分。");

@@ -58,6 +58,7 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AdminSetSpeedRegex = new Regex(@"^#(\d+(?:\.\d+)?)x$", RegexOptions.Compiled);
         private static readonly Regex AdminSpawnKingdomRegex = new Regex(@"^#生成\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminEndRoundRegex = new Regex(@"^#结盘$", RegexOptions.Compiled);
+        private static readonly Regex AdminEndRoundNoScoreRegex = new Regex(@"^#结盘x$", RegexOptions.Compiled);
         private static readonly Regex AdminCurrentSituationRegex = new Regex(@"^#当前局势$", RegexOptions.Compiled);
         private static readonly Regex HeavenPunishRegex = new Regex(@"^天运惩罚\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex HeavenBlessRegex = new Regex(@"^天运赐福\s+(.+)$", RegexOptions.Compiled);
@@ -601,6 +602,13 @@ namespace XianniAutoPan.Commands
             if (match.Success)
             {
                 command.CommandType = AutoPanCommandType.AdminEndRound;
+                return command;
+            }
+
+            match = AdminEndRoundNoScoreRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminEndRoundNoScore;
                 return command;
             }
 

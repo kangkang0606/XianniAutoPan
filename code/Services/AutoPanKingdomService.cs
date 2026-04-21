@@ -254,13 +254,11 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            // 无高级脑的亚种无法建国，无论开关状态
-            bool hasAdvancedBrain = actorAsset.trait_group_filter_subspecies != null
-                && actorAsset.trait_group_filter_subspecies.Contains("advanced_brain");
+            // civ == true 表示该种族拥有高级脑（继承自 $civ_unit$），可以建立文明
             bool isBaseRace = actorAsset.id == "human" || actorAsset.id == "orc"
                 || actorAsset.id == "elf" || actorAsset.id == "dwarf";
 
-            if (!isBaseRace && !hasAdvancedBrain)
+            if (!actorAsset.civ)
             {
                 message = $"{actorAsset.getTranslatedName()} 没有高级脑特征，无法作为文明种族建国。";
                 return false;
@@ -268,7 +266,7 @@ namespace XianniAutoPan.Services
 
             if (!isBaseRace && !AutoPanConfigHooks.AllowSubspeciesJoin)
             {
-                message = "当前局不允许使用其它种族建国，只能选择人类/兽人/精灵/矮人四个原始种族。";
+                message = $"当前局不允许使用亚种建国，只能选择人类/兽人/精灵/矮人四个原始种族。";
                 return false;
             }
 

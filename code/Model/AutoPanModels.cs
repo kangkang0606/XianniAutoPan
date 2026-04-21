@@ -75,6 +75,7 @@ namespace XianniAutoPan.Model
         AdminSetSpeed,
         AdminSpawnKingdom,
         AdminEndRound,
+        AdminEndRoundNoScore,
         AdminCurrentSituationScreenshot,
         ScoreRank,
         CurrentSituationScreenshot,
