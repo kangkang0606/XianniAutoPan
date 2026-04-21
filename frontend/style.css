@@ -841,7 +841,52 @@ textarea {
   margin-top: var(--space-3);
 }
 
+.policy-value-controls {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.policy-mode-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.policy-random-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.policy-random-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.policy-random-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.policy-random-row label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .policy-input-row input {
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.policy-random-row input {
+  width: 100%;
   min-width: 0;
   padding: 10px 12px;
 }

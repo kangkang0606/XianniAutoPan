@@ -509,6 +509,22 @@ namespace XianniAutoPan.Frontend
                 return;
             }
 
+            if (path.StartsWith("/api/policy-random/set", StringComparison.OrdinalIgnoreCase))
+            {
+                string key = ExtractQueryParam(rawPath, "key");
+                string enabled = ExtractQueryParam(rawPath, "enabled");
+                string minValue = ExtractQueryParam(rawPath, "min");
+                string maxValue = ExtractQueryParam(rawPath, "max");
+                bool success = AutoPanConfigHooks.TrySetPolicyRandom(key, enabled, minValue, maxValue, out string message);
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    policy = AutoPanConfigHooks.BuildPolicySnapshot()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
             if (path.StartsWith("/api/score/set", StringComparison.OrdinalIgnoreCase))
             {
                 string userId = ExtractQueryParam(rawPath, "userId");

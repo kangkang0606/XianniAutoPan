@@ -147,24 +147,137 @@ namespace XianniAutoPan.Services
             return false;
         }
 
+        private static bool TryCreatePlayerKingdomWithActorAsset(string userId, string playerName, string actorAssetId, string raceText, out Kingdom kingdom, out string message)
+        {
+            kingdom = null;
+            message = string.Empty;
+            AutoPanStateRepository.EnsureBindingValidForUser(userId);
+            if (AutoPanStateRepository.TryGetLiveBinding(userId, out AutoPanBindingRecord binding, out Kingdom boundKingdom))
+            {
+                message = $"你已经绑定国家 {binding.KingdomName}，当前国家仍然存活。";
+                kingdom = boundKingdom;
+                return false;
+            }
+
+            if (World.world == null || World.world.city_zone_helper == null)
+            {
+                message = "当前世界尚未完全加载，暂时不能加入国家。";
+                return false;
+            }
+
+            string kingdomName = BuildUniqueKingdomName(playerName);
+            CityPlaceFinder finder = World.world.city_zone_helper.city_place_finder;
+            finder.setDirty();
+            finder.recalc();
+            if (!finder.hasPossibleZones())
+            {
+                message = "当前地图没有可用建国区域。";
+                return false;
+            }
+
+            int startIndex = StableIndex(userId, finder.zones.Count);
+            for (int offset = 0; offset < finder.zones.Count; offset++)
+            {
+                TileZone zone = finder.zones[(startIndex + offset) % finder.zones.Count];
+                if (zone == null || zone.centerTile == null)
+                {
+                    continue;
+                }
+
+                if (TryCreateKingdomInZone(zone, actorAssetId, kingdomName, out kingdom))
+                {
+                    EnsureKingdomStateInitialized(kingdom);
+                    SetTreasury(kingdom, AutoPanConfigHooks.InitialTreasury);
+                    SetLevel(kingdom, AutoPanConfigHooks.InitialLevel);
+                    kingdom.data.set(AutoPanConstants.KeyOwnerUserId, userId);
+                    kingdom.data.set(AutoPanConstants.KeyOwnerName, playerName);
+                    AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, actorAssetId, kingdom);
+                    ClearSnapshotCache(kingdom.getID());
+                    XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
+                    message = $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {AutoPanConfigHooks.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领，可发送“政策 坚守城池”或“政策 开放占领”变更。";
+                    return true;
+                }
+            }
+
+            message = "尝试了全部建国区域，仍然无法找到可用出生点。";
+            return false;
+        }
+
+        /// <summary>
+        /// 将玩家绑定到一个现有无玩家国家。
+        /// </summary>
+        public static bool TryBindExistingKingdom(string userId, string playerName, string rawKingdomName, out Kingdom kingdom, out string message)
+        {
+            kingdom = null;
+            message = string.Empty;
+            AutoPanStateRepository.EnsureBindingValidForUser(userId);
+            if (AutoPanStateRepository.TryGetLiveBinding(userId, out AutoPanBindingRecord binding, out Kingdom boundKingdom))
+            {
+                kingdom = boundKingdom;
+                message = $"你已经绑定国家 {binding.KingdomName}，当前国家仍然存活。";
+                return false;
+            }
+
+            if (!TryResolveKingdom(rawKingdomName, out Kingdom target, out string resolveError))
+            {
+                message = resolveError;
+                return false;
+            }
+            if (AutoPanStateRepository.IsPlayerOwnedKingdom(target))
+            {
+                message = $"{FormatKingdomLabel(target)} 已经有玩家绑定，不能重复加入。";
+                return false;
+            }
+
+            EnsureKingdomStateInitialized(target);
+            string raceId = string.IsNullOrWhiteSpace(target.data?.original_actor_asset)
+                ? target.getFounderSpecies()?.id ?? string.Empty
+                : target.data.original_actor_asset;
+            AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, raceId, target);
+            ClearSnapshotCache(target.getID());
+            kingdom = target;
+            XianniAutoPanApi.Broadcast($"{playerName} 加入了现有国家 {target.name}");
+            message = $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。";
+            return true;
+        }
+
+        /// <summary>
+        /// 使用任意可创建文明国家的单位创建玩家国家。
+        /// </summary>
+        public static bool TryCreatePlayerKingdomByCivilizationUnit(string userId, string playerName, string rawActorAssetName, out Kingdom kingdom, out string message)
+        {
+            kingdom = null;
+            message = string.Empty;
+            if (!TryResolveCivilizationActorAsset(rawActorAssetName, out ActorAsset actorAsset, out string resolveError))
+            {
+                message = resolveError;
+                return false;
+            }
+
+            return TryCreatePlayerKingdomWithActorAsset(userId, playerName, actorAsset.id, actorAsset.getTranslatedName(), out kingdom, out message);
+        }
+
         /// <summary>
         /// 管理员生成一个无绑定的随机国家。
         /// </summary>
         public static bool TrySpawnUnboundKingdom(string raceText, out string message)
         {
             message = string.Empty;
-            string actorAssetId = raceText switch
+            ActorAsset actorAsset;
+            if (string.IsNullOrWhiteSpace(raceText) || string.Equals(raceText.Trim(), "随机", StringComparison.Ordinal))
             {
-                "人类" => "human",
-                "兽人" => "orc",
-                "精灵" => "elf",
-                "矮人" => "dwarf",
-                _ => null
-            };
+                List<ActorAsset> assets = GetCivilizationActorAssets();
+                if (assets.Count == 0)
+                {
+                    message = "当前没有可用于建国的文明单位。";
+                    return false;
+                }
 
-            if (string.IsNullOrEmpty(actorAssetId))
+                actorAsset = assets[Randy.randomInt(0, assets.Count)];
+            }
+            else if (!TryResolveCivilizationActorAsset(raceText, out actorAsset, out string resolveError))
             {
-                message = $"未知种族：{raceText}。支持：人类/兽人/精灵/矮人。";
+                message = resolveError;
                 return false;
             }
 
@@ -192,13 +305,13 @@ namespace XianniAutoPan.Services
                     continue;
                 }
 
-                if (TryCreateKingdomInZone(zone, actorAssetId, BuildUniqueKingdomName(raceText), out Kingdom kingdom))
+                if (TryCreateKingdomInZone(zone, actorAsset.id, string.Empty, out Kingdom kingdom))
                 {
                     EnsureKingdomStateInitialized(kingdom);
                     SetTreasury(kingdom, AutoPanConfigHooks.InitialTreasury);
                     SetLevel(kingdom, AutoPanConfigHooks.InitialLevel);
                     ClearSnapshotCache(kingdom.getID());
-                    message = $"已生成{raceText}国家 {kingdom.name}（无绑定）。";
+                    message = $"已生成{actorAsset.getTranslatedName()}国家 {kingdom.name}（无绑定）。";
                     return true;
                 }
             }
@@ -1282,12 +1395,6 @@ namespace XianniAutoPan.Services
             {
                 return false;
             }
-            if (!AutoPanConfigHooks.EnableLlmAi)
-            {
-                error = "全局自动盘 AI 未开启，无法使用 ai 快捷目标。";
-                return false;
-            }
-
             string indexText = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
             if (!int.TryParse(indexText, out int shortcutIndex) || shortcutIndex <= 0)
             {
@@ -2109,6 +2216,94 @@ namespace XianniAutoPan.Services
             return total;
         }
 
+        /// <summary>
+        /// 在目标国家领土内释放指定数量陨石。
+        /// </summary>
+        public static bool TrySpawnMeteoritesInKingdom(Kingdom target, int count, out int spawnedCount, out string message)
+        {
+            spawnedCount = 0;
+            message = string.Empty;
+            if (target == null || !target.isAlive() || !target.isCiv())
+            {
+                message = "目标国家状态无效。";
+                return false;
+            }
+
+            List<WorldTile> tiles = CollectKingdomGroundTiles(target);
+            if (tiles.Count == 0)
+            {
+                message = $"{FormatKingdomLabel(target)} 没有可释放陨石的有效领土。";
+                return false;
+            }
+
+            int safeCount = Math.Max(1, count);
+            for (int i = 0; i < safeCount; i++)
+            {
+                WorldTile tile = tiles[Randy.randomInt(0, tiles.Count)];
+                Meteorite.spawnMeteorite(tile);
+                spawnedCount++;
+            }
+
+            message = $"已对 {FormatKingdomLabel(target)} 领土释放 {spawnedCount} 颗陨石。";
+            return spawnedCount > 0;
+        }
+
+        /// <summary>
+        /// 汇总国家战力榜前若干名的战力分。
+        /// </summary>
+        public static long SumTopPowerScore(Kingdom kingdom, int count)
+        {
+            if (kingdom == null || !kingdom.isAlive() || count <= 0)
+            {
+                return 0L;
+            }
+
+            XianniKingdomSnapshot snapshot = GetSnapshot(kingdom, forceRefresh: true);
+            return snapshot.Cultivators
+                .Concat(snapshot.Ancients)
+                .Concat(snapshot.Beasts)
+                .Select(item => ((long)Math.Max(0, item.StageIndex) + 1L) * 1_000_000_000L + Math.Max(0L, item.PowerValue))
+                .OrderByDescending(item => item)
+                .Take(count)
+                .Sum();
+        }
+
+        private static List<WorldTile> CollectKingdomGroundTiles(Kingdom kingdom)
+        {
+            List<WorldTile> tiles = new List<WorldTile>();
+            if (kingdom == null)
+            {
+                return tiles;
+            }
+
+            foreach (City city in kingdom.getCities())
+            {
+                if (city == null || !city.isAlive())
+                {
+                    continue;
+                }
+
+                foreach (TileZone zone in city.zones)
+                {
+                    if (zone?.tiles == null)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < zone.tiles.Length; i++)
+                    {
+                        WorldTile tile = zone.tiles[i];
+                        if (tile != null && tile.Type != null && tile.Type.ground && !tiles.Contains(tile))
+                        {
+                            tiles.Add(tile);
+                        }
+                    }
+                }
+            }
+
+            return tiles;
+        }
+
         private static bool TryExtractTaggedId(string rawText, out long objectId)
         {
             objectId = 0L;
@@ -2426,7 +2621,10 @@ namespace XianniAutoPan.Services
 
                 kingdom.setCapital(capital);
                 World.world.kingdoms.updateDirtyCities();
-                kingdom.setName(kingdomName);
+                if (!string.IsNullOrWhiteSpace(kingdomName))
+                {
+                    kingdom.setName(kingdomName);
+                }
                 int supporterCount = 0;
                 for (int i = 0; i < candidateTiles.Count && supporterCount < AutoPanConstants.JoinUnitCount - 1; i++)
                 {
@@ -2624,6 +2822,86 @@ namespace XianniAutoPan.Services
 
             int hash = (input ?? string.Empty).GetHashCode();
             return (int)((uint)hash % (uint)count);
+        }
+
+        private static bool TryResolveCivilizationActorAsset(string rawName, out ActorAsset actorAsset, out string error)
+        {
+            actorAsset = null;
+            error = string.Empty;
+            string expected = NormalizeKingdomName(rawName);
+            if (string.IsNullOrWhiteSpace(expected))
+            {
+                error = "单位名不能为空。";
+                return false;
+            }
+
+            List<ActorAsset> assets = GetCivilizationActorAssets();
+            List<ActorAsset> exactMatches = assets
+                .Where(item => string.Equals(NormalizeKingdomName(item.id), expected, StringComparison.Ordinal) ||
+                    string.Equals(NormalizeKingdomName(item.getTranslatedName()), expected, StringComparison.Ordinal))
+                .ToList();
+            if (exactMatches.Count == 1)
+            {
+                actorAsset = exactMatches[0];
+                return true;
+            }
+            if (exactMatches.Count > 1)
+            {
+                error = "单位名匹配到多个可建国文明单位，请改用资源 id。";
+                return false;
+            }
+
+            List<ActorAsset> partialMatches = assets
+                .Where(item =>
+                {
+                    string id = NormalizeKingdomName(item.id);
+                    string name = NormalizeKingdomName(item.getTranslatedName());
+                    return id.Contains(expected) || expected.Contains(id) || name.Contains(expected) || expected.Contains(name);
+                })
+                .Take(8)
+                .ToList();
+            if (partialMatches.Count == 1)
+            {
+                actorAsset = partialMatches[0];
+                return true;
+            }
+            if (partialMatches.Count > 1)
+            {
+                error = "单位名匹配到多个可建国文明单位，请改用资源 id：" + string.Join("，", partialMatches.Select(item => $"{item.getTranslatedName()}({item.id})").ToArray());
+                return false;
+            }
+
+            error = "找不到可用于建国的文明单位。可用示例：" + string.Join("，", assets.Take(8).Select(item => $"{item.getTranslatedName()}({item.id})").ToArray());
+            return false;
+        }
+
+        private static List<ActorAsset> GetCivilizationActorAssets()
+        {
+            if (AssetManager.actor_library?.list == null)
+            {
+                return new List<ActorAsset>();
+            }
+
+            return AssetManager.actor_library.list
+                .Where(item => item != null && !string.IsNullOrWhiteSpace(item.id) && IsCivilizationActorAsset(item))
+                .OrderBy(item => item.id)
+                .ToList();
+        }
+
+        private static bool IsCivilizationActorAsset(ActorAsset actorAsset)
+        {
+            if (actorAsset == null || string.IsNullOrWhiteSpace(actorAsset.kingdom_id_civilization))
+            {
+                return false;
+            }
+
+            if (AssetManager.kingdoms == null)
+            {
+                return false;
+            }
+
+            KingdomAsset kingdomAsset = AssetManager.kingdoms.get(actorAsset.kingdom_id_civilization);
+            return kingdomAsset != null && kingdomAsset.civ;
         }
 
         private static string GetActorAssetId(AutoPanCommandType joinType)

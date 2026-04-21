@@ -9,6 +9,8 @@ namespace XianniAutoPan.Commands
     internal static class AutoPanCommandParser
     {
         private static readonly Regex HelpRegex = new Regex(@"^(帮助|指令|帮助指令)$", RegexOptions.Compiled);
+        private static readonly Regex JoinCivilizationUnitRegex = new Regex(@"^加入\s*(?:种族|文明单位)\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex JoinExistingKingdomRegex = new Regex(@"^加入\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex ScoreRankRegex = new Regex(@"^(玩家排名|积分排名|胜场排名)$", RegexOptions.Compiled);
         private static readonly Regex RenameKingdomRegex = new Regex(@"^国家改名\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex DeclareWarRegex = new Regex(@"^宣战\s+(.+)$", RegexOptions.Compiled);
@@ -50,15 +52,17 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AdminViewGoldRegex = new Regex(@"^#查看国家金币\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminViewBindingRegex = new Regex(@"^#查看绑定\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetAiDecisionStartYearRegex = new Regex(@"^#设置AI开始决策年份\s+(-?\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AdminSetAiAutoJoinCountRegex = new Regex(@"^#设置AI自动加入数\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetPlayerDecisionStartYearRegex = new Regex(@"^#设置玩家开始决策年份\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetPolicyRegex = new Regex(@"^#设置政策\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetSpeedRegex = new Regex(@"^#(\d+(?:\.\d+)?)x$", RegexOptions.Compiled);
-        private static readonly Regex AdminSpawnKingdomRegex = new Regex(@"^#生成\s+(人类|兽人|精灵|矮人)$", RegexOptions.Compiled);
+        private static readonly Regex AdminSpawnKingdomRegex = new Regex(@"^#生成\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminEndRoundRegex = new Regex(@"^#结盘$", RegexOptions.Compiled);
         private static readonly Regex AdminCurrentSituationRegex = new Regex(@"^#当前局势$", RegexOptions.Compiled);
         private static readonly Regex HeavenPunishRegex = new Regex(@"^天运惩罚\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex HeavenBlessRegex = new Regex(@"^天运赐福\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex DisturbKingdomRegex = new Regex(@"^扰动国家\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex MeteorStrikeRegex = new Regex(@"^陨石\s+(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
 
         /// <summary>
         /// 解析前端文本为内部命令。
@@ -96,6 +100,9 @@ namespace XianniAutoPan.Commands
                     return command;
                 case "加入矮人":
                     command.CommandType = AutoPanCommandType.JoinDwarf;
+                    return command;
+                case "开启比武大会":
+                    command.CommandType = AutoPanCommandType.StartTournament;
                     return command;
                 case "我的国家":
                     command.CommandType = AutoPanCommandType.MyKingdom;
@@ -181,6 +188,22 @@ namespace XianniAutoPan.Commands
                 case "#查看政策":
                     command.CommandType = AutoPanCommandType.AdminViewPolicy;
                     return command;
+            }
+
+            match = JoinCivilizationUnitRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.JoinCivilizationUnit;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = JoinExistingKingdomRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.JoinExistingKingdom;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
             }
 
             match = RenameKingdomRegex.Match(text);
@@ -530,6 +553,15 @@ namespace XianniAutoPan.Commands
                 return command;
             }
 
+            match = AdminSetAiAutoJoinCountRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int aiAutoJoinCount))
+            {
+                command.CommandType = AutoPanCommandType.AdminSetPolicy;
+                command.TargetName = "aiAutoJoinCount";
+                command.NumericValue = aiAutoJoinCount;
+                return command;
+            }
+
             match = AdminSetPlayerDecisionStartYearRegex.Match(text);
             if (match.Success && int.TryParse(match.Groups[1].Value, out int playerStartYear))
             {
@@ -599,6 +631,15 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.DisturbKingdom;
                 command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
+            match = MeteorStrikeRegex.Match(text);
+            if (match.Success && int.TryParse(match.Groups[2].Value, out int meteorCount))
+            {
+                command.CommandType = AutoPanCommandType.MeteorStrike;
+                command.TargetName = match.Groups[1].Value.Trim();
+                command.NumericValue = meteorCount;
                 return command;
             }
 

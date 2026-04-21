@@ -134,6 +134,11 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
+            if (ShouldRollPolicyForCommand(command.CommandType))
+            {
+                AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
+            }
+
             switch (command.CommandType)
             {
                 case AutoPanCommandType.Help:
@@ -159,6 +164,31 @@ namespace XianniAutoPan.Commands
                     {
                         AutoPanKingdomSpeechService.ShowSpeech(joinedKingdom, playerName, command.RawText, isCommand: true);
                         AutoPanLogService.Info($"{playerName} 执行 {command.RawText} -> {joinText}");
+                    }
+                    return result;
+
+                case AutoPanCommandType.JoinExistingKingdom:
+                    result.Success = AutoPanKingdomService.TryBindExistingKingdom(userId, playerName, command.TargetName, out Kingdom existingKingdom, out string existingJoinText);
+                    result.Text = existingJoinText;
+                    if (!result.Success && existingJoinText.StartsWith("找不到目标国家", StringComparison.Ordinal))
+                    {
+                        result.Success = AutoPanKingdomService.TryCreatePlayerKingdomByCivilizationUnit(userId, playerName, command.TargetName, out existingKingdom, out existingJoinText);
+                        result.Text = existingJoinText;
+                    }
+                    if (existingKingdom != null && result.Success)
+                    {
+                        AutoPanKingdomSpeechService.ShowSpeech(existingKingdom, playerName, command.RawText, isCommand: true);
+                        AutoPanLogService.Info($"{playerName} 执行 {command.RawText} -> {existingJoinText}");
+                    }
+                    return result;
+
+                case AutoPanCommandType.JoinCivilizationUnit:
+                    result.Success = AutoPanKingdomService.TryCreatePlayerKingdomByCivilizationUnit(userId, playerName, command.TargetName, out Kingdom civilizationKingdom, out string civilizationJoinText);
+                    result.Text = civilizationJoinText;
+                    if (civilizationKingdom != null && result.Success)
+                    {
+                        AutoPanKingdomSpeechService.ShowSpeech(civilizationKingdom, playerName, command.RawText, isCommand: true);
+                        AutoPanLogService.Info($"{playerName} 执行 {command.RawText} -> {civilizationJoinText}");
                     }
                     return result;
 
@@ -251,6 +281,7 @@ namespace XianniAutoPan.Commands
                 return false;
             }
 
+            AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
             AutoPanCommandResult result = new AutoPanCommandResult
             {
                 UserId = $"ai:{kingdom.getID()}",
@@ -346,6 +377,10 @@ namespace XianniAutoPan.Commands
                     return ExecuteHeavenBless(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.DisturbKingdom:
                     return ExecuteDisturbKingdom(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.MeteorStrike:
+                    return ExecuteMeteorStrike(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.StartTournament:
+                    return ExecuteStartTournament(kingdom, operatorName, isAi, result);
                 case AutoPanCommandType.CultivatorSuppress:
                     return ExecuteCultivatorSuppress(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.AncientSuppress:
@@ -686,7 +721,8 @@ namespace XianniAutoPan.Commands
                 result.Text = $"你与 {target.name} 已处于战争状态。";
                 return result;
             }
-            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, AutoPanConfigHooks.DeclareWarCost, out string error))
+            int cost = AutoPanConfigHooks.DeclareWarCost;
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, cost, out string error))
             {
                 result.Text = error;
                 return result;
@@ -695,13 +731,13 @@ namespace XianniAutoPan.Commands
             War war = World.world.diplomacy.startWar(kingdom, target, WarTypeLibrary.normal);
             if (war == null)
             {
-                AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.DeclareWarCost);
+                AutoPanKingdomService.AddTreasury(kingdom, cost);
                 result.Text = $"对 {target.name} 宣战失败。";
                 return result;
             }
 
             result.Success = true;
-            result.Text = $"{kingdom.name} 已向 {target.name} 宣战，消耗 {AutoPanConfigHooks.DeclareWarCost} 金币。";
+            result.Text = $"{kingdom.name} 已向 {target.name} 宣战，消耗 {cost} 金币。";
             XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 宣战");
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 宣战：{kingdom.name} -> {target.name}");
             return result;
@@ -1233,7 +1269,7 @@ namespace XianniAutoPan.Commands
         private static bool IsDeclareWarBlockedByYear(AutoPanParsedCommand command, string actorText, out string message)
         {
             message = string.Empty;
-            if (command.CommandType != AutoPanCommandType.DeclareWar)
+            if (command.CommandType != AutoPanCommandType.DeclareWar && command.CommandType != AutoPanCommandType.MeteorStrike)
             {
                 return false;
             }
@@ -1245,13 +1281,35 @@ namespace XianniAutoPan.Commands
                 return false;
             }
 
-            message = $"当前为第 {currentYear} 年，{actorText}需到第 {startYear} 年后才能宣战；其它指令不受该年份限制。";
+            string actionText = command.CommandType == AutoPanCommandType.MeteorStrike ? "释放陨石" : "宣战";
+            message = $"当前为第 {currentYear} 年，{actorText}需到第 {startYear} 年后才能{actionText}；其它指令不受该年份限制。";
             return true;
         }
 
         private static bool IsInfoCommand(AutoPanCommandType commandType)
         {
             return InfoCommands.Contains(commandType);
+        }
+
+        private static bool ShouldRollPolicyForCommand(AutoPanCommandType commandType)
+        {
+            if (IsInfoCommand(commandType))
+            {
+                return false;
+            }
+
+            switch (commandType)
+            {
+                case AutoPanCommandType.Unknown:
+                case AutoPanCommandType.AdminViewPolicy:
+                case AutoPanCommandType.AdminSetPolicy:
+                case AutoPanCommandType.AdminViewBinding:
+                case AutoPanCommandType.AdminSetSpeed:
+                case AutoPanCommandType.AdminCurrentSituationScreenshot:
+                    return false;
+                default:
+                    return true;
+            }
         }
 
         private static bool TryGetPlayerKingdom(string userId, out Kingdom kingdom, out string error)
@@ -1422,12 +1480,67 @@ namespace XianniAutoPan.Commands
             AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 扰动国家：{command.TargetName}");
             return result;
         }
+
+        private static AutoPanCommandResult ExecuteMeteorStrike(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            if (!AutoPanKingdomService.TryResolveKingdom(command.TargetName, out Kingdom target, out string resolveError))
+            {
+                result.Text = resolveError;
+                return result;
+            }
+
+            if (target == kingdom)
+            {
+                result.Text = "不能对自己的国家释放陨石。";
+                return result;
+            }
+
+            int maxCount = Math.Max(1, AutoPanConfigHooks.MeteorMaxCount);
+            int count = Math.Max(1, Math.Min(command.NumericValue, maxCount));
+            int costPerStone = Math.Max(0, AutoPanConfigHooks.MeteorCostPerStone);
+            long totalCostLong = (long)costPerStone * count;
+            if (totalCostLong > int.MaxValue)
+            {
+                result.Text = "本次陨石花费超过自动盘国库可处理上限，请降低数量或单价。";
+                return result;
+            }
+
+            int totalCost = (int)totalCostLong;
+            if (!AutoPanKingdomService.TrySpendTreasury(kingdom, totalCost, out string spendError))
+            {
+                result.Text = spendError;
+                return result;
+            }
+
+            if (!AutoPanKingdomService.TrySpawnMeteoritesInKingdom(target, count, out int spawnedCount, out string meteorMessage))
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, totalCost);
+                result.Text = meteorMessage + $" 已退回 {totalCost} 金币。";
+                return result;
+            }
+
+            result.Success = true;
+            result.Text = $"{AutoPanKingdomService.FormatKingdomLabel(kingdom)} 已对 {AutoPanKingdomService.FormatKingdomLabel(target)} 释放 {spawnedCount} 颗陨石，消耗 {totalCost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 对 {target.name} 释放了 {spawnedCount} 颗陨石");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 陨石：{kingdom.name} -> {target.name} / count={spawnedCount} / cost={totalCost}");
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteStartTournament(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanTournamentService.TryStart(kingdom, result.UserId, operatorName, out string message);
+            result.Text = message;
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 开启比武大会：{kingdom.name} / success={result.Success}");
+            return result;
+        }
+
         private static string BuildPlayerHelpText()
         {
             return string.Join("\n", new[]
             {
                 "玩家指令总览：",
                 "加入人类 / 加入兽人 / 加入精灵 / 加入矮人",
+                "加入 国家名（绑定现有无主国；找不到国家时尝试文明单位） / 加入文明单位 单位名",
                 "我的国家 / 国家信息",
                 "当前局势 / 查看所有国家信息 / 玩家排名",
                 "国家改名 新名字",
@@ -1463,6 +1576,8 @@ namespace XianniAutoPan.Commands
                 "军备 城市名 [cityId] 精金 全军",
                 "天运惩罚(赐福) 目标国家（可@）",
                 "扰动国家 目标国家（可@）",
+                "陨石 目标国家（可@） 数量",
+                "开启比武大会",
                 "#结盘（管理员）"
             });
         }

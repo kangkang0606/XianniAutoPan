@@ -13,6 +13,8 @@ namespace XianniAutoPan.Model
         JoinOrc,
         JoinElf,
         JoinDwarf,
+        JoinExistingKingdom,
+        JoinCivilizationUnit,
         MyKingdom,
         KingdomInfo,
         AllKingdomInfo,
@@ -78,7 +80,9 @@ namespace XianniAutoPan.Model
         CurrentSituationScreenshot,
         HeavenPunish,
         HeavenBless,
-        DisturbKingdom
+        DisturbKingdom,
+        MeteorStrike,
+        StartTournament
     }
 
     /// <summary>
@@ -277,6 +281,21 @@ namespace XianniAutoPan.Model
         /// 当前值。
         /// </summary>
         public int Value { get; set; }
+
+        /// <summary>
+        /// 是否启用该项的随机数值。
+        /// </summary>
+        public bool RandomEnabled { get; set; }
+
+        /// <summary>
+        /// 随机数值下限。
+        /// </summary>
+        public int RandomMinValue { get; set; }
+
+        /// <summary>
+        /// 随机数值上限。
+        /// </summary>
+        public int RandomMaxValue { get; set; }
 
         /// <summary>
         /// 最小允许值。

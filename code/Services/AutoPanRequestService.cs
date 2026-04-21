@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using XianniAutoPan.Model;
 using xn.api;
+using xn.tournament;
 
 namespace XianniAutoPan.Services
 {
@@ -203,6 +204,12 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (TournamentManager.IsRunning)
+            {
+                message = "仙逆比武大会正在进行中，不能发起约斗。";
+                return false;
+            }
+
             if (FindDuplicate(source.getID(), target.getID(), AutoPanPendingRequestType.Duel) != null)
             {
                 message = $"你已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出约斗请求，请等待对方回应。";
@@ -266,6 +273,12 @@ namespace XianniAutoPan.Services
             {
                 PendingRequests.Remove(request);
                 message = "请求发起国已失效，该请求已自动清除。";
+                return false;
+            }
+
+            if (type == AutoPanPendingRequestType.Duel && accept && TournamentManager.IsRunning)
+            {
+                message = "仙逆比武大会正在进行中，不能同意约斗。";
                 return false;
             }
 
@@ -368,7 +381,7 @@ namespace XianniAutoPan.Services
                 return target.getWars().Count() <= 2 && !target.isEnemy(source);
             }
 
-            return !AutoPanDuelService.IsRunning;
+            return !AutoPanDuelService.IsRunning && !TournamentManager.IsRunning;
         }
 
         private static PendingRequest FindDuplicate(long sourceKingdomId, long targetKingdomId, AutoPanPendingRequestType type)

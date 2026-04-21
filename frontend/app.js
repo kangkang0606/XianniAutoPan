@@ -147,6 +147,66 @@ function clearDraftIfSaved(store, dirtySet, key, value) {
   clearDraft(store, dirtySet, key);
 }
 
+function buildPolicySnapshotDraft(item) {
+  return {
+    value: String(pick(item, "value", "Value") ?? 0),
+    randomEnabled: !!pick(item, "randomEnabled", "RandomEnabled"),
+    randomMinValue: String(pick(item, "randomMinValue", "RandomMinValue") ?? pick(item, "value", "Value") ?? 0),
+    randomMaxValue: String(pick(item, "randomMaxValue", "RandomMaxValue") ?? pick(item, "value", "Value") ?? 0)
+  };
+}
+
+function normalizePolicyDraft(draft, item = null) {
+  const fallback = item ? buildPolicySnapshotDraft(item) : {
+    value: "0",
+    randomEnabled: false,
+    randomMinValue: "0",
+    randomMaxValue: "0"
+  };
+  if (draft && typeof draft === "object") {
+    return {
+      value: String(draft.value ?? fallback.value),
+      randomEnabled: !!draft.randomEnabled,
+      randomMinValue: String(draft.randomMinValue ?? fallback.randomMinValue),
+      randomMaxValue: String(draft.randomMaxValue ?? fallback.randomMaxValue)
+    };
+  }
+
+  if (draft !== undefined && draft !== null) {
+    return {
+      value: String(draft),
+      randomEnabled: false,
+      randomMinValue: fallback.randomMinValue,
+      randomMaxValue: fallback.randomMaxValue
+    };
+  }
+
+  return fallback;
+}
+
+function getPolicyDraft(key, item) {
+  return key && policyDirtyKeys.has(key)
+    ? normalizePolicyDraft(policyDrafts[key], item)
+    : buildPolicySnapshotDraft(item);
+}
+
+function rememberPolicyDraft(key, draft) {
+  rememberDraft(policyDrafts, policyDirtyKeys, key, normalizePolicyDraft(draft));
+}
+
+function isPolicyDraftSaved(key, item) {
+  if (!key || !policyDirtyKeys.has(key)) {
+    return false;
+  }
+
+  const draft = normalizePolicyDraft(policyDrafts[key], item);
+  const snapshot = buildPolicySnapshotDraft(item);
+  return draft.value === snapshot.value
+    && draft.randomEnabled === snapshot.randomEnabled
+    && draft.randomMinValue === snapshot.randomMinValue
+    && draft.randomMaxValue === snapshot.randomMaxValue;
+}
+
 function updateDirtyStatus() {
   const policyCount = policyDirtyKeys.size;
   const qqCount = qqDirtyKeys.size;
@@ -205,8 +265,7 @@ function syncPolicyDrafts(policy) {
     const items = pick(module, "items", "Items") || [];
     items.forEach((item) => {
       const key = pick(item, "key", "Key");
-      const value = String(pick(item, "value", "Value") ?? "");
-      if (key && policyDirtyKeys.has(key) && String(policyDrafts[key]) === value) {
+      if (isPolicyDraftSaved(key, item)) {
         clearDraft(policyDrafts, policyDirtyKeys, key);
       }
     });
@@ -359,7 +418,7 @@ function renderPolicy(policy) {
   if (!policy || modules.length === 0) {
     const empty = document.createElement("div");
     empty.className = "pending-empty";
-    empty.textContent = "当前没有可显示的后端政策。";
+    empty.textContent = "当前没有可显示的前端政策。";
     policyModulesEl.appendChild(empty);
     return;
   }
@@ -433,21 +492,78 @@ function renderPolicy(policy) {
       meta.textContent = `键：${pick(item, "key", "Key")}  范围：${minValue} ~ ${maxValue}${unitText ? `  单位：${unitText}` : ""}`;
       box.appendChild(meta);
 
-      const inputRow = document.createElement("div");
-      inputRow.className = "policy-input-row";
-
-      const input = document.createElement("input");
-      input.type = "number";
       const key = pick(item, "key", "Key");
-      input.value = String(getDraftValue(policyDrafts, policyDirtyKeys, key, String(pick(item, "value", "Value") ?? 0)));
-      input.addEventListener("input", () => schedulePolicyAutoSave(key, input.value));
-      inputRow.appendChild(input);
+      const draft = getPolicyDraft(key, item);
+
+      const controls = document.createElement("div");
+      controls.className = "policy-value-controls";
+
+      const modeRow = document.createElement("div");
+      modeRow.className = "policy-mode-row";
+      const randomToggle = document.createElement("input");
+      randomToggle.type = "checkbox";
+      randomToggle.checked = draft.randomEnabled;
+      const randomToggleLabel = document.createElement("label");
+      randomToggleLabel.className = "policy-random-toggle";
+      randomToggleLabel.appendChild(randomToggle);
+      randomToggleLabel.appendChild(document.createTextNode(" 随机"));
+      modeRow.appendChild(randomToggleLabel);
+      controls.appendChild(modeRow);
+
+      const fixedRow = document.createElement("div");
+      fixedRow.className = "policy-input-row policy-fixed-row";
+      const fixedInput = document.createElement("input");
+      fixedInput.type = "number";
+      fixedInput.value = draft.value;
+      fixedInput.setAttribute("aria-label", `${pick(item, "displayName", "DisplayName") || "配置"}固定值`);
+      fixedRow.appendChild(fixedInput);
+      controls.appendChild(fixedRow);
+
+      const randomRow = document.createElement("div");
+      randomRow.className = "policy-random-row";
+      const minLabel = document.createElement("label");
+      minLabel.textContent = "最少";
+      const minInput = document.createElement("input");
+      minInput.type = "number";
+      minInput.value = draft.randomMinValue;
+      minLabel.appendChild(minInput);
+      randomRow.appendChild(minLabel);
+
+      const maxLabel = document.createElement("label");
+      maxLabel.textContent = "最大";
+      const maxInput = document.createElement("input");
+      maxInput.type = "number";
+      maxInput.value = draft.randomMaxValue;
+      maxLabel.appendChild(maxInput);
+      randomRow.appendChild(maxLabel);
+      controls.appendChild(randomRow);
+
+      const collectDraft = () => ({
+        value: fixedInput.value.trim(),
+        randomEnabled: randomToggle.checked,
+        randomMinValue: minInput.value.trim(),
+        randomMaxValue: maxInput.value.trim()
+      });
+      const syncMode = () => {
+        fixedRow.hidden = randomToggle.checked;
+        randomRow.hidden = !randomToggle.checked;
+      };
+      const rememberCurrentDraft = () => rememberPolicyDraft(key, collectDraft());
+
+      randomToggle.addEventListener("change", () => {
+        syncMode();
+        rememberCurrentDraft();
+      });
+      fixedInput.addEventListener("input", rememberCurrentDraft);
+      minInput.addEventListener("input", rememberCurrentDraft);
+      maxInput.addEventListener("input", rememberCurrentDraft);
+      syncMode();
 
       const saveButton = createMiniButton("保存", "mini-btn-admin", () => {
-        savePolicySetting(key, input.value.trim(), true).catch((error) => appendReply(error.message, false));
+        savePolicyDraft(key, collectDraft(), true).catch((error) => appendReply(error.message, false));
       });
-      inputRow.appendChild(saveButton);
-      box.appendChild(inputRow);
+      controls.appendChild(saveButton);
+      box.appendChild(controls);
       itemsWrap.appendChild(box);
     });
 
@@ -837,7 +953,7 @@ async function refreshDashboard() {
 }
 
 function schedulePolicyAutoSave(key, value) {
-  rememberDraft(policyDrafts, policyDirtyKeys, key, value);
+  rememberPolicyDraft(key, { value });
 }
 
 async function savePolicySetting(key, value, refreshAfter = false) {
@@ -852,12 +968,42 @@ async function savePolicySetting(key, value, refreshAfter = false) {
     return false;
   }
 
-  clearDraftIfSaved(policyDrafts, policyDirtyKeys, key, value);
+  clearDraft(policyDrafts, policyDirtyKeys, key);
   if (refreshAfter) {
     appendReply(payload.text || "政策已保存。", true);
     await refreshDashboard();
   }
   return true;
+}
+
+async function savePolicyRandomSetting(key, enabled, minValue, maxValue, refreshAfter = false) {
+  const url = `/api/policy-random/set?key=${encodeURIComponent(key)}&enabled=${encodeURIComponent(enabled ? "1" : "0")}&min=${encodeURIComponent(String(minValue))}&max=${encodeURIComponent(String(maxValue))}`;
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`随机政策保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.ok) {
+    appendReply(payload.text || "随机政策保存失败。", false);
+    return false;
+  }
+
+  clearDraft(policyDrafts, policyDirtyKeys, key);
+  if (refreshAfter) {
+    appendReply(payload.text || "随机政策已保存。", true);
+    await refreshDashboard();
+  }
+  return true;
+}
+
+async function savePolicyDraft(key, draft, refreshAfter = false) {
+  const normalized = normalizePolicyDraft(draft);
+  if (normalized.randomEnabled) {
+    return savePolicyRandomSetting(key, true, normalized.randomMinValue, normalized.randomMaxValue, refreshAfter);
+  }
+
+  return savePolicySetting(key, normalized.value, refreshAfter);
 }
 
 function scheduleQqAutoSave(key, value) {
@@ -899,7 +1045,7 @@ async function saveDirtyConfig() {
     let failed = 0;
     for (const [key, value] of policyEntries) {
       try {
-        if (await savePolicySetting(key, value, false)) {
+        if (await savePolicyDraft(key, value, false)) {
           saved++;
         } else {
           failed++;
@@ -1150,9 +1296,13 @@ async function exportConfig() {
       const items = pick(module, "items", "Items") || [];
       items.forEach((item) => {
         const key = pick(item, "key", "Key");
-        const value = pick(item, "value", "Value");
         if (key != null) {
-          policyData[key] = value;
+          policyData[key] = {
+            value: pick(item, "value", "Value"),
+            randomEnabled: !!pick(item, "randomEnabled", "RandomEnabled"),
+            randomMinValue: pick(item, "randomMinValue", "RandomMinValue"),
+            randomMaxValue: pick(item, "randomMaxValue", "RandomMaxValue")
+          };
         }
       });
     });
@@ -1168,7 +1318,7 @@ async function exportConfig() {
     };
 
     const exportData = {
-      _exportVersion: 1,
+      _exportVersion: 2,
       _exportTime: new Date().toISOString(),
       policy: policyData,
       qqBridge: qqData
@@ -1208,7 +1358,15 @@ async function importConfig() {
     if (data.policy && typeof data.policy === "object") {
       for (const [key, value] of Object.entries(data.policy)) {
         try {
-          await savePolicySetting(key, String(value), false);
+          if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "randomEnabled")) {
+            if (value.randomEnabled) {
+              await savePolicyRandomSetting(key, true, String(value.randomMinValue ?? value.value ?? 0), String(value.randomMaxValue ?? value.value ?? 0), false);
+            } else {
+              await savePolicySetting(key, String(value.value ?? 0), false);
+            }
+          } else {
+            await savePolicySetting(key, String(value), false);
+          }
           count++;
         } catch (error) {
           errors.push(`政策 ${key}: ${error.message}`);

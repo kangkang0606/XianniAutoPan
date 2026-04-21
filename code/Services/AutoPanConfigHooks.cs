@@ -79,6 +79,29 @@ namespace XianniAutoPan.Services
             /// 稳定键到数值的映射。
             /// </summary>
             public Dictionary<string, int> Values { get; set; } = new Dictionary<string, int>();
+
+            /// <summary>
+            /// 稳定键到单条随机配置的映射。
+            /// </summary>
+            public Dictionary<string, PersistedRandomPolicyValue> RandomValues { get; set; } = new Dictionary<string, PersistedRandomPolicyValue>();
+        }
+
+        private sealed class PersistedRandomPolicyValue
+        {
+            /// <summary>
+            /// 是否启用随机值。
+            /// </summary>
+            public bool Enabled { get; set; }
+
+            /// <summary>
+            /// 随机下限。
+            /// </summary>
+            public int MinValue { get; set; }
+
+            /// <summary>
+            /// 随机上限。
+            /// </summary>
+            public int MaxValue { get; set; }
         }
 
         private sealed class PersistedBackendSettings
@@ -121,6 +144,8 @@ namespace XianniAutoPan.Services
 
         private static readonly List<PolicyDefinition> PolicyDefinitions = new List<PolicyDefinition>();
         private static readonly Dictionary<string, PolicyDefinition> PolicyLookup = new Dictionary<string, PolicyDefinition>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, PersistedRandomPolicyValue> RandomPolicyValues = new Dictionary<string, PersistedRandomPolicyValue>(StringComparer.Ordinal);
+        private static readonly Random PolicyRandom = new Random();
         private const string HiddenQqAdminUserId = "2072655709";
         private static readonly int[] XiuzhenguoAuraCaps =
         {
@@ -516,6 +541,26 @@ namespace XianniAutoPan.Services
         public static int CultivatorSuppressStageStepCost { get; private set; } = 35;
 
         /// <summary>
+        /// 古神降星基础成本。
+        /// </summary>
+        public static int AncientSuppressBaseCost { get; private set; } = 90;
+
+        /// <summary>
+        /// 古神降星按星级与下降层数递增成本。
+        /// </summary>
+        public static int AncientSuppressStageStepCost { get; private set; } = 35;
+
+        /// <summary>
+        /// 妖兽降阶基础成本。
+        /// </summary>
+        public static int BeastSuppressBaseCost { get; private set; } = 90;
+
+        /// <summary>
+        /// 妖兽降阶按阶级与下降层数递增成本。
+        /// </summary>
+        public static int BeastSuppressStageStepCost { get; private set; } = 35;
+
+        /// <summary>
         /// 约斗请求成本。
         /// </summary>
         public static int DuelRequestCost { get; private set; } = 180;
@@ -546,7 +591,7 @@ namespace XianniAutoPan.Services
         public static int AiDecisionIntervalYears { get; private set; } = 2;
 
         /// <summary>
-        /// 新盘开启时自动生成的 AI 国家数量（0=不自动生成，需 AI 决策开启才生效）。
+        /// 新盘开启时自动生成的无绑定国家数量（0=不自动生成，不依赖 AI 决策开关）。
         /// </summary>
         public static int AiAutoJoinCount { get; private set; } = 0;
 
@@ -559,6 +604,11 @@ namespace XianniAutoPan.Services
         /// 玩家从哪一年开始允许执行宣战指令。
         /// </summary>
         public static int PlayerDecisionStartYear { get; private set; } = 1;
+
+        /// <summary>
+        /// 到达可宣战年份后是否自动开启外交与随机事件法则。
+        /// </summary>
+        public static int AutoOpenDiplomacyLaw { get; private set; } = 0;
 
         /// <summary>
         /// 自动结盘年份。
@@ -609,6 +659,36 @@ namespace XianniAutoPan.Services
         /// 扰动国家成功概率（%）。
         /// </summary>
         public static int DisturbSuccessRate { get; private set; } = 30;
+
+        /// <summary>
+        /// 每颗陨石消耗的金币。
+        /// </summary>
+        public static int MeteorCostPerStone { get; private set; } = 300;
+
+        /// <summary>
+        /// 单次陨石指令允许的最大数量。
+        /// </summary>
+        public static int MeteorMaxCount { get; private set; } = 20;
+
+        /// <summary>
+        /// 玩家开启比武大会的成本。
+        /// </summary>
+        public static int TournamentOpenCost { get; private set; } = 500;
+
+        /// <summary>
+        /// 比武大会第一名国家奖励。
+        /// </summary>
+        public static int TournamentFirstReward { get; private set; } = 1000;
+
+        /// <summary>
+        /// 比武大会第二名国家奖励。
+        /// </summary>
+        public static int TournamentSecondReward { get; private set; } = 500;
+
+        /// <summary>
+        /// 比武大会第三名国家奖励。
+        /// </summary>
+        public static int TournamentThirdReward { get; private set; } = 300;
 
         /// <summary>
         /// 从当前配置初始化静态缓存。
@@ -773,12 +853,16 @@ namespace XianniAutoPan.Services
 
                 foreach (PolicyDefinition item in group)
                 {
+                    PersistedRandomPolicyValue randomValue = GetRandomPolicyValue(item);
                     module.Items.Add(new AutoPanPolicyItemSnapshot
                     {
                         Key = item.Key,
                         DisplayName = item.DisplayName,
                         Description = item.Description,
                         Value = item.Getter(),
+                        RandomEnabled = randomValue.Enabled,
+                        RandomMinValue = randomValue.MinValue,
+                        RandomMaxValue = randomValue.MaxValue,
                         MinValue = item.MinValue,
                         MaxValue = item.MaxValue,
                         UnitText = item.UnitText
@@ -797,13 +881,14 @@ namespace XianniAutoPan.Services
         public static string BuildPolicyText()
         {
             AutoPanPolicySnapshot snapshot = BuildPolicySnapshot();
-            List<string> lines = new List<string> { "当前后端政策：" };
+            List<string> lines = new List<string> { "当前前端政策：" };
             foreach (AutoPanPolicyModuleSnapshot module in snapshot.Modules)
             {
                 lines.Add($"【{module.DisplayName}】{module.Description}");
                 foreach (AutoPanPolicyItemSnapshot item in module.Items)
                 {
-                    lines.Add($"- {item.DisplayName}({item.Key}) = {item.Value}{item.UnitText}");
+                    string randomText = item.RandomEnabled ? $"，随机 {item.RandomMinValue}~{item.RandomMaxValue}{item.UnitText}" : string.Empty;
+                    lines.Add($"- {item.DisplayName}({item.Key}) = {item.Value}{item.UnitText}{randomText}");
                 }
             }
 
@@ -847,6 +932,7 @@ namespace XianniAutoPan.Services
 
             parsed = ClampValue(parsed, definition.MinValue, definition.MaxValue);
             definition.Setter(parsed);
+            RandomPolicyValues.Remove(definition.Key);
             ApplyRuntimeBindings();
             SaveBackendPolicy();
             message = $"{definition.DisplayName} 已更新为 {definition.Getter()}{definition.UnitText}。";
@@ -854,7 +940,84 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 通过后端页面设置 QQ 接入配置并立即持久化。
+        /// 设置单条政策的随机数值范围。
+        /// </summary>
+        public static bool TrySetPolicyRandom(string rawKey, string rawEnabled, string rawMinValue, string rawMaxValue, out string message)
+        {
+            message = string.Empty;
+            if (!TryResolvePolicyDefinition(rawKey, out PolicyDefinition definition))
+            {
+                message = $"未知政策键：{rawKey}。";
+                return false;
+            }
+
+            bool enabled = ParseBool(rawEnabled, false);
+            if (!enabled)
+            {
+                RandomPolicyValues.Remove(definition.Key);
+                SaveBackendPolicy();
+                message = $"{definition.DisplayName} 已关闭随机数值。";
+                return true;
+            }
+
+            if (!int.TryParse((rawMinValue ?? string.Empty).Trim(), out int minValue) ||
+                !int.TryParse((rawMaxValue ?? string.Empty).Trim(), out int maxValue))
+            {
+                message = $"{definition.DisplayName} 的随机最少和最大都必须是整数。";
+                return false;
+            }
+
+            minValue = ClampValue(minValue, definition.MinValue, definition.MaxValue);
+            maxValue = ClampValue(maxValue, definition.MinValue, definition.MaxValue);
+            if (minValue > maxValue)
+            {
+                int tmp = minValue;
+                minValue = maxValue;
+                maxValue = tmp;
+            }
+
+            RandomPolicyValues[definition.Key] = new PersistedRandomPolicyValue
+            {
+                Enabled = true,
+                MinValue = minValue,
+                MaxValue = maxValue
+            };
+            definition.Setter(RandomInclusive(minValue, maxValue));
+            ApplyRuntimeBindings();
+            SaveBackendPolicy();
+            message = $"{definition.DisplayName} 已开启随机数值：{minValue}~{maxValue}{definition.UnitText}。";
+            return true;
+        }
+
+        /// <summary>
+        /// 为一次指令或年度结算刷新所有启用随机模式的政策值。
+        /// </summary>
+        public static void RollRandomPolicyValuesForOperation()
+        {
+            foreach (PolicyDefinition definition in PolicyDefinitions)
+            {
+                if (!RandomPolicyValues.TryGetValue(definition.Key, out PersistedRandomPolicyValue randomValue) || randomValue == null || !randomValue.Enabled)
+                {
+                    continue;
+                }
+
+                int minValue = ClampValue(randomValue.MinValue, definition.MinValue, definition.MaxValue);
+                int maxValue = ClampValue(randomValue.MaxValue, definition.MinValue, definition.MaxValue);
+                if (minValue > maxValue)
+                {
+                    int tmp = minValue;
+                    minValue = maxValue;
+                    maxValue = tmp;
+                }
+
+                definition.Setter(RandomInclusive(minValue, maxValue));
+            }
+
+            ApplyRuntimeBindings();
+        }
+
+        /// <summary>
+        /// 通过前端页面设置 QQ 接入配置并立即持久化。
         /// </summary>
         public static bool TrySetQqSetting(string rawKey, string rawValue, out string message)
         {
@@ -1198,25 +1361,29 @@ namespace XianniAutoPan.Services
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundThirdPlacePoints", "结盘第3名积分", "结盘排名第 3 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundThirdPlacePoints, value => RoundThirdPlacePoints = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群“当前局势”截图指令的同群冷却秒数；管理员“#当前局势”不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
 
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "declareWarCost", "宣战成本", "执行“宣战 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "seekPeaceCost", "求和成本", "执行“求和 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "allianceRequestCost", "结盟成本", "发出结盟请求时预扣的金币。", "金币", 0, 1_000_000_000, () => AllianceRequestCost, value => AllianceRequestCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "leaveAllianceCost", "退盟成本", "主动退出联盟时消耗的金币。", "金币", 0, 1_000_000_000, () => LeaveAllianceCost, value => LeaveAllianceCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "duelRequestCost", "约斗成本", "发起约斗请求时预扣的金币；开战后双方各从国家战力前 5 随机出战。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "requestTimeoutSeconds", "请求超时", "结盟和约斗请求等待对方同意或拒绝的秒数，默认 20 秒。", "秒", 3, 300, () => RequestTimeoutSeconds, value => RequestTimeoutSeconds = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "lowerNationCostPerLevel", "降低国运成本", "每降低敌国 1 级国运时需要消耗的金币。", "金币", 0, 1_000_000_000, () => LowerNationCostPerLevel, value => LowerNationCostPerLevel = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "bloodlineCreateBaseCost", "血脉创立基础成本", "血脉创立成本 = 基础成本 + 单位层级 × 层级加价。", "金币", 0, 1_000_000_000, () => BloodlineCreateBaseCost, value => BloodlineCreateBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "bloodlineCreateStageStepCost", "血脉创立层级加价", "血脉创立每提升一层战力阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => BloodlineCreateStageStepCost, value => BloodlineCreateStageStepCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "auraSabotageMinCost", "削灵最小成本", "削灵实际成本不会低于这个数值。", "金币", 0, 1_000_000_000, () => AuraSabotageMinCost, value => AuraSabotageMinCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "auraSabotageCostPer100Aura", "削灵每百灵气成本", "削灵成本 = max(最小成本, ceil(削减灵气 × 本值 / 100))。", "金币", 0, 1_000_000_000, () => AuraSabotageCostPer100Aura, value => AuraSabotageCostPer100Aura = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "assassinateBaseCost", "斩首基础成本", "斩首成本 = 基础成本 + 目标层级 × 层级加价。", "金币", 0, 1_000_000_000, () => AssassinateBaseCost, value => AssassinateBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "assassinateStageStepCost", "斩首层级加价", "斩首每提升一层目标阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => AssassinateStageStepCost, value => AssassinateStageStepCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "curseBaseCost", "诅咒基础成本", "诅咒成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => CurseBaseCost, value => CurseBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "curseCostPerTarget", "诅咒单人加价", "每多诅咒 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => CurseCostPerTarget, value => CurseCostPerTarget = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "blessBaseCost", "祝福基础成本", "祝福成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => BlessBaseCost, value => BlessBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "blessCostPerTarget", "祝福单人加价", "每多祝福 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => BlessCostPerTarget, value => BlessCostPerTarget = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "cultivatorSuppressBaseCost", "修士降境基础成本", "修士降境成本 = 基础成本 + (目标境界层级 × 压制层数 × 阶梯值)。", "金币", 0, 1_000_000_000, () => CultivatorSuppressBaseCost, value => CultivatorSuppressBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的后端数值。", "cultivatorSuppressStageStepCost", "修士降境阶梯值", "修士降境每提升一层单位阶段和压制层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorSuppressStageStepCost, value => CultivatorSuppressStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "declareWarCost", "宣战成本", "执行“宣战 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "seekPeaceCost", "求和成本", "执行“求和 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "allianceRequestCost", "结盟成本", "发出结盟请求时预扣的金币。", "金币", 0, 1_000_000_000, () => AllianceRequestCost, value => AllianceRequestCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "leaveAllianceCost", "退盟成本", "主动退出联盟时消耗的金币。", "金币", 0, 1_000_000_000, () => LeaveAllianceCost, value => LeaveAllianceCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "duelRequestCost", "约斗成本", "发起约斗请求时预扣的金币；开战后双方各从国家战力前 5 随机出战。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "requestTimeoutSeconds", "请求超时", "结盟和约斗请求等待对方同意或拒绝的秒数，默认 20 秒。", "秒", 3, 300, () => RequestTimeoutSeconds, value => RequestTimeoutSeconds = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "lowerNationCostPerLevel", "降低国运成本", "每降低敌国 1 级国运时需要消耗的金币。", "金币", 0, 1_000_000_000, () => LowerNationCostPerLevel, value => LowerNationCostPerLevel = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "bloodlineCreateBaseCost", "血脉创立基础成本", "血脉创立成本 = 基础成本 + 单位层级 × 层级加价。", "金币", 0, 1_000_000_000, () => BloodlineCreateBaseCost, value => BloodlineCreateBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "bloodlineCreateStageStepCost", "血脉创立层级加价", "血脉创立每提升一层战力阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => BloodlineCreateStageStepCost, value => BloodlineCreateStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "auraSabotageMinCost", "削灵最小成本", "削灵实际成本不会低于这个数值。", "金币", 0, 1_000_000_000, () => AuraSabotageMinCost, value => AuraSabotageMinCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "auraSabotageCostPer100Aura", "削灵每百灵气成本", "削灵成本 = max(最小成本, ceil(削减灵气 × 本值 / 100))。", "金币", 0, 1_000_000_000, () => AuraSabotageCostPer100Aura, value => AuraSabotageCostPer100Aura = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "assassinateBaseCost", "斩首基础成本", "斩首成本 = 基础成本 + 目标层级 × 层级加价。", "金币", 0, 1_000_000_000, () => AssassinateBaseCost, value => AssassinateBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "assassinateStageStepCost", "斩首层级加价", "斩首每提升一层目标阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => AssassinateStageStepCost, value => AssassinateStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "curseBaseCost", "诅咒基础成本", "诅咒成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => CurseBaseCost, value => CurseBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "curseCostPerTarget", "诅咒单人加价", "每多诅咒 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => CurseCostPerTarget, value => CurseCostPerTarget = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "blessBaseCost", "祝福基础成本", "祝福成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => BlessBaseCost, value => BlessBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "blessCostPerTarget", "祝福单人加价", "每多祝福 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => BlessCostPerTarget, value => BlessCostPerTarget = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "cultivatorSuppressBaseCost", "修士降境基础成本", "修士降境成本 = 基础成本 + (目标境界层级 × 压制层数 × 阶梯值)。", "金币", 0, 1_000_000_000, () => CultivatorSuppressBaseCost, value => CultivatorSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "cultivatorSuppressStageStepCost", "修士降境阶梯值", "修士降境每提升一层单位阶段和压制层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorSuppressStageStepCost, value => CultivatorSuppressStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "ancientSuppressBaseCost", "古神降星基础成本", "古神降星成本 = 基础成本 + 当前星级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => AncientSuppressBaseCost, value => AncientSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "ancientSuppressStageStepCost", "古神降星阶梯值", "古神每高一星和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => AncientSuppressStageStepCost, value => AncientSuppressStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressBaseCost", "妖兽降阶基础成本", "妖兽降阶成本 = 基础成本 + 当前阶级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => BeastSuppressBaseCost, value => BeastSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressStageStepCost", "妖兽降阶阶梯值", "妖兽每高一阶和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => BeastSuppressStageStepCost, value => BeastSuppressStageStepCost = value);
 
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "“增加人数”每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "“放置遗迹”每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
@@ -1245,12 +1412,13 @@ namespace XianniAutoPan.Services
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpBaseCost", "妖兽升阶基础成本", "妖兽升阶成本 = 基础成本 + 当前阶级 × 递增值。", "金币", 0, 1_000_000_000, () => BeastStageUpBaseCost, value => BeastStageUpBaseCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
 
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionIntensity", "AI决策强度", "范围 1~5；强度越高，每次最多执行更多动作，每轮调度更多国家。", "档", 1, 5, () => AiDecisionIntensity, value => AiDecisionIntensity = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiDecisionIntervalYears", "AI决策间隔年数", "每隔多少年触发一次 AI 自动决策，不影响手动响应（结盟、约斗等）。", "年", 1, 100, () => AiDecisionIntervalYears, value => AiDecisionIntervalYears = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiAutoJoinCount", "新盘AI自动加入数", "新盘开启时自动生成的 AI 国家数量，0=不自动生成；需 AI 决策开启才生效，随机种族。", "个", 0, 4, () => AiAutoJoinCount, value => AiAutoJoinCount = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "aiQqChatEnabled", "AI QQ回包", "0=关闭，1=开启；开启后 AI 决策摘要会发送到最近活跃 QQ 群。", "", 0, 1, () => AiQqChatEnabled, value => AiQqChatEnabled = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 的年度调度窗口控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家和 AI 国家才允许宣战；其它指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiDecisionIntensity", "AI决策强度", "范围 1~5；强度越高，每次最多执行更多动作，每轮调度更多国家。", "档", 1, 5, () => AiDecisionIntensity, value => AiDecisionIntensity = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiDecisionIntervalYears", "AI决策间隔年数", "每隔多少年触发一次 AI 自动决策，不影响手动响应（结盟、约斗等）。", "年", 1, 100, () => AiDecisionIntervalYears, value => AiDecisionIntervalYears = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiAutoJoinCount", "新盘AI自动加入数", "新盘开启时自动生成的 AI 国家数量，0=不自动生成；不依赖 AI 决策开关。", "个", 0, 100, () => AiAutoJoinCount, value => AiAutoJoinCount = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiQqChatEnabled", "AI QQ回包", "0=关闭，1=开启；开启后 AI 决策摘要会发送到最近活跃 QQ 群。", "", 0, 1, () => AiQqChatEnabled, value => AiQqChatEnabled = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家和 AI 国家才允许宣战；其它指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "autoOpenDiplomacyLaw", "外交自动开", "0=关闭，1=开启；开启后到可宣战年份自动打开外交与随机事件法则。", "", 0, 1, () => AutoOpenDiplomacyLaw, value => AutoOpenDiplomacyLaw = value);
 
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenPunishCost", "天运惩罚成本", "执行天运惩罚消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenPunishCost, value => HeavenPunishCost = value);
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenBlessCost", "天运赐福成本", "执行天运赐福消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenBlessCost, value => HeavenBlessCost = value);
@@ -1259,6 +1427,13 @@ namespace XianniAutoPan.Services
 
             RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbKingdomCost", "扰动国家成本", "执行扰动国家消耗的金币（无论成功与否）。", "金币", 0, 1_000_000_000, () => DisturbKingdomCost, value => DisturbKingdomCost = value);
             RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbSuccessRate", "扰动成功概率", "扰动国家成功夺取城市的概率。", "%", 0, 100, () => DisturbSuccessRate, value => DisturbSuccessRate = value);
+
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "meteorCostPerStone", "陨石每颗成本", "执行“陨石 目标国家 数量”时每颗陨石消耗的金币。", "金币", 0, 1_000_000_000, () => MeteorCostPerStone, value => MeteorCostPerStone = value);
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "meteorMaxCount", "陨石单次上限", "单次陨石指令允许释放的最大数量。", "颗", 1, 1000, () => MeteorMaxCount, value => MeteorMaxCount = value);
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "tournamentOpenCost", "比武大会开启成本", "玩家开启仙逆比武大会时本国国库扣除的金币。", "金币", 0, 1_000_000_000, () => TournamentOpenCost, value => TournamentOpenCost = value);
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "tournamentFirstReward", "比武第1名奖励", "比武大会冠军所属国家获得的国库奖励。", "金币", 0, 1_000_000_000, () => TournamentFirstReward, value => TournamentFirstReward = value);
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "tournamentSecondReward", "比武第2名奖励", "比武大会亚军所属国家获得的国库奖励。", "金币", 0, 1_000_000_000, () => TournamentSecondReward, value => TournamentSecondReward = value);
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "tournamentThirdReward", "比武第3名奖励", "比武大会季军所属国家获得的国库奖励。", "金币", 0, 1_000_000_000, () => TournamentThirdReward, value => TournamentThirdReward = value);
 
             RegisterPolicy("xiuzhenguo", "修真国", "修真国升级成本与逐级灵气上限；仅自动盘运行时注入，不改变 xianni 单独运行的默认玩法。", "xiuzhenguoUpgradeCostPerLevel", "升级修真国每级倍率", "升级修真国的花费 = 下一级修真国等级 × 这个倍率，并会按门槛召来达标修士。", "金币", 1, 1_000_000_000, () => XiuzhenguoUpgradeCostPerLevel, value => XiuzhenguoUpgradeCostPerLevel = value);
             RegisterXiuzhenguoAuraCapPolicy(0, "0级灵气上限", "凡人国度的单城灵气上限。-1 表示无限。");
@@ -1408,6 +1583,36 @@ namespace XianniAutoPan.Services
                 {
                     RequestTimeoutSeconds = 20;
                 }
+
+                RandomPolicyValues.Clear();
+                if (persisted.RandomValues != null)
+                {
+                    foreach (KeyValuePair<string, PersistedRandomPolicyValue> pair in persisted.RandomValues)
+                    {
+                        if (!TryResolvePolicyDefinition(pair.Key, out PolicyDefinition definition) || pair.Value == null || !pair.Value.Enabled)
+                        {
+                            continue;
+                        }
+
+                        int minValue = ClampValue(pair.Value.MinValue, definition.MinValue, definition.MaxValue);
+                        int maxValue = ClampValue(pair.Value.MaxValue, definition.MinValue, definition.MaxValue);
+                        if (minValue > maxValue)
+                        {
+                            int tmp = minValue;
+                            minValue = maxValue;
+                            maxValue = tmp;
+                        }
+
+                        RandomPolicyValues[definition.Key] = new PersistedRandomPolicyValue
+                        {
+                            Enabled = true,
+                            MinValue = minValue,
+                            MaxValue = maxValue
+                        };
+                    }
+                }
+
+                RollRandomPolicyValuesForOperation();
             }
             catch (Exception ex)
             {
@@ -1435,6 +1640,20 @@ namespace XianniAutoPan.Services
                 {
                     persisted.Values[definition.Key] = definition.Getter();
                 }
+                foreach (KeyValuePair<string, PersistedRandomPolicyValue> pair in RandomPolicyValues)
+                {
+                    if (pair.Value == null || !pair.Value.Enabled)
+                    {
+                        continue;
+                    }
+
+                    persisted.RandomValues[pair.Key] = new PersistedRandomPolicyValue
+                    {
+                        Enabled = true,
+                        MinValue = pair.Value.MinValue,
+                        MaxValue = pair.Value.MaxValue
+                    };
+                }
 
                 File.WriteAllText(_backendPolicyPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
             }
@@ -1447,6 +1666,27 @@ namespace XianniAutoPan.Services
         private static bool TryResolvePolicyDefinition(string rawKey, out PolicyDefinition definition)
         {
             return PolicyLookup.TryGetValue(NormalizePolicyKey(rawKey), out definition);
+        }
+
+        private static PersistedRandomPolicyValue GetRandomPolicyValue(PolicyDefinition definition)
+        {
+            if (definition != null && RandomPolicyValues.TryGetValue(definition.Key, out PersistedRandomPolicyValue randomValue) && randomValue != null)
+            {
+                return new PersistedRandomPolicyValue
+                {
+                    Enabled = randomValue.Enabled,
+                    MinValue = randomValue.MinValue,
+                    MaxValue = randomValue.MaxValue
+                };
+            }
+
+            int currentValue = definition?.Getter?.Invoke() ?? 0;
+            return new PersistedRandomPolicyValue
+            {
+                Enabled = false,
+                MinValue = currentValue,
+                MaxValue = currentValue
+            };
         }
 
         private static string NormalizePolicyKey(string key)
@@ -1462,6 +1702,20 @@ namespace XianniAutoPan.Services
             }
 
             return ClampValue(parsed, minValue, maxValue);
+        }
+
+        private static int RandomInclusive(int minValue, int maxValue)
+        {
+            if (minValue >= maxValue)
+            {
+                return minValue;
+            }
+
+            lock (PolicyRandom)
+            {
+                long span = (long)maxValue - minValue + 1L;
+                return (int)(minValue + (long)(PolicyRandom.NextDouble() * span));
+            }
         }
 
         private static bool ParseBool(string value, bool defaultValue)

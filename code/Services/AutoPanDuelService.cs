@@ -92,6 +92,12 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (TournamentManager.IsRunning)
+            {
+                message = "仙逆比武大会正在进行中，不能开启约斗。";
+                return false;
+            }
+
             if (!AutoPanInteractionService.TryGetRandomTopPowerActor(challenger, out Actor fighterA, out string fighterASummary))
             {
                 message = fighterASummary;

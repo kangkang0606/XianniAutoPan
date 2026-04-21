@@ -62,6 +62,7 @@ namespace XianniAutoPan
             AutoPanAiService.FlushCompletedResults();
             AutoPanRequestService.Update();
             AutoPanDuelService.Update();
+            AutoPanTournamentService.Update();
             AutoPanKingdomSpeechService.Update();
 
             if (World.world == null || World.world.map_stats == null)
@@ -76,6 +77,7 @@ namespace XianniAutoPan
             }
 
             _lastObservedYear = currentYear;
+            AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
             AutoPanStateRepository.CleanupDeadBindings();
             AutoPanKingdomService.ApplyYearlyIncomeToAll(currentYear);
             AutoPanAiService.ScheduleForYear(currentYear);
@@ -90,6 +92,7 @@ namespace XianniAutoPan
             AutoPanLocalWebServer.Instance.Stop();
             AutoPanRequestService.ClearAll();
             AutoPanDuelService.ClearAll();
+            AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.Dispose();
         }
 
@@ -102,6 +105,7 @@ namespace XianniAutoPan
             AutoPanKingdomService.ClearDefeatedDefendSettlementGuards();
             AutoPanRequestService.ClearAll();
             AutoPanDuelService.ClearAll();
+            AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.ClearAll();
             AutoPanRoundService.OnWorldLoaded();
             _lastObservedYear = Date.getCurrentYear();
@@ -167,6 +171,8 @@ namespace XianniAutoPan
                 "加入兽人",
                 "加入精灵",
                 "加入矮人",
+                "加入 国家名",
+                "加入文明单位",
                 "帮助",
                 "我的国家",
                 "国家信息",
@@ -218,6 +224,8 @@ namespace XianniAutoPan
                 "古神 12345 升星",
                 "妖兽 12345 养成",
                 "妖兽 12345 升阶",
+                "陨石",
+                "开启比武大会",
                 "#增加国家金币",
                 "#设置国家金币",
                 "#查看国家金币",
@@ -226,6 +234,7 @@ namespace XianniAutoPan
                 "#查看绑定",
                 "#查看政策",
                 "#设置政策",
+                "#设置AI自动加入数",
                 "#设置AI开始决策年份",
                 "#设置玩家开始决策年份",
                 "#当前局势",

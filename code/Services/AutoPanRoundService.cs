@@ -41,9 +41,14 @@ namespace XianniAutoPan.Services
             public string KingdomLabel;
 
             /// <summary>
-            /// 城市数量。
+            /// 国家领土格数。
             /// </summary>
-            public int CityCount;
+            public int TerritoryCount;
+
+            /// <summary>
+            /// 国家战力榜前 3 综合战力。
+            /// </summary>
+            public long TopPowerScore;
 
             /// <summary>
             /// 国家等级。
@@ -54,6 +59,16 @@ namespace XianniAutoPan.Services
             /// 人口数量。
             /// </summary>
             public int Population;
+
+            /// <summary>
+            /// 军队数量。
+            /// </summary>
+            public int ArmyCount;
+
+            /// <summary>
+            /// 结盘综合评分。
+            /// </summary>
+            public double Score;
         }
 
         private const string GaiaLawId = "world_law_gaias_covenant";
@@ -63,6 +78,7 @@ namespace XianniAutoPan.Services
         private static bool _isEndingRound;
         private static bool _isGeneratingNewRound;
         private static bool _pendingNewRoundNotice;
+        private static bool _diplomacyAutoOpenedForWorld;
         private static int _lastAutoRoundYear = -1;
 
         /// <summary>
@@ -73,6 +89,7 @@ namespace XianniAutoPan.Services
             _isEndingRound = false;
             _isGeneratingNewRound = false;
             _pendingNewRoundNotice = false;
+            _diplomacyAutoOpenedForWorld = false;
             _lastAutoRoundYear = -1;
         }
 
@@ -81,6 +98,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static bool CheckAutoEndRound(int currentYear)
         {
+            EnsureDiplomacyLawsForYear(currentYear);
             if (_isEndingRound || _isGeneratingNewRound || currentYear < AutoPanConfigHooks.RoundEndYear || currentYear == _lastAutoRoundYear)
             {
                 return false;
@@ -123,6 +141,7 @@ namespace XianniAutoPan.Services
         public static void OnWorldLoaded()
         {
             ApplyRoundWorldRules();
+            EnsureDiplomacyLawsForYear(Date.getCurrentYear());
             _isGeneratingNewRound = false;
             if (!_pendingNewRoundNotice)
             {
@@ -130,13 +149,12 @@ namespace XianniAutoPan.Services
             }
 
             _pendingNewRoundNotice = false;
+            AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
             SpawnAiKingdomsIfConfigured();
             const string text = "新一局游戏已经开启。";
             XianniAutoPanApi.Broadcast(text);
             AutoPanNotificationService.BroadcastToKnownGroups(text);
         }
-
-        private static readonly string[] AvailableRaces = { "人类", "兽人", "精灵", "矮人" };
 
         /// <summary>
         /// 根据配置在新盘开启时自动生成 AI 国家。
@@ -144,7 +162,7 @@ namespace XianniAutoPan.Services
         private static void SpawnAiKingdomsIfConfigured()
         {
             int count = AutoPanConfigHooks.AiAutoJoinCount;
-            if (count <= 0 || !AutoPanConfigHooks.EnableLlmAi)
+            if (count <= 0)
             {
                 return;
             }
@@ -152,8 +170,7 @@ namespace XianniAutoPan.Services
             int spawned = 0;
             for (int i = 0; i < count; i++)
             {
-                string race = AvailableRaces[Randy.randomInt(0, AvailableRaces.Length)];
-                if (AutoPanKingdomService.TrySpawnUnboundKingdom(race, out string message))
+                if (AutoPanKingdomService.TrySpawnUnboundKingdom("随机", out string message))
                 {
                     spawned++;
                     AutoPanLogService.Info($"新盘自动生成 AI 国家 ({i + 1}/{count})：{message}");
@@ -187,28 +204,29 @@ namespace XianniAutoPan.Services
             {
                 RoundCandidate candidate = topThree[index];
                 int points = GetPlacePoints(index);
+                string rankStats = $"领土 {candidate.TerritoryCount}，战力榜前三 {candidate.TopPowerScore}，人口 {candidate.Population}，军队 {candidate.ArmyCount}，综合分 {candidate.Score:0.###}";
                 if (candidate.IsAi)
                 {
-                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：占据名次，AI 不计入积分。");
+                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：{rankStats}，AI 不计入积分。");
                     continue;
                 }
 
                 if (points <= 0)
                 {
-                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：+0 分。");
+                    awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：{rankStats}，+0 分。");
                     continue;
                 }
 
                 int totalPoints = AutoPanScoreService.AddPoints(candidate.UserId, candidate.PlayerName, points);
-                awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：+{points} 分，累计 {totalPoints} 分。");
+                awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：{rankStats}，+{points} 分，累计 {totalPoints} 分。");
             }
 
             List<string> lines = new List<string>
             {
                 $"本局结盘：{reason}。",
-                $"胜者：{BuildCandidateOwnerText(winner)} 的 {winner.KingdomLabel}，城市 {winner.CityCount}，国家等级 {winner.NationLevel}，人口 {winner.Population}。",
+                $"胜者：{BuildCandidateOwnerText(winner)} 的 {winner.KingdomLabel}，领土 {winner.TerritoryCount}，战力榜前三 {winner.TopPowerScore}，人口 {winner.Population}，军队 {winner.ArmyCount}，综合分 {winner.Score:0.###}。",
                 winner.IsAi ? "本轮结果：AI 胜利。" : $"本轮结果：玩家 {winner.PlayerName} 胜利。",
-                $"裁定规则：城市数优先；并列时按国家等级、人口、kingdomId 小者依次裁定。",
+                "裁定规则：国家领土 40%、战力榜前三 30%、人口 20%、军队数量 10% 综合评分。",
                 "积分发放：",
                 string.Join("\n", awardLines)
             };
@@ -234,9 +252,11 @@ namespace XianniAutoPan.Services
         private static List<RoundCandidate> BuildRankedCandidates()
         {
             return BuildCandidates()
-                .OrderByDescending(item => item.CityCount)
-                .ThenByDescending(item => item.NationLevel)
+                .OrderByDescending(item => item.Score)
+                .ThenByDescending(item => item.TerritoryCount)
+                .ThenByDescending(item => item.TopPowerScore)
                 .ThenByDescending(item => item.Population)
+                .ThenByDescending(item => item.ArmyCount)
                 .ThenBy(item => item.KingdomId)
                 .ToList();
         }
@@ -259,6 +279,10 @@ namespace XianniAutoPan.Services
                 kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, string.Empty);
                 kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, ownerUserId);
                 bool isAi = string.IsNullOrWhiteSpace(ownerUserId);
+                int territory = kingdom.countZones();
+                long topPowerScore = AutoPanKingdomService.SumTopPowerScore(kingdom, 3);
+                int population = kingdom.getPopulationTotal();
+                int armyCount = AutoPanKingdomService.CountArmyUnits(kingdom);
                 result.Add(new RoundCandidate
                 {
                     UserId = isAi ? string.Empty : ownerUserId,
@@ -266,13 +290,42 @@ namespace XianniAutoPan.Services
                     IsAi = isAi,
                     KingdomId = kingdom.getID(),
                     KingdomLabel = AutoPanKingdomService.FormatKingdomLabel(kingdom),
-                    CityCount = kingdom.countCities(),
+                    TerritoryCount = territory,
                     NationLevel = AutoPanKingdomService.GetLevel(kingdom),
-                    Population = kingdom.getPopulationTotal()
+                    TopPowerScore = topPowerScore,
+                    Population = population,
+                    ArmyCount = armyCount
                 });
             }
 
+            ApplyCandidateScores(result);
             return result;
+        }
+
+        private static void ApplyCandidateScores(List<RoundCandidate> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return;
+            }
+
+            int maxTerritory = Math.Max(1, candidates.Max(item => item.TerritoryCount));
+            long maxPower = Math.Max(1L, candidates.Max(item => item.TopPowerScore));
+            int maxPopulation = Math.Max(1, candidates.Max(item => item.Population));
+            int maxArmy = Math.Max(1, candidates.Max(item => item.ArmyCount));
+            foreach (RoundCandidate candidate in candidates)
+            {
+                candidate.Score =
+                    BuildWeightedScore(candidate.TerritoryCount, maxTerritory, 40d) +
+                    BuildWeightedScore(candidate.TopPowerScore, maxPower, 30d) +
+                    BuildWeightedScore(candidate.Population, maxPopulation, 20d) +
+                    BuildWeightedScore(candidate.ArmyCount, maxArmy, 10d);
+            }
+        }
+
+        private static double BuildWeightedScore(double value, double maxValue, double weight)
+        {
+            return maxValue <= 0d ? 0d : value / maxValue * weight;
         }
 
         private static int GetPlacePoints(int zeroBasedIndex)
@@ -310,6 +363,7 @@ namespace XianniAutoPan.Services
 
             AutoPanRequestService.ClearAll();
             AutoPanDuelService.ClearAll();
+            AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.ClearAll();
             Config.customMapSize = "iceberg";
             Config.current_map_template = "box_world";
@@ -337,10 +391,37 @@ namespace XianniAutoPan.Services
             }
 
             SetWorldLaw(EvolutionEventsLawId, enabled: false);
+            _diplomacyAutoOpenedForWorld = false;
             SetWorldLaw(GaiaLawId, enabled: true);
             SetWorldLaw(HundredPopulationLawId, enabled: true);
             World.world.era_manager?.togglePlay(false);
             AutoPanLogService.Info("新局世界法则已应用：盖亚契约与百人开启，外交组和演化事件关闭，纪元更迭暂停。");
+        }
+
+        private static void EnsureDiplomacyLawsForYear(int currentYear)
+        {
+            if (_diplomacyAutoOpenedForWorld || AutoPanConfigHooks.AutoOpenDiplomacyLaw <= 0 || currentYear < AutoPanConfigHooks.PlayerDecisionStartYear)
+            {
+                return;
+            }
+
+            if (World.world?.world_laws == null || AssetManager.world_laws_library == null)
+            {
+                return;
+            }
+
+            World.world.world_laws.init();
+            foreach (WorldLawAsset asset in AssetManager.world_laws_library.list)
+            {
+                if (asset != null && string.Equals(asset.group_id, DiplomacyGroupId, StringComparison.Ordinal))
+                {
+                    SetWorldLaw(asset.id, enabled: true);
+                }
+            }
+
+            SetWorldLaw(EvolutionEventsLawId, enabled: true);
+            _diplomacyAutoOpenedForWorld = true;
+            AutoPanLogService.Info($"第 {currentYear} 年达到可宣战年份，已按前端配置自动开启外交组与随机事件法则。");
         }
 
         private static void SetWorldLaw(string lawId, bool enabled)
