@@ -132,10 +132,6 @@ namespace XianniAutoPan.Services
             string text = string.Join("\n", lines);
             XianniAutoPanApi.Broadcast(text);
             AutoPanNotificationService.BroadcastToKnownGroups(text, atUserIds);
-            if (!string.IsNullOrWhiteSpace(_openerUserId))
-            {
-                AutoPanNotificationService.NotifyUser(_openerUserId, text);
-            }
 
             AutoPanLogService.Info(text.Replace("\n", " "));
             Clear();
