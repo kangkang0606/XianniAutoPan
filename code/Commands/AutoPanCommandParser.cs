@@ -9,8 +9,8 @@ namespace XianniAutoPan.Commands
     internal static class AutoPanCommandParser
     {
         private static readonly Regex HelpRegex = new Regex(@"^(帮助|指令|帮助指令)$", RegexOptions.Compiled);
-        private static readonly Regex JoinCivilizationUnitRegex = new Regex(@"^加入\s*(?:种族|文明单位)\s+(.+)$", RegexOptions.Compiled);
-        private static readonly Regex JoinExistingKingdomRegex = new Regex(@"^加入\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex JoinCivilizationUnitRegex = new Regex(@"^加入\s*(?:种族|文明单位)\s*(.+)$", RegexOptions.Compiled);
+        private static readonly Regex JoinExistingKingdomRegex = new Regex(@"^加入\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex ScoreRankRegex = new Regex(@"^(玩家排名|积分排名|胜场排名)$", RegexOptions.Compiled);
         private static readonly Regex RenameKingdomRegex = new Regex(@"^国家改名\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex DeclareWarRegex = new Regex(@"^宣战\s+(.+)$", RegexOptions.Compiled);
@@ -91,15 +91,19 @@ namespace XianniAutoPan.Commands
             switch (text)
             {
                 case "加入人类":
+                case "加入 人类":
                     command.CommandType = AutoPanCommandType.JoinHuman;
                     return command;
                 case "加入兽人":
+                case "加入 兽人":
                     command.CommandType = AutoPanCommandType.JoinOrc;
                     return command;
                 case "加入精灵":
+                case "加入 精灵":
                     command.CommandType = AutoPanCommandType.JoinElf;
                     return command;
                 case "加入矮人":
+                case "加入 矮人":
                     command.CommandType = AutoPanCommandType.JoinDwarf;
                     return command;
                 case "开启比武大会":
@@ -119,6 +123,8 @@ namespace XianniAutoPan.Commands
                     return command;
                 case "查看所有国家信息":
                 case "所有国家信息":
+                case "所有国家":
+                case "查看所有国家":
                     command.CommandType = AutoPanCommandType.AllKingdomInfo;
                     return command;
                 case "城市信息":
