@@ -691,6 +691,13 @@ namespace XianniAutoPan.Services
         public static int TournamentThirdReward { get; private set; } = 300;
 
         /// <summary>
+        /// 是否允许玩家使用"加入种族"指令选择亚种（含高级脑的非原始四种族）建国；默认启用。
+        /// 关闭时只允许人类/兽人/精灵/矮人四个原始种族。
+        /// 无论此开关状态，没有高级脑特征的亚种始终无法加入。
+        /// </summary>
+        public static bool AllowSubspeciesJoin { get; private set; } = true;
+
+        /// <summary>
         /// 从当前配置初始化静态缓存。
         /// 这里只处理启动前必须可用的基础配置与旧版政策兼容导入。
         /// </summary>
@@ -1155,7 +1162,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 旧版“修真国总灵气上限”配置回调。
+        /// 旧版修真国总灵气上限配置回调。
         /// 该项已被逐级灵气上限替代，保留空实现仅用于兼容旧配置文件。
         /// </summary>
         public static void OnXiuzhenguoAuraCapOverrideChanged(string value)
@@ -1345,13 +1352,13 @@ namespace XianniAutoPan.Services
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePopulationDivisor", "人口收入除数", "年收入中的人口项 = 总人口 / 该除数。数值越小，人口越值钱。", "", 1, 1_000_000_000, () => IncomePopulationDivisor, value => IncomePopulationDivisor = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePerLevel", "等级收入", "每级国家等级每年额外带来的金币。", "金币", 0, 1_000_000_000, () => IncomePerLevel, value => IncomePerLevel = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeAuraDivisor", "灵气收入除数", "年收入中的灵气项 = 总灵气 / 该除数。", "", 1, 1_000_000_000, () => IncomeAuraDivisor, value => IncomeAuraDivisor = value);
-            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritAuraBonusPerCity", "聚灵每城灵气", "国策“聚灵”生效时，每座城市临时视作增加的灵气。", "灵气", 0, 1_000_000_000, () => GatherSpiritAuraBonusPerCity, value => GatherSpiritAuraBonusPerCity = value);
-            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritDurationYears", "聚灵持续年数", "每次执行“国策 聚灵”后持续生效的年数。", "年", 1, 1000, () => GatherSpiritDurationYears, value => GatherSpiritDurationYears = value);
-            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritCost", "聚灵成本", "执行“国策 聚灵”需要消耗的金币。", "金币", 0, 1_000_000_000, () => GatherSpiritCost, value => GatherSpiritCost = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationPolicyChangeCost", "国家政策变更成本", "执行“政策 开放占领/坚守城池”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => OccupationPolicyChangeCost, value => OccupationPolicyChangeCost = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "nationalMilitiaCost", "全民皆兵成本", "执行“全民皆兵”时需要消耗的金币。", "金币", 0, 1_000_000_000, () => NationalMilitiaCost, value => NationalMilitiaCost = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritAuraBonusPerCity", "聚灵每城灵气", "国策聚灵生效时，每座城市临时视作增加的灵气。", "灵气", 0, 1_000_000_000, () => GatherSpiritAuraBonusPerCity, value => GatherSpiritAuraBonusPerCity = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritDurationYears", "聚灵持续年数", "每次执行国策 聚灵后持续生效的年数。", "年", 1, 1000, () => GatherSpiritDurationYears, value => GatherSpiritDurationYears = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritCost", "聚灵成本", "执行国策 聚灵需要消耗的金币。", "金币", 0, 1_000_000_000, () => GatherSpiritCost, value => GatherSpiritCost = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationPolicyChangeCost", "国家政策变更成本", "执行政策 开放占领/坚守城池时需要消耗的金币。", "金币", 0, 1_000_000_000, () => OccupationPolicyChangeCost, value => OccupationPolicyChangeCost = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "nationalMilitiaCost", "全民皆兵成本", "执行全民皆兵时需要消耗的金币。", "金币", 0, 1_000_000_000, () => NationalMilitiaCost, value => NationalMilitiaCost = value);
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "nationalMilitiaDurationYears", "全民皆兵持续年数", "全民皆兵开启后持续生效的年数；生效期内该国平民按愤怒村民机制参与本国战争，不再把平民补进军队。", "年", 1, 1000, () => NationalMilitiaDurationYears, value => NationalMilitiaDurationYears = value);
-            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "mobilizeCost", "动员成本", "执行“动员”时需要消耗的金币；仅战争状态可用。", "金币", 0, 1_000_000_000, () => MobilizeCost, value => MobilizeCost = value);
+            RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "mobilizeCost", "动员成本", "执行动员时需要消耗的金币；仅战争状态可用。", "金币", 0, 1_000_000_000, () => MobilizeCost, value => MobilizeCost = value);
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "mobilizeOrderSeconds", "动员军令秒数", "动员后临时强制城市军队执行战争进攻目标的持续秒数。", "秒", 5, 3600, () => MobilizeOrderSeconds, value => MobilizeOrderSeconds = value);
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationSubsidyMin", "被占城奖励最小金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励下限。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMin, value => OccupationSubsidyMin = value);
             RegisterPolicy("occupation", "占领政策", "开放占领、坚守城池、全民皆兵、动员与被占城随机补助相关指令配置。", "occupationSubsidyMax", "被占城奖励最大金币", "开放占领政策下，每被敌方占领一座城市时获得的随机金币奖励上限；实际奖励会在最小值和最大值之间随机。", "金币", 0, 1_000_000_000, () => OccupationSubsidyMax, value => OccupationSubsidyMax = value);
@@ -1359,10 +1366,10 @@ namespace XianniAutoPan.Services
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundFirstPlacePoints", "结盘第1名积分", "结盘排名第 1 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundFirstPlacePoints, value => RoundFirstPlacePoints = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundSecondPlacePoints", "结盘第2名积分", "结盘排名第 2 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundSecondPlacePoints, value => RoundSecondPlacePoints = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundThirdPlacePoints", "结盘第3名积分", "结盘排名第 3 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundThirdPlacePoints, value => RoundThirdPlacePoints = value);
-            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群“当前局势”截图指令的同群冷却秒数；管理员“#当前局势”不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群当前局势截图指令的同群冷却秒数；管理员#当前局势不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
 
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "declareWarCost", "宣战成本", "执行“宣战 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "seekPeaceCost", "求和成本", "执行“求和 国家名”需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "declareWarCost", "宣战成本", "执行宣战 国家名需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "seekPeaceCost", "求和成本", "执行求和 国家名需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "allianceRequestCost", "结盟成本", "发出结盟请求时预扣的金币。", "金币", 0, 1_000_000_000, () => AllianceRequestCost, value => AllianceRequestCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "leaveAllianceCost", "退盟成本", "主动退出联盟时消耗的金币。", "金币", 0, 1_000_000_000, () => LeaveAllianceCost, value => LeaveAllianceCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "duelRequestCost", "约斗成本", "发起约斗请求时预扣的金币；开战后双方各从国家战力前 5 随机出战。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
@@ -1385,12 +1392,13 @@ namespace XianniAutoPan.Services
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressBaseCost", "妖兽降阶基础成本", "妖兽降阶成本 = 基础成本 + 当前阶级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => BeastSuppressBaseCost, value => BeastSuppressBaseCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressStageStepCost", "妖兽降阶阶梯值", "妖兽每高一阶和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => BeastSuppressStageStepCost, value => BeastSuppressStageStepCost = value);
 
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "“增加人数”每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "“放置遗迹”每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "“快速成年”每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "conscriptCostPerUnit", "征兵成本", "“征集军队”每名平民转为士兵需要消耗的金币。", "金币", 0, 1_000_000_000, () => ConscriptCostPerUnit, value => ConscriptCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "transferCityCost", "移交城市成本", "“移交城市”每次成功转交分城需要消耗的金币。", "金币", 0, 1_000_000_000, () => TransferCityCost, value => TransferCityCost = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "renameKingdomCost", "国家改名成本", "执行“国家改名 新名字”时需要消耗的金币。若重名会自动追加后缀。", "金币", 0, 1_000_000_000, () => RenameKingdomCost, value => RenameKingdomCost = value);
+            RegisterPolicy("join", "加入规则", "玩家加入国家的种族限制与初始参数。", "allowSubspeciesJoin", "允许亚种加入", "1=允许玩家用加入种族指令选择含高级脑的亚种建国；0=只允许人类/兽人/精灵/矮人四个原始种族。无论此开关，无高级脑的亚种始终禁止加入。", "", 0, 1, () => AllowSubspeciesJoin ? 1 : 0, value => AllowSubspeciesJoin = value != 0);
+            RegisterPolicy(city, 城市军务, 人口、征兵、城市移交和整套军备发放的成本配置。, addPopulationCostPerUnit, 增员成本, 增加人数每生成 1 名成年同种族人口需要消耗的金币。, 金币, 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "放置遗迹每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "快速成年每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "conscriptCostPerUnit", "征兵成本", "征集军队每名平民转为士兵需要消耗的金币。", "金币", 0, 1_000_000_000, () => ConscriptCostPerUnit, value => ConscriptCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "transferCityCost", "移交城市成本", "移交城市每次成功转交分城需要消耗的金币。", "金币", 0, 1_000_000_000, () => TransferCityCost, value => TransferCityCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "renameKingdomCost", "国家改名成本", "执行国家改名 新名字时需要消耗的金币。若重名会自动追加后缀。", "金币", 0, 1_000_000_000, () => RenameKingdomCost, value => RenameKingdomCost = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipCopperCostPerUnit", "铜制军备单价", "给军队发 1 套铜制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipCopperCostPerUnit, value => EquipCopperCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipBronzeCostPerUnit", "青铜军备单价", "给军队发 1 套青铜装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipBronzeCostPerUnit, value => EquipBronzeCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipSilverCostPerUnit", "白银军备单价", "给军队发 1 套白银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSilverCostPerUnit, value => EquipSilverCostPerUnit = value);
@@ -1399,15 +1407,15 @@ namespace XianniAutoPan.Services
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipMythrilCostPerUnit", "秘银军备单价", "给军队发 1 套秘银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipMythrilCostPerUnit, value => EquipMythrilCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipAdamantineCostPerUnit", "精金军备单价", "给军队发 1 套精金装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipAdamantineCostPerUnit, value => EquipAdamantineCostPerUnit = value);
 
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRetreatCost", "修士闭关成本", "执行“修士 序号 闭关”时消耗的金币。", "金币", 0, 1_000_000_000, () => CultivatorRetreatCost, value => CultivatorRetreatCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRetreatCost", "修士闭关成本", "执行修士 序号 闭关时消耗的金币。", "金币", 0, 1_000_000_000, () => CultivatorRetreatCost, value => CultivatorRetreatCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "closedDoorXiuweiGain", "修士闭关修为", "每次修士闭关直接增加的修为。", "修为", 0, int.MaxValue, () => ClosedDoorXiuweiGain, value => ClosedDoorXiuweiGain = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpBaseCost", "修士升境基础成本", "修士升境成本 = 基础成本 + 当前境界层数 × 递增值。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpBaseCost, value => CultivatorRealmUpBaseCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpStepCost", "修士升境递增值", "修士每高一层境界，直接升境额外增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpStepCost, value => CultivatorRealmUpStepCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainCost", "古神炼体成本", "执行“古神 序号 炼体”时消耗的金币。", "金币", 0, 1_000_000_000, () => AncientTrainCost, value => AncientTrainCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainCost", "古神炼体成本", "执行古神 序号 炼体时消耗的金币。", "金币", 0, 1_000_000_000, () => AncientTrainCost, value => AncientTrainCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainingGain", "古神炼体成长", "每次古神炼体直接增加的古神之力。", "古神之力", 0, int.MaxValue, () => AncientTrainingGain, value => AncientTrainingGain = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpBaseCost", "古神升星基础成本", "古神升星成本 = 基础成本 + 当前星级 × 递增值。", "金币", 0, 1_000_000_000, () => AncientStageUpBaseCost, value => AncientStageUpBaseCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpStepCost", "古神升星递增值", "古神每高一星，直接升星额外增加的金币。", "金币", 0, 1_000_000_000, () => AncientStageUpStepCost, value => AncientStageUpStepCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainCost", "妖兽养成成本", "执行“妖兽 序号 养成”时消耗的金币。", "金币", 0, 1_000_000_000, () => BeastTrainCost, value => BeastTrainCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainCost", "妖兽养成成本", "执行妖兽 序号 养成时消耗的金币。", "金币", 0, 1_000_000_000, () => BeastTrainCost, value => BeastTrainCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainingGain", "妖兽养成成长", "每次妖兽养成直接增加的妖力。", "妖力", 0, int.MaxValue, () => BeastTrainingGain, value => BeastTrainingGain = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpBaseCost", "妖兽升阶基础成本", "妖兽升阶成本 = 基础成本 + 当前阶级 × 递增值。", "金币", 0, 1_000_000_000, () => BeastStageUpBaseCost, value => BeastStageUpBaseCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
@@ -1428,7 +1436,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbKingdomCost", "扰动国家成本", "执行扰动国家消耗的金币（无论成功与否）。", "金币", 0, 1_000_000_000, () => DisturbKingdomCost, value => DisturbKingdomCost = value);
             RegisterPolicy("disturb", "扰动国家", "扰动国家指令的成本与成功概率。", "disturbSuccessRate", "扰动成功概率", "扰动国家成功夺取城市的概率。", "%", 0, 100, () => DisturbSuccessRate, value => DisturbSuccessRate = value);
 
-            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "meteorCostPerStone", "陨石每颗成本", "执行“陨石 目标国家 数量”时每颗陨石消耗的金币。", "金币", 0, 1_000_000_000, () => MeteorCostPerStone, value => MeteorCostPerStone = value);
+            RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "meteorCostPerStone", "陨石每颗成本", "执行陨石 目标国家 数量时每颗陨石消耗的金币。", "金币", 0, 1_000_000_000, () => MeteorCostPerStone, value => MeteorCostPerStone = value);
             RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "meteorMaxCount", "陨石单次上限", "单次陨石指令允许释放的最大数量。", "颗", 1, 1000, () => MeteorMaxCount, value => MeteorMaxCount = value);
             RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "tournamentOpenCost", "比武大会开启成本", "玩家开启仙逆比武大会时本国国库扣除的金币。", "金币", 0, 1_000_000_000, () => TournamentOpenCost, value => TournamentOpenCost = value);
             RegisterPolicy("special", "特殊事件", "陨石和比武大会等全局事件指令配置。", "tournamentFirstReward", "比武第1名奖励", "比武大会冠军所属国家获得的国库奖励。", "金币", 0, 1_000_000_000, () => TournamentFirstReward, value => TournamentFirstReward = value);

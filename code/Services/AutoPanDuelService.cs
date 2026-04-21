@@ -374,6 +374,12 @@ namespace XianniAutoPan.Services
             }
 
             string finalReason = reason;
+            string winnerKingdomLabel = winner?.kingdom != null ? $"【{winner.kingdom.name}】" : string.Empty;
+            if (winner != null && !string.IsNullOrWhiteSpace(winnerKingdomLabel))
+            {
+                finalReason = $"{winnerKingdomLabel} 胜！{reason}";
+            }
+
             if (winner != null && loser != null && duel.BetAmount > 0)
             {
                 Kingdom winnerKingdom = winner.kingdom;
