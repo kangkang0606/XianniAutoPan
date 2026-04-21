@@ -527,7 +527,7 @@ namespace XianniAutoPan.Services
             return SanitizeContent(content);
         }
 
-        private static readonly Regex CqAtRegex = new Regex(@"\[CQ:at,qq=\d+(?:,name=([^\]]*))?\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CqAtRegex = new Regex(@"\[CQ:at,qq=(\d+)(?:,name=([^\]]*))?\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CqCodeRegex = new Regex(@"\[CQ:[^\]]*\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private static string SanitizeContent(string content)
@@ -535,8 +535,15 @@ namespace XianniAutoPan.Services
             string text = (content ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Trim();
             text = CqAtRegex.Replace(text, match =>
             {
-                string name = match.Groups[1].Value.Trim();
-                return string.IsNullOrWhiteSpace(name) ? "@某人" : $"@{name}";
+                string nameInCq = match.Groups[2].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(nameInCq))
+                {
+                    return $"@{nameInCq}";
+                }
+
+                string qqId = match.Groups[1].Value;
+                string cached = AutoPanQqBridgeService.GetCachedNickname(qqId);
+                return string.IsNullOrWhiteSpace(cached) ? $"@{qqId}" : $"@{cached}";
             });
             text = CqCodeRegex.Replace(text, "[表情]");
             if (text.Length > MaxLineLength)

@@ -11,6 +11,21 @@ namespace XianniAutoPan.Services
     /// </summary>
     internal static class AutoPanQqBridgeService
     {
+        private static readonly Dictionary<string, string> NicknameCache = new Dictionary<string, string>();
+
+        /// <summary>
+        /// 根据 QQ 号查询缓存的昵称，未命中返回 null。
+        /// </summary>
+        public static string GetCachedNickname(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return null;
+            }
+
+            return NicknameCache.TryGetValue(userId, out string name) ? name : null;
+        }
+
         private sealed class SessionMeta
         {
             /// <summary>
@@ -189,6 +204,7 @@ namespace XianniAutoPan.Services
             string card = (root["sender"]?["card"]?.ToString() ?? string.Empty).Trim();
             string nickname = (root["sender"]?["nickname"]?.ToString() ?? string.Empty).Trim();
             string playerName = !string.IsNullOrWhiteSpace(card) ? card : string.IsNullOrWhiteSpace(nickname) ? userId : nickname;
+            NicknameCache[userId] = playerName;
 
             TouchSession(sessionId);
             RecordIncoming(groupId, $"{playerName}({userId})：{Truncate(text, 80)}");
