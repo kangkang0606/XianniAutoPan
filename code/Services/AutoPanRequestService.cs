@@ -178,7 +178,7 @@ namespace XianniAutoPan.Services
             PendingRequest request = CreateRequest(source, target, AutoPanPendingRequestType.Alliance, cost);
             PendingRequests.Add(request);
             AutoPanKingdomSpeechService.ShowSpeech(target, "外交请求", $"{AutoPanKingdomService.FormatKingdomLabel(source)} 请求结盟", isCommand: true);
-            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内发送"同意结盟"或"拒绝结盟"。";
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(source)} 已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，对方需在 {AutoPanConfigHooks.RequestTimeoutSeconds} 秒内回复「同意结盟」或「拒绝结盟」。";
             if (TryAutoRespondByAi(request, source, target, out string aiResponseText))
             {
                 message += "\n" + aiResponseText;
@@ -338,7 +338,7 @@ namespace XianniAutoPan.Services
                     return candidates[0];
                 }
 
-                error = $"你收到多个{GetTypeText(type)}请求，请改用"同意{GetTypeText(type)} 国家名 [kingdomId]"或"拒绝{GetTypeText(type)} 国家名 [kingdomId]"。";
+                error = $"你收到多个{GetTypeText(type)}请求，请改用「同意{GetTypeText(type)} 国家名 [kingdomId]」或「拒绝{GetTypeText(type)} 国家名 [kingdomId]」。";
                 return null;
             }
 
