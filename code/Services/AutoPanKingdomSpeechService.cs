@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -526,9 +527,18 @@ namespace XianniAutoPan.Services
             return SanitizeContent(content);
         }
 
+        private static readonly Regex CqAtRegex = new Regex(@"\[CQ:at,qq=\d+(?:,name=([^\]]*))?\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CqCodeRegex = new Regex(@"\[CQ:[^\]]*\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         private static string SanitizeContent(string content)
         {
             string text = (content ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Trim();
+            text = CqAtRegex.Replace(text, match =>
+            {
+                string name = match.Groups[1].Value.Trim();
+                return string.IsNullOrWhiteSpace(name) ? "@某人" : $"@{name}";
+            });
+            text = CqCodeRegex.Replace(text, "[表情]");
             if (text.Length > MaxLineLength)
             {
                 text = text.Substring(0, MaxLineLength) + "…";
