@@ -1393,7 +1393,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressStageStepCost", "妖兽降阶阶梯值", "妖兽每高一阶和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => BeastSuppressStageStepCost, value => BeastSuppressStageStepCost = value);
 
             RegisterPolicy("join", "加入规则", "玩家加入国家的种族限制与初始参数。", "allowSubspeciesJoin", "允许亚种加入", "1=允许玩家用加入种族指令选择含高级脑的亚种建国；0=只允许人类/兽人/精灵/矮人四个原始种族。无论此开关，无高级脑的亚种始终禁止加入。", "", 0, 1, () => AllowSubspeciesJoin ? 1 : 0, value => AllowSubspeciesJoin = value != 0);
-            RegisterPolicy(city, 城市军务, 人口、征兵、城市移交和整套军备发放的成本配置。, addPopulationCostPerUnit, 增员成本, 增加人数每生成 1 名成年同种族人口需要消耗的金币。, 金币, 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "增加人数每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "放置遗迹每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "快速成年每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "conscriptCostPerUnit", "征兵成本", "征集军队每名平民转为士兵需要消耗的金币。", "金币", 0, 1_000_000_000, () => ConscriptCostPerUnit, value => ConscriptCostPerUnit = value);
