@@ -283,6 +283,11 @@ namespace XianniAutoPan.Services
             if (string.IsNullOrWhiteSpace(raceText) || string.Equals(raceText.Trim(), "随机", StringComparison.Ordinal))
             {
                 List<ActorAsset> assets = GetCivilizationActorAssets();
+                if (!AutoPanConfigHooks.AllowSubspeciesJoin)
+                {
+                    assets = assets.Where(a => a.id == "human" || a.id == "orc" || a.id == "elf" || a.id == "dwarf").ToList();
+                }
+
                 if (assets.Count == 0)
                 {
                     message = "当前没有可用于建国的文明单位。";
