@@ -409,6 +409,174 @@ function renderPendingRequests(requests) {
   });
 }
 
+function buildPolicyItemHeader(item) {
+  const box = document.createElement("div");
+  box.className = "policy-item";
+  const labelRow = document.createElement("div");
+  labelRow.className = "policy-label-row";
+  const label = document.createElement("label");
+  label.className = "policy-label";
+  label.textContent = pick(item, "displayName", "DisplayName") || "未命名配置";
+  labelRow.appendChild(label);
+  const help = document.createElement("span");
+  help.className = "policy-help";
+  help.textContent = "?";
+  help.title = `${pick(item, "description", "Description") || "暂无说明"}\n稳定键：${pick(item, "key", "Key") || ""}`;
+  labelRow.appendChild(help);
+  box.appendChild(labelRow);
+  const meta = document.createElement("div");
+  meta.className = "policy-item-meta";
+  const unitText = pick(item, "unitText", "UnitText") || "";
+  const minValue = pick(item, "minValue", "MinValue");
+  const maxValue = pick(item, "maxValue", "MaxValue");
+  meta.textContent = `键：${pick(item, "key", "Key")}  范围：${minValue} ~ ${maxValue}${unitText ? `  单位：${unitText}` : ""}`;
+  box.appendChild(meta);
+  return box;
+}
+
+function buildSinglePolicyItem(item) {
+  const box = buildPolicyItemHeader(item);
+  const key = pick(item, "key", "Key");
+  const draft = getPolicyDraft(key, item);
+  const controls = document.createElement("div");
+  controls.className = "policy-value-controls";
+
+  const modeRow = document.createElement("div");
+  modeRow.className = "policy-mode-row";
+  const randomToggle = document.createElement("input");
+  randomToggle.type = "checkbox";
+  randomToggle.checked = draft.randomEnabled;
+  const randomToggleLabel = document.createElement("label");
+  randomToggleLabel.className = "policy-random-toggle";
+  randomToggleLabel.appendChild(randomToggle);
+  randomToggleLabel.appendChild(document.createTextNode(" 随机"));
+  modeRow.appendChild(randomToggleLabel);
+  controls.appendChild(modeRow);
+
+  const fixedRow = document.createElement("div");
+  fixedRow.className = "policy-input-row policy-fixed-row";
+  const fixedInput = document.createElement("input");
+  fixedInput.type = "number";
+  fixedInput.value = draft.value;
+  fixedInput.setAttribute("aria-label", `${pick(item, "displayName", "DisplayName") || "配置"}固定值`);
+  fixedRow.appendChild(fixedInput);
+  controls.appendChild(fixedRow);
+
+  const randomRow = document.createElement("div");
+  randomRow.className = "policy-random-row";
+  const minLabel = document.createElement("label");
+  minLabel.textContent = "最少";
+  const minInput = document.createElement("input");
+  minInput.type = "number";
+  minInput.value = draft.randomMinValue;
+  minLabel.appendChild(minInput);
+  randomRow.appendChild(minLabel);
+  const maxLabel = document.createElement("label");
+  maxLabel.textContent = "最大";
+  const maxInput = document.createElement("input");
+  maxInput.type = "number";
+  maxInput.value = draft.randomMaxValue;
+  maxLabel.appendChild(maxInput);
+  randomRow.appendChild(maxLabel);
+  controls.appendChild(randomRow);
+
+  const collectDraft = () => ({
+    value: fixedInput.value.trim(),
+    randomEnabled: randomToggle.checked,
+    randomMinValue: minInput.value.trim(),
+    randomMaxValue: maxInput.value.trim()
+  });
+  const syncMode = () => {
+    fixedRow.hidden = randomToggle.checked;
+    randomRow.hidden = !randomToggle.checked;
+  };
+  const rememberCurrentDraft = () => rememberPolicyDraft(key, collectDraft());
+  randomToggle.addEventListener("change", () => { syncMode(); rememberCurrentDraft(); });
+  fixedInput.addEventListener("input", rememberCurrentDraft);
+  minInput.addEventListener("input", rememberCurrentDraft);
+  maxInput.addEventListener("input", rememberCurrentDraft);
+  syncMode();
+
+  controls.appendChild(createMiniButton("保存", "mini-btn-admin", () => {
+    savePolicyDraft(key, collectDraft(), true).catch((error) => appendReply(error.message, false));
+  }));
+  box.appendChild(controls);
+  return box;
+}
+
+function buildRangePolicyItem(minItem, maxItem) {
+  const minKey = pick(minItem, "key", "Key");
+  const maxKey = pick(maxItem, "key", "Key");
+  const minDraft = getPolicyDraft(minKey, minItem);
+  const maxDraft = getPolicyDraft(maxKey, maxItem);
+  const displayName = (pick(minItem, "displayName", "DisplayName") || "").replace(/最小|最少|下限/g, "").trim() || "范围配置";
+  const unitText = pick(minItem, "unitText", "UnitText") || "";
+
+  const box = document.createElement("div");
+  box.className = "policy-item policy-item-range";
+
+  const labelRow = document.createElement("div");
+  labelRow.className = "policy-label-row";
+  const label = document.createElement("label");
+  label.className = "policy-label";
+  label.textContent = displayName;
+  labelRow.appendChild(label);
+  const help = document.createElement("span");
+  help.className = "policy-help";
+  help.textContent = "?";
+  help.title = `${pick(minItem, "description", "Description") || ""}\n${pick(maxItem, "description", "Description") || ""}\n键：${minKey} / ${maxKey}`;
+  labelRow.appendChild(help);
+  box.appendChild(labelRow);
+
+  const meta = document.createElement("div");
+  meta.className = "policy-item-meta";
+  meta.textContent = `键：${minKey} / ${maxKey}${unitText ? `  单位：${unitText}` : ""}`;
+  box.appendChild(meta);
+
+  const controls = document.createElement("div");
+  controls.className = "policy-value-controls";
+  const rangeRow = document.createElement("div");
+  rangeRow.className = "policy-range-row";
+
+  const minLabel = document.createElement("label");
+  minLabel.textContent = "最小";
+  const minInput = document.createElement("input");
+  minInput.type = "number";
+  minInput.value = minDraft.value;
+  minInput.setAttribute("aria-label", `${displayName}最小值`);
+  minLabel.appendChild(minInput);
+  rangeRow.appendChild(minLabel);
+
+  const maxLabel = document.createElement("label");
+  maxLabel.textContent = "最大";
+  const maxInput = document.createElement("input");
+  maxInput.type = "number";
+  maxInput.value = maxDraft.value;
+  maxInput.setAttribute("aria-label", `${displayName}最大值`);
+  maxLabel.appendChild(maxInput);
+  rangeRow.appendChild(maxLabel);
+  controls.appendChild(rangeRow);
+
+  const rememberBoth = () => {
+    rememberPolicyDraft(minKey, { value: minInput.value.trim(), randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" });
+    rememberPolicyDraft(maxKey, { value: maxInput.value.trim(), randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" });
+  };
+  minInput.addEventListener("input", rememberBoth);
+  maxInput.addEventListener("input", rememberBoth);
+
+  controls.appendChild(createMiniButton("保存", "mini-btn-admin", () => {
+    const minDraftVal = { value: minInput.value.trim(), randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" };
+    const maxDraftVal = { value: maxInput.value.trim(), randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" };
+    Promise.all([
+      savePolicyDraft(minKey, minDraftVal, false),
+      savePolicyDraft(maxKey, maxDraftVal, false)
+    ]).then(() => { appendReply(`${displayName} 范围已保存。`, true); return refreshDashboard(); })
+      .catch((error) => appendReply(error.message, false));
+  }));
+  box.appendChild(controls);
+  return box;
+}
+
 function renderPolicy(policy) {
   policyModulesEl.innerHTML = "";
   if (policyModuleTabsEl) {
@@ -465,106 +633,26 @@ function renderPolicy(policy) {
     const itemsWrap = document.createElement("div");
     itemsWrap.className = "policy-module-items";
     const items = pick(module, "items", "Items") || [];
+    const itemsByKey = Object.create(null);
+    items.forEach((item) => { itemsByKey[pick(item, "key", "Key")] = item; });
+    const rendered = new Set();
+
     items.forEach((item) => {
-      const box = document.createElement("div");
-      box.className = "policy-item";
-
-      const labelRow = document.createElement("div");
-      labelRow.className = "policy-label-row";
-
-      const label = document.createElement("label");
-      label.className = "policy-label";
-      label.textContent = pick(item, "displayName", "DisplayName") || "未命名配置";
-      labelRow.appendChild(label);
-
-      const help = document.createElement("span");
-      help.className = "policy-help";
-      help.textContent = "?";
-      help.title = `${pick(item, "description", "Description") || "暂无说明"}\n稳定键：${pick(item, "key", "Key") || ""}`;
-      labelRow.appendChild(help);
-      box.appendChild(labelRow);
-
-      const meta = document.createElement("div");
-      meta.className = "policy-item-meta";
-      const unitText = pick(item, "unitText", "UnitText") || "";
-      const minValue = pick(item, "minValue", "MinValue");
-      const maxValue = pick(item, "maxValue", "MaxValue");
-      meta.textContent = `键：${pick(item, "key", "Key")}  范围：${minValue} ~ ${maxValue}${unitText ? `  单位：${unitText}` : ""}`;
-      box.appendChild(meta);
-
       const key = pick(item, "key", "Key");
-      const draft = getPolicyDraft(key, item);
+      if (rendered.has(key)) return;
 
-      const controls = document.createElement("div");
-      controls.className = "policy-value-controls";
+      const isMin = key && key.endsWith("Min");
+      const pairedMaxKey = isMin ? key.slice(0, -3) + "Max" : null;
+      const pairedMax = pairedMaxKey ? itemsByKey[pairedMaxKey] : null;
 
-      const modeRow = document.createElement("div");
-      modeRow.className = "policy-mode-row";
-      const randomToggle = document.createElement("input");
-      randomToggle.type = "checkbox";
-      randomToggle.checked = draft.randomEnabled;
-      const randomToggleLabel = document.createElement("label");
-      randomToggleLabel.className = "policy-random-toggle";
-      randomToggleLabel.appendChild(randomToggle);
-      randomToggleLabel.appendChild(document.createTextNode(" 随机"));
-      modeRow.appendChild(randomToggleLabel);
-      controls.appendChild(modeRow);
-
-      const fixedRow = document.createElement("div");
-      fixedRow.className = "policy-input-row policy-fixed-row";
-      const fixedInput = document.createElement("input");
-      fixedInput.type = "number";
-      fixedInput.value = draft.value;
-      fixedInput.setAttribute("aria-label", `${pick(item, "displayName", "DisplayName") || "配置"}固定值`);
-      fixedRow.appendChild(fixedInput);
-      controls.appendChild(fixedRow);
-
-      const randomRow = document.createElement("div");
-      randomRow.className = "policy-random-row";
-      const minLabel = document.createElement("label");
-      minLabel.textContent = "最少";
-      const minInput = document.createElement("input");
-      minInput.type = "number";
-      minInput.value = draft.randomMinValue;
-      minLabel.appendChild(minInput);
-      randomRow.appendChild(minLabel);
-
-      const maxLabel = document.createElement("label");
-      maxLabel.textContent = "最大";
-      const maxInput = document.createElement("input");
-      maxInput.type = "number";
-      maxInput.value = draft.randomMaxValue;
-      maxLabel.appendChild(maxInput);
-      randomRow.appendChild(maxLabel);
-      controls.appendChild(randomRow);
-
-      const collectDraft = () => ({
-        value: fixedInput.value.trim(),
-        randomEnabled: randomToggle.checked,
-        randomMinValue: minInput.value.trim(),
-        randomMaxValue: maxInput.value.trim()
-      });
-      const syncMode = () => {
-        fixedRow.hidden = randomToggle.checked;
-        randomRow.hidden = !randomToggle.checked;
-      };
-      const rememberCurrentDraft = () => rememberPolicyDraft(key, collectDraft());
-
-      randomToggle.addEventListener("change", () => {
-        syncMode();
-        rememberCurrentDraft();
-      });
-      fixedInput.addEventListener("input", rememberCurrentDraft);
-      minInput.addEventListener("input", rememberCurrentDraft);
-      maxInput.addEventListener("input", rememberCurrentDraft);
-      syncMode();
-
-      const saveButton = createMiniButton("保存", "mini-btn-admin", () => {
-        savePolicyDraft(key, collectDraft(), true).catch((error) => appendReply(error.message, false));
-      });
-      controls.appendChild(saveButton);
-      box.appendChild(controls);
-      itemsWrap.appendChild(box);
+      if (isMin && pairedMax) {
+        rendered.add(key);
+        rendered.add(pairedMaxKey);
+        itemsWrap.appendChild(buildRangePolicyItem(item, pairedMax));
+      } else {
+        rendered.add(key);
+        itemsWrap.appendChild(buildSinglePolicyItem(item));
+      }
     });
 
     card.appendChild(itemsWrap);
