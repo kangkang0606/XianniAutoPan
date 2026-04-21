@@ -23,6 +23,8 @@ const refreshButtonEl = document.getElementById("refreshButton");
 const viewBindingButtonEl = document.getElementById("viewBindingButton");
 const aiEnableToggleEl = document.getElementById("aiEnableToggle");
 const aiQqChatToggleEl = document.getElementById("aiQqChatToggle");
+const autoOpenDiplomacyToggleEl = document.getElementById("autoOpenDiplomacyToggle");
+const allowSubspeciesToggleEl = document.getElementById("allowSubspeciesToggle");
 const pageSwitchEl = document.querySelector(".page-switch");
 const pageTabEls = Array.from(document.querySelectorAll("[data-page-target]"));
 const pageViewEls = Array.from(document.querySelectorAll("[data-page-view]"));
@@ -871,6 +873,26 @@ function renderAiControls(snapshot) {
   if (aiQqChatToggleEl) {
     aiQqChatToggleEl.checked = aiQqChatEnabled;
   }
+
+  // 从 policy snapshot 读取外交自动开和允许亚种加入的当前值
+  const policy = pick(snapshot, "policy", "Policy");
+  const policyItems = policy ? (pick(policy, "items", "Items") || []) : [];
+  const findPolicyValue = (key) => {
+    for (const module of policyItems) {
+      const items = pick(module, "items", "Items") || [];
+      const found = items.find((item) => pick(item, "key", "Key") === key);
+      if (found) return Number(pick(found, "currentValue", "CurrentValue") ?? 0);
+    }
+    return null;
+  };
+  if (autoOpenDiplomacyToggleEl) {
+    const val = findPolicyValue("autoOpenDiplomacyLaw");
+    if (val !== null) autoOpenDiplomacyToggleEl.checked = val !== 0;
+  }
+  if (allowSubspeciesToggleEl) {
+    const val = findPolicyValue("allowSubspeciesJoin");
+    allowSubspeciesToggleEl.checked = val === null ? true : val !== 0;
+  }
 }
 
 function renderScoreboard(scoreboard) {
@@ -1340,6 +1362,22 @@ if (aiQqChatToggleEl) {
   aiQqChatToggleEl.addEventListener("change", () => {
     savePolicySetting("aiQqChatEnabled", aiQqChatToggleEl.checked ? "1" : "0", true)
       .catch((error) => appendReply(error.message, false));
+  });
+}
+
+if (autoOpenDiplomacyToggleEl) {
+  autoOpenDiplomacyToggleEl.addEventListener("change", () => {
+    const val = autoOpenDiplomacyToggleEl.checked ? "1" : "0";
+    savePolicyDraft("autoOpenDiplomacyLaw", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
+      .catch((error) => { appendReply(error.message, false); autoOpenDiplomacyToggleEl.checked = !autoOpenDiplomacyToggleEl.checked; });
+  });
+}
+
+if (allowSubspeciesToggleEl) {
+  allowSubspeciesToggleEl.addEventListener("change", () => {
+    const val = allowSubspeciesToggleEl.checked ? "1" : "0";
+    savePolicyDraft("allowSubspeciesJoin", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
+      .catch((error) => { appendReply(error.message, false); allowSubspeciesToggleEl.checked = !allowSubspeciesToggleEl.checked; });
   });
 }
 
