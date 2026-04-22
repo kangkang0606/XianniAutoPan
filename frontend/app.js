@@ -939,7 +939,7 @@ function renderAiControls(snapshot) {
     for (const module of policyItems) {
       const items = pick(module, "items", "Items") || [];
       const found = items.find((item) => pick(item, "key", "Key") === key);
-      if (found) return Number(pick(found, "currentValue", "CurrentValue") ?? 0);
+      if (found) return Number(pick(found, "value", "Value") ?? 0);
     }
     return null;
   };
