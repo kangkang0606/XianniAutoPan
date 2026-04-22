@@ -77,6 +77,7 @@ namespace XianniAutoPan
             }
 
             _lastObservedYear = currentYear;
+            AutoPanWorldSpeedService.ApplyScheduledSpeedForYear(currentYear);
             AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
             AutoPanStateRepository.CleanupDeadBindings();
             AutoPanKingdomService.ApplyYearlyIncomeToAll(currentYear);
@@ -108,6 +109,7 @@ namespace XianniAutoPan
             AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.ClearAll();
             AutoPanRoundService.OnWorldLoaded();
+            AutoPanWorldSpeedService.ApplyScheduledSpeedForYear(Date.getCurrentYear(), force: true);
             _lastObservedYear = Date.getCurrentYear();
             AutoPanLogService.Info($"世界已加载，当前年份 {_lastObservedYear}，自动盘状态已恢复。");
         }
@@ -234,6 +236,8 @@ namespace XianniAutoPan
                 "#查看绑定",
                 "#查看政策",
                 "#设置政策",
+                "#查看倍速计划",
+                "#设置倍速计划",
                 "#设置AI自动加入数",
                 "#设置AI开始决策年份",
                 "#设置玩家开始决策年份",

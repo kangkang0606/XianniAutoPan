@@ -14,11 +14,6 @@ namespace XianniAutoPan.Commands
     /// </summary>
     internal static class AutoPanCommandExecutor
     {
-        private const float MinAdminWorldSpeed = 0.1f;
-        private const float MaxAdminWorldSpeed = 200f;
-        private const string CustomWorldSpeedIdPrefix = "xianniautopan_speed_";
-        private const string DefaultWorldSpeedIconPath = "ui/Icons/iconClockX1";
-
         private static readonly HashSet<AutoPanCommandType> InfoCommands = new HashSet<AutoPanCommandType>
         {
             AutoPanCommandType.Help,
@@ -66,15 +61,6 @@ namespace XianniAutoPan.Commands
             AutoPanCommandType.AncientStarUp,
             AutoPanCommandType.BeastTrain,
             AutoPanCommandType.BeastStageUp
-        };
-
-        private static readonly WorldTimeScaleAsset CustomWorldSpeedAsset = new WorldTimeScaleAsset
-        {
-            id = CustomWorldSpeedIdPrefix + "1x",
-            multiplier = 1f,
-            ticks = 1,
-            conway_ticks = 1,
-            path_icon = DefaultWorldSpeedIconPath
         };
 
         /// <summary>
@@ -210,6 +196,10 @@ namespace XianniAutoPan.Commands
                     return ExecuteAdminSetPolicy(command, playerName, result);
                 case AutoPanCommandType.AdminSetSpeed:
                     return ExecuteAdminSetSpeed(command, playerName, result);
+                case AutoPanCommandType.AdminViewSpeedSchedule:
+                    return ExecuteAdminViewSpeedSchedule(result);
+                case AutoPanCommandType.AdminSetSpeedSchedule:
+                    return ExecuteAdminSetSpeedSchedule(command, playerName, result);
                 case AutoPanCommandType.AdminSpawnKingdom:
                     return ExecuteAdminSpawnKingdom(command, playerName, result);
                 case AutoPanCommandType.AdminEndRound:
@@ -1320,6 +1310,8 @@ namespace XianniAutoPan.Commands
                 case AutoPanCommandType.AdminSetPolicy:
                 case AutoPanCommandType.AdminViewBinding:
                 case AutoPanCommandType.AdminSetSpeed:
+                case AutoPanCommandType.AdminViewSpeedSchedule:
+                case AutoPanCommandType.AdminSetSpeedSchedule:
                 case AutoPanCommandType.AdminCurrentSituationScreenshot:
                     return false;
                 default:
@@ -1347,46 +1339,37 @@ namespace XianniAutoPan.Commands
 
         private static AutoPanCommandResult ExecuteAdminSetSpeed(AutoPanParsedCommand command, string operatorName, AutoPanCommandResult result)
         {
-            if (!float.TryParse(command.TextArg, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed) &&
-                !float.TryParse(command.TextArg, out parsed))
+            result.Success = AutoPanWorldSpeedService.TryApplyManualSpeed(command.TextArg, out string speedText, out string message);
+            result.Text = message;
+            if (result.Success)
             {
-                result.Text = "无法解析倍速值。";
-                return result;
+                AutoPanLogService.Info($"{operatorName} 设置游戏倍速为 {speedText}x");
             }
-
-            float speed = Math.Max(MinAdminWorldSpeed, Math.Min(MaxAdminWorldSpeed, parsed));
-            if (Config.time_scale_asset == null)
-            {
-                result.Text = "当前世界未加载，无法设置倍速。";
-                return result;
-            }
-
-            ApplyCustomWorldSpeed(speed);
-            string speedText = FormatSpeedValue(speed);
-            result.Success = true;
-            result.Text = $"游戏倍速已设置为 {speedText}x。";
-            AutoPanLogService.Info($"{operatorName} 设置游戏倍速为 {speedText}x");
             return result;
         }
 
         /// <summary>
-        /// 应用自动盘自定义世界速度资产，避免污染原生预设速度资源。
+        /// 查看当前按年份自动切换的倍速计划。
         /// </summary>
-        private static void ApplyCustomWorldSpeed(float speed)
+        private static AutoPanCommandResult ExecuteAdminViewSpeedSchedule(AutoPanCommandResult result)
         {
-            WorldTimeScaleAsset referenceAsset = ResolveReferenceWorldSpeedAsset(speed);
-            CustomWorldSpeedAsset.id = CustomWorldSpeedIdPrefix + FormatSpeedValue(speed) + "x";
-            CustomWorldSpeedAsset.locale_key = null;
-            CustomWorldSpeedAsset.multiplier = speed;
-            CustomWorldSpeedAsset.ticks = 1;
-            CustomWorldSpeedAsset.conway_ticks = 1;
-            CustomWorldSpeedAsset.sonic = false;
-            CustomWorldSpeedAsset.render_skip = false;
-            // 借用最接近原生速度的图标，避免自定义速度下时钟按钮显示为空。
-            CustomWorldSpeedAsset.path_icon = string.IsNullOrWhiteSpace(referenceAsset?.path_icon)
-                ? DefaultWorldSpeedIconPath
-                : referenceAsset.path_icon;
-            Config.setWorldSpeed(CustomWorldSpeedAsset, pUpdateDebug: false);
+            result.Success = true;
+            result.Text = AutoPanWorldSpeedService.BuildScheduleText();
+            return result;
+        }
+
+        /// <summary>
+        /// 设置按年份自动切换的倍速计划。
+        /// </summary>
+        private static AutoPanCommandResult ExecuteAdminSetSpeedSchedule(AutoPanParsedCommand command, string operatorName, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanConfigHooks.TrySetWorldSpeedSchedule(command.TargetName, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                AutoPanLogService.Info($"{operatorName} 设置倍速计划：{command.TargetName}");
+            }
+            return result;
         }
 
         /// <summary>
@@ -1394,7 +1377,7 @@ namespace XianniAutoPan.Commands
         /// </summary>
         internal static bool IsCustomWorldSpeedAsset(WorldTimeScaleAsset asset)
         {
-            return ReferenceEquals(asset, CustomWorldSpeedAsset);
+            return AutoPanWorldSpeedService.IsCustomWorldSpeedAsset(asset);
         }
 
         /// <summary>
@@ -1402,53 +1385,7 @@ namespace XianniAutoPan.Commands
         /// </summary>
         internal static WorldTimeScaleAsset GetAdjacentNativeWorldSpeedAsset(bool next, bool cycle)
         {
-            WorldTimeScaleAsset referenceAsset = ResolveReferenceWorldSpeedAsset(CustomWorldSpeedAsset.multiplier);
-            if (referenceAsset == null)
-            {
-                return CustomWorldSpeedAsset;
-            }
-
-            return next ? referenceAsset.getNext(cycle) : referenceAsset.getPrevious(cycle);
-        }
-
-        /// <summary>
-        /// 为自定义速度选择最接近的原生速度资产，仅用于复用图标。
-        /// </summary>
-        private static WorldTimeScaleAsset ResolveReferenceWorldSpeedAsset(float speed)
-        {
-            if (AssetManager.time_scales == null)
-            {
-                return Config.time_scale_asset;
-            }
-
-            WorldTimeScaleAsset bestAsset = null;
-            float bestDistance = float.MaxValue;
-            string[] candidateIds = { "slow_mo", "x1", "x2", "x3", "x4", "x5", "x10", "x15", "x20" };
-            foreach (string candidateId in candidateIds)
-            {
-                WorldTimeScaleAsset candidate = AssetManager.time_scales.get(candidateId);
-                if (candidate == null)
-                {
-                    continue;
-                }
-
-                float distance = Math.Abs(candidate.multiplier - speed);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    bestAsset = candidate;
-                }
-            }
-
-            return bestAsset ?? Config.time_scale_asset;
-        }
-
-        /// <summary>
-        /// 统一格式化倍速文本，避免日志、提示与自定义资产标识出现多余尾零。
-        /// </summary>
-        private static string FormatSpeedValue(float speed)
-        {
-            return speed.ToString("0.#####", CultureInfo.InvariantCulture);
+            return AutoPanWorldSpeedService.GetAdjacentNativeWorldSpeedAsset(next, cycle);
         }
 
         private static AutoPanCommandResult ExecuteAdminSpawnKingdom(AutoPanParsedCommand command, string operatorName, AutoPanCommandResult result)
@@ -1593,6 +1530,7 @@ namespace XianniAutoPan.Commands
                 "扰动国家 目标国家（可@）",
                 "陨石 目标国家（可@） 数量",
                 "开启比武大会",
+                "#5x / #查看倍速计划 / #设置倍速计划 1年5倍速，10年20倍速（管理员）",
                 "#结盘（管理员）"
             });
         }

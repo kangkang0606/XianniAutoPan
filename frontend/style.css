@@ -596,7 +596,8 @@ textarea {
 }
 
 .policy-panel,
-.qq-panel {
+.qq-panel,
+.speed-panel {
   padding: 0;
   border: 0;
   background: transparent;
@@ -604,14 +605,16 @@ textarea {
 }
 
 .policy-panel:hover,
-.qq-panel:hover {
+.qq-panel:hover,
+.speed-panel:hover {
   border-color: transparent;
   box-shadow: none;
   transform: none;
 }
 
 .policy-panel::before,
-.qq-panel::before {
+.qq-panel::before,
+.speed-panel::before {
   display: none;
 }
 
@@ -625,6 +628,37 @@ textarea {
 .policy-modules {
   grid-template-columns: 1fr;
   margin-top: var(--space-4);
+}
+
+.speed-config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
+  gap: var(--space-4);
+}
+
+.speed-schedule-field,
+.speed-summary-card {
+  padding: var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: 0 10px 22px rgba(24, 32, 42, 0.07);
+}
+
+.speed-schedule-field textarea {
+  min-height: 220px;
+  margin-top: var(--space-2);
+}
+
+.speed-summary-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+
+.speed-summary-card strong {
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1;
 }
 
 .pending-list,
@@ -1065,7 +1099,8 @@ textarea {
   .dashboard-grid,
   .dashboard-secondary-grid,
   .qq-bridge-grid,
-  .score-edit-grid {
+  .score-edit-grid,
+  .speed-config-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1091,7 +1126,9 @@ textarea {
   .pending-card,
   .policy-module,
   .policy-item,
-  .qq-card {
+  .qq-card,
+  .speed-schedule-field,
+  .speed-summary-card {
     padding: var(--space-4);
   }
 

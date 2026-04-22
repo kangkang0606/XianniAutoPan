@@ -56,6 +56,8 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AdminSetPlayerDecisionStartYearRegex = new Regex(@"^#设置玩家开始决策年份\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetPolicyRegex = new Regex(@"^#设置政策\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetSpeedRegex = new Regex(@"^#(\d+(?:\.\d+)?)x$", RegexOptions.Compiled);
+        private static readonly Regex AdminViewSpeedScheduleRegex = new Regex(@"^#查看倍速计划$", RegexOptions.Compiled);
+        private static readonly Regex AdminSetSpeedScheduleRegex = new Regex(@"^#设置倍速计划\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSpawnKingdomRegex = new Regex(@"^#生成\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex AdminEndRoundRegex = new Regex(@"^#结盘$", RegexOptions.Compiled);
         private static readonly Regex AdminEndRoundNoScoreRegex = new Regex(@"^#结盘x$", RegexOptions.Compiled);
@@ -593,6 +595,21 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.AdminSetSpeed;
                 command.TextArg = match.Groups[1].Value;
+                return command;
+            }
+
+            match = AdminViewSpeedScheduleRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminViewSpeedSchedule;
+                return command;
+            }
+
+            match = AdminSetSpeedScheduleRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AdminSetSpeedSchedule;
+                command.TargetName = match.Groups[1].Value.Trim();
                 return command;
             }
 

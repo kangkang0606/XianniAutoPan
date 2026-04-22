@@ -218,6 +218,7 @@
           <nav class="config-module-switch" role="tablist" aria-label="配置模块切换">
             <button class="config-module-tab is-active" type="button" data-config-target="score">积分</button>
             <button class="config-module-tab" type="button" data-config-target="qq">QQ 接入</button>
+            <button class="config-module-tab" type="button" data-config-target="speed">倍速计划</button>
             <button class="config-module-tab" type="button" data-config-target="policy">政策配置</button>
             <button class="config-module-tab" type="button" data-config-target="book">指令书</button>
           </nav>
@@ -284,6 +285,29 @@
         </div>
         <article class="panel qq-panel">
           <div id="qqBridgePanel" class="qq-bridge-grid"></div>
+        </article>
+      </section>
+
+      <section class="config-group config-module-view" data-config-view="speed">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">世界速度</p>
+            <h2>倍速计划</h2>
+          </div>
+          <span class="muted">按年份自动切换游戏倍速，新一局也会从当前计划重新应用</span>
+        </div>
+        <article class="panel speed-panel">
+          <div class="speed-config-grid">
+            <label class="speed-schedule-field">计划文本
+              <textarea id="speedScheduleText" rows="8" placeholder="例如：&#10;1年5倍速&#10;10年20倍速&#10;50年40倍速"></textarea>
+            </label>
+            <div class="speed-summary-card">
+              <p class="panel-tag">当前状态</p>
+              <strong id="speedCurrentText">未读取</strong>
+              <p id="speedSchedulePreview" class="muted">每行写一个“年份 倍速”，也可以用逗号分隔。</p>
+              <button id="speedScheduleSaveButton" class="primary-btn" type="button">保存倍速计划</button>
+            </div>
+          </div>
         </article>
       </section>
 

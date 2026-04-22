@@ -451,7 +451,8 @@ namespace XianniAutoPan.Services
                 Kingdoms = AutoPanKingdomService.BuildDashboardKingdoms(),
                 Scoreboard = AutoPanScoreService.BuildDashboardRecords(),
                 Policy = AutoPanConfigHooks.BuildPolicySnapshot(),
-                QqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot()
+                QqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot(),
+                SpeedSchedule = AutoPanWorldSpeedService.BuildScheduleSnapshot()
             };
 
             if (addresses != null)

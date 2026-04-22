@@ -73,6 +73,8 @@ namespace XianniAutoPan.Model
         AdminViewPolicy,
         AdminSetPolicy,
         AdminSetSpeed,
+        AdminViewSpeedSchedule,
+        AdminSetSpeedSchedule,
         AdminSpawnKingdom,
         AdminEndRound,
         AdminEndRoundNoScore,
@@ -578,6 +580,58 @@ namespace XianniAutoPan.Model
         /// QQ 群接入状态与配置快照。
         /// </summary>
         public AutoPanQqDashboardSnapshot QqBridge { get; set; }
+
+        /// <summary>
+        /// 世界倍速计划配置快照。
+        /// </summary>
+        public AutoPanSpeedScheduleSnapshot SpeedSchedule { get; set; }
+    }
+
+    /// <summary>
+    /// 前端展示用的单条世界倍速计划。
+    /// </summary>
+    public sealed class AutoPanSpeedScheduleEntrySnapshot
+    {
+        /// <summary>
+        /// 生效年份。
+        /// </summary>
+        public int Year { get; set; }
+
+        /// <summary>
+        /// 生效倍速。
+        /// </summary>
+        public float Speed { get; set; }
+
+        /// <summary>
+        /// 格式化后的倍速文本。
+        /// </summary>
+        public string SpeedText { get; set; }
+    }
+
+    /// <summary>
+    /// 前端展示用的世界倍速计划快照。
+    /// </summary>
+    public sealed class AutoPanSpeedScheduleSnapshot
+    {
+        /// <summary>
+        /// 当前保存的倍速计划文本。
+        /// </summary>
+        public string RawText { get; set; }
+
+        /// <summary>
+        /// 归一化后的倍速计划文本。
+        /// </summary>
+        public string NormalizedText { get; set; }
+
+        /// <summary>
+        /// 当前游戏倍速文本。
+        /// </summary>
+        public string CurrentSpeedText { get; set; }
+
+        /// <summary>
+        /// 已解析的倍速计划条目。
+        /// </summary>
+        public List<AutoPanSpeedScheduleEntrySnapshot> Entries { get; set; } = new List<AutoPanSpeedScheduleEntrySnapshot>();
     }
 
     /// <summary>

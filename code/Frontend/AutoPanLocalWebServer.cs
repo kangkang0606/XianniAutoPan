@@ -525,6 +525,19 @@ namespace XianniAutoPan.Frontend
                 return;
             }
 
+            if (path.StartsWith("/api/speed-schedule/set", StringComparison.OrdinalIgnoreCase))
+            {
+                string value = ExtractQueryParam(rawPath, "value");
+                bool success = AutoPanConfigHooks.TrySetWorldSpeedSchedule(value, out string message);
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    speedSchedule = AutoPanWorldSpeedService.BuildScheduleSnapshot()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
             if (path.StartsWith("/api/score/set", StringComparison.OrdinalIgnoreCase))
             {
                 string userId = ExtractQueryParam(rawPath, "userId");

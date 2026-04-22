@@ -34,6 +34,10 @@ const configViewEls = Array.from(document.querySelectorAll("[data-config-view]")
 const saveDirtyConfigButtonEl = document.getElementById("saveDirtyConfigButton");
 const discardDirtyConfigButtonEl = document.getElementById("discardDirtyConfigButton");
 const configDirtyStatusEl = document.getElementById("configDirtyStatus");
+const speedScheduleTextEl = document.getElementById("speedScheduleText");
+const speedCurrentTextEl = document.getElementById("speedCurrentText");
+const speedSchedulePreviewEl = document.getElementById("speedSchedulePreview");
+const speedScheduleSaveButtonEl = document.getElementById("speedScheduleSaveButton");
 
 let socket = null;
 let dashboardTimer = null;
@@ -47,6 +51,8 @@ const policyDrafts = Object.create(null);
 const policyDirtyKeys = new Set();
 const qqDrafts = Object.create(null);
 const qqDirtyKeys = new Set();
+const speedDrafts = Object.create(null);
+const speedDirtyKeys = new Set();
 
 function pick(obj, camelKey, pascalKey) {
   if (!obj) {
@@ -213,10 +219,11 @@ function isPolicyDraftSaved(key, item) {
 function updateDirtyStatus() {
   const policyCount = policyDirtyKeys.size;
   const qqCount = qqDirtyKeys.size;
-  const totalCount = policyCount + qqCount;
+  const speedCount = speedDirtyKeys.size;
+  const totalCount = policyCount + qqCount + speedCount;
   if (configDirtyStatusEl) {
     configDirtyStatusEl.textContent = totalCount > 0
-      ? `待保存 ${totalCount} 项（政策 ${policyCount} / QQ ${qqCount}）`
+      ? `待保存 ${totalCount} 项（政策 ${policyCount} / QQ ${qqCount} / 倍速 ${speedCount}）`
       : "没有未保存修改";
     configDirtyStatusEl.classList.toggle("is-dirty", totalCount > 0);
   }
@@ -291,6 +298,14 @@ function syncQqDrafts(qqBridge) {
       clearDraft(qqDrafts, qqDirtyKeys, key);
     }
   });
+}
+
+function syncSpeedDrafts(speedSchedule) {
+  const data = speedSchedule || {};
+  const currentValue = pick(data, "rawText", "RawText") || "";
+  if (speedDirtyKeys.has("worldSpeedSchedule") && String(speedDrafts.worldSpeedSchedule || "") === String(currentValue)) {
+    clearDraft(speedDrafts, speedDirtyKeys, "worldSpeedSchedule");
+  }
 }
 
 function buildKingdomLabel(name, id) {
@@ -864,6 +879,31 @@ function renderQqBridge(qqBridge, listenAddresses) {
   qqBridgePanelEl.appendChild(adminCard);
 }
 
+function renderSpeedSchedule(speedSchedule) {
+  const data = speedSchedule || {};
+  const rawText = pick(data, "rawText", "RawText") || "";
+  const currentSpeed = pick(data, "currentSpeedText", "CurrentSpeedText") || "";
+  const normalizedText = pick(data, "normalizedText", "NormalizedText") || rawText;
+  const entries = pick(data, "entries", "Entries") || [];
+  const value = speedDirtyKeys.has("worldSpeedSchedule")
+    ? speedDrafts.worldSpeedSchedule
+    : rawText;
+
+  if (speedScheduleTextEl) {
+    speedScheduleTextEl.value = String(value || "");
+  }
+  if (speedCurrentTextEl) {
+    speedCurrentTextEl.textContent = currentSpeed ? `${currentSpeed}x` : "未读取";
+  }
+  if (speedSchedulePreviewEl) {
+    if (entries.length > 0) {
+      speedSchedulePreviewEl.textContent = `已配置 ${entries.length} 条：${String(normalizedText || "").replace(/\n/g, " / ")}`;
+    } else {
+      speedSchedulePreviewEl.textContent = "未配置倍速计划；保存空内容会关闭自动倍速。";
+    }
+  }
+}
+
 function renderAiControls(snapshot) {
   const aiEnabled = !!pick(snapshot, "aiEnabled", "AiEnabled");
   const aiQqChatEnabled = !!pick(snapshot, "aiQqChatEnabled", "AiQqChatEnabled");
@@ -1046,6 +1086,7 @@ async function refreshDashboard() {
   const snapshot = await response.json();
   syncPolicyDrafts(pick(snapshot, "policy", "Policy"));
   syncQqDrafts(pick(snapshot, "qqBridge", "QqBridge"));
+  syncSpeedDrafts(pick(snapshot, "speedSchedule", "SpeedSchedule"));
   updateBinding(pick(snapshot, "binding", "Binding"));
   renderLogs(pick(snapshot, "recentLogs", "RecentLogs"));
   const listenAddresses = pick(snapshot, "listenAddresses", "ListenAddresses");
@@ -1055,6 +1096,7 @@ async function refreshDashboard() {
   renderScoreboard(pick(snapshot, "scoreboard", "Scoreboard"));
   renderPolicy(pick(snapshot, "policy", "Policy"));
   renderQqBridge(pick(snapshot, "qqBridge", "QqBridge"), listenAddresses);
+  renderSpeedSchedule(pick(snapshot, "speedSchedule", "SpeedSchedule"));
 
   const commandBookText = pick(snapshot, "commandBookText", "CommandBookText");
   if (commandBookText) {
@@ -1145,10 +1187,35 @@ async function saveQqSetting(key, value, refreshAfter = false) {
   return true;
 }
 
+function scheduleSpeedAutoSave(value) {
+  rememberDraft(speedDrafts, speedDirtyKeys, "worldSpeedSchedule", value);
+}
+
+async function saveSpeedSchedule(value, refreshAfter = false) {
+  const response = await fetch(`/api/speed-schedule/set?value=${encodeURIComponent(value)}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`倍速计划保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.ok) {
+    appendReply(payload.text || "倍速计划保存失败。", false);
+    return false;
+  }
+
+  clearDraft(speedDrafts, speedDirtyKeys, "worldSpeedSchedule");
+  if (refreshAfter) {
+    appendReply(payload.text || "倍速计划已保存。", true);
+    await refreshDashboard();
+  }
+  return true;
+}
+
 async function saveDirtyConfig() {
   const policyEntries = Array.from(policyDirtyKeys).map((key) => [key, policyDrafts[key]]);
   const qqEntries = Array.from(qqDirtyKeys).map((key) => [key, qqDrafts[key]]);
-  if (policyEntries.length + qqEntries.length === 0) {
+  const speedEntries = Array.from(speedDirtyKeys).map((key) => [key, speedDrafts[key]]);
+  if (policyEntries.length + qqEntries.length + speedEntries.length === 0) {
     appendReply("没有需要保存的配置修改。", true);
     return;
   }
@@ -1184,6 +1251,19 @@ async function saveDirtyConfig() {
       }
     }
 
+    for (const [, value] of speedEntries) {
+      try {
+        if (await saveSpeedSchedule(value, false)) {
+          saved++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        failed++;
+        appendReply(error.message, false);
+      }
+    }
+
     appendReply(`配置批量保存完成：成功 ${saved} 项，失败 ${failed} 项。`, failed === 0);
     await refreshDashboard();
   } finally {
@@ -1195,8 +1275,10 @@ async function saveDirtyConfig() {
 async function discardDirtyConfig() {
   Object.keys(policyDrafts).forEach((key) => delete policyDrafts[key]);
   Object.keys(qqDrafts).forEach((key) => delete qqDrafts[key]);
+  Object.keys(speedDrafts).forEach((key) => delete speedDrafts[key]);
   policyDirtyKeys.clear();
   qqDirtyKeys.clear();
+  speedDirtyKeys.clear();
   updateDirtyStatus();
   appendReply("已放弃未保存的配置修改。", true);
   await refreshDashboard();
@@ -1386,6 +1468,17 @@ if (allowSubspeciesToggleEl) {
   });
 }
 
+if (speedScheduleTextEl) {
+  speedScheduleTextEl.addEventListener("input", () => scheduleSpeedAutoSave(speedScheduleTextEl.value));
+}
+
+if (speedScheduleSaveButtonEl) {
+  speedScheduleSaveButtonEl.addEventListener("click", () => {
+    saveSpeedSchedule(speedScheduleTextEl ? speedScheduleTextEl.value : "", true)
+      .catch((error) => appendReply(error.message, false));
+  });
+}
+
 if (blockUnboundJoinToggleEl) {
   blockUnboundJoinToggleEl.addEventListener("change", () => {
     const val = blockUnboundJoinToggleEl.checked ? "1" : "0";
@@ -1455,12 +1548,16 @@ async function exportConfig() {
       qqGroupWhitelist: pick(qqBridge, "groupWhitelist", "GroupWhitelist") || "",
       qqAdminWhitelist: pick(qqBridge, "adminWhitelist", "AdminWhitelist") || ""
     };
+    const speedSchedule = pick(snapshot, "speedSchedule", "SpeedSchedule") || {};
 
     const exportData = {
-      _exportVersion: 2,
+      _exportVersion: 3,
       _exportTime: new Date().toISOString(),
       policy: policyData,
-      qqBridge: qqData
+      qqBridge: qqData,
+      speedSchedule: {
+        worldSpeedSchedule: pick(speedSchedule, "rawText", "RawText") || ""
+      }
     };
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
@@ -1532,6 +1629,15 @@ async function importConfig() {
         } catch (error) {
           errors.push(`QQ ${key}: ${error.message}`);
         }
+      }
+    }
+
+    if (data.speedSchedule && typeof data.speedSchedule === "object") {
+      try {
+        await saveSpeedSchedule(data.speedSchedule.worldSpeedSchedule || "", false);
+        count++;
+      } catch (error) {
+        errors.push(`倍速计划: ${error.message}`);
       }
     }
 

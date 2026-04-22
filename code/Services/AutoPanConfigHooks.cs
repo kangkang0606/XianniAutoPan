@@ -140,6 +140,11 @@ namespace XianniAutoPan.Services
             /// QQ 管理员白名单原始文本。
             /// </summary>
             public string QqAdminWhitelist { get; set; }
+
+            /// <summary>
+            /// 世界倍速计划文本。
+            /// </summary>
+            public string WorldSpeedSchedule { get; set; }
         }
 
         private static readonly List<PolicyDefinition> PolicyDefinitions = new List<PolicyDefinition>();
@@ -703,6 +708,11 @@ namespace XianniAutoPan.Services
         public static bool BlockUnboundJoinBeforeWarYear { get; private set; } = false;
 
         /// <summary>
+        /// 按年份自动切换的世界倍速计划文本。
+        /// </summary>
+        public static string WorldSpeedScheduleText { get; private set; } = string.Empty;
+
+        /// <summary>
         /// 从当前配置初始化静态缓存。
         /// 这里只处理启动前必须可用的基础配置与旧版政策兼容导入。
         /// </summary>
@@ -1072,6 +1082,25 @@ namespace XianniAutoPan.Services
             }
 
             SaveBackendSettings();
+            return true;
+        }
+
+        /// <summary>
+        /// 通过前端页面或管理员指令设置世界倍速计划并立即持久化。
+        /// </summary>
+        public static bool TrySetWorldSpeedSchedule(string rawValue, out string message)
+        {
+            if (!AutoPanWorldSpeedService.TryNormalizeSchedule(rawValue, out string normalizedSchedule, out message))
+            {
+                return false;
+            }
+
+            WorldSpeedScheduleText = normalizedSchedule;
+            SaveBackendSettings();
+            if (World.world?.map_stats != null)
+            {
+                AutoPanWorldSpeedService.ApplyScheduledSpeedForYear(Date.getCurrentYear(), force: true);
+            }
             return true;
         }
 
@@ -1516,6 +1545,15 @@ namespace XianniAutoPan.Services
                 QqReplyAtSender = persisted.QqReplyAtSender;
                 QqGroupWhitelist = NormalizeGroupWhitelist(persisted.QqGroupWhitelist);
                 QqAdminWhitelist = NormalizeAdminWhitelist(persisted.QqAdminWhitelist);
+                if (AutoPanWorldSpeedService.TryNormalizeSchedule(persisted.WorldSpeedSchedule, out string speedSchedule, out string speedScheduleMessage))
+                {
+                    WorldSpeedScheduleText = speedSchedule;
+                }
+                else
+                {
+                    WorldSpeedScheduleText = string.Empty;
+                    AutoPanLogService.Error($"读取倍速计划失败：{speedScheduleMessage}");
+                }
             }
             catch (Exception ex)
             {
@@ -1546,7 +1584,8 @@ namespace XianniAutoPan.Services
                     QqBotSelfId = QqBotSelfId,
                     QqReplyAtSender = QqReplyAtSender,
                     QqGroupWhitelist = QqGroupWhitelist,
-                    QqAdminWhitelist = NormalizeAdminWhitelist(QqAdminWhitelist)
+                    QqAdminWhitelist = NormalizeAdminWhitelist(QqAdminWhitelist),
+                    WorldSpeedSchedule = WorldSpeedScheduleText
                 };
                 File.WriteAllText(_backendSettingsPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
             }
