@@ -348,9 +348,9 @@ namespace XianniAutoPan.Services
             {
                 int currentYear = Date.getCurrentYear();
                 int startYear = AutoPanConfigHooks.PlayerDecisionStartYear;
-                if (currentYear < startYear)
+                if (currentYear >= startYear)
                 {
-                    message = $"当前为第 {currentYear} 年，未到第 {startYear} 年，暂时不能绑定现有无主国家。";
+                    message = $"当前为第 {currentYear} 年，已到宣战年份（第 {startYear} 年），不能再绑定现有无主国家。";
                     return false;
                 }
             }
