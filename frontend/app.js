@@ -949,11 +949,11 @@ function renderAiControls(snapshot) {
   }
   if (allowSubspeciesToggleEl) {
     const val = findPolicyValue("allowSubspeciesJoin");
-    allowSubspeciesToggleEl.checked = val === null ? true : val !== 0;
+    if (val !== null) allowSubspeciesToggleEl.checked = val !== 0;
   }
   if (blockUnboundJoinToggleEl) {
     const val = findPolicyValue("blockUnboundJoinBeforeWarYear");
-    blockUnboundJoinToggleEl.checked = val !== null && val !== 0;
+    if (val !== null) blockUnboundJoinToggleEl.checked = val !== 0;
   }
 }
 
@@ -1145,6 +1145,9 @@ async function savePolicySetting(key, value, refreshAfter = false) {
   clearDraft(policyDrafts, policyDirtyKeys, key);
   if (refreshAfter) {
     appendReply(payload.text || "政策已保存。", true);
+    if (payload.policy) {
+      renderAiControls({ policy: payload.policy });
+    }
     await refreshDashboard();
   }
   return true;
@@ -1491,7 +1494,8 @@ if (aiQqChatToggleEl) {
 if (autoOpenDiplomacyToggleEl) {
   autoOpenDiplomacyToggleEl.addEventListener("change", () => {
     const val = autoOpenDiplomacyToggleEl.checked ? "1" : "0";
-    savePolicyDraft("autoOpenDiplomacyLaw", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
+    savePolicyDraft("autoOpenDiplomacyLaw", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, false)
+      .then((ok) => { if (ok) appendReply(`外交自动开已${val === "1" ? "开启" : "关闭"}。`, true); })
       .catch((error) => { appendReply(error.message, false); autoOpenDiplomacyToggleEl.checked = !autoOpenDiplomacyToggleEl.checked; });
   });
 }
@@ -1499,7 +1503,8 @@ if (autoOpenDiplomacyToggleEl) {
 if (allowSubspeciesToggleEl) {
   allowSubspeciesToggleEl.addEventListener("change", () => {
     const val = allowSubspeciesToggleEl.checked ? "1" : "0";
-    savePolicyDraft("allowSubspeciesJoin", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
+    savePolicyDraft("allowSubspeciesJoin", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, false)
+      .then((ok) => { if (ok) appendReply(`允许亚种加入已${val === "1" ? "开启" : "关闭"}。`, true); })
       .catch((error) => { appendReply(error.message, false); allowSubspeciesToggleEl.checked = !allowSubspeciesToggleEl.checked; });
   });
 }
@@ -1529,7 +1534,8 @@ if (speedScheduleEnabledToggleEl) {
 if (blockUnboundJoinToggleEl) {
   blockUnboundJoinToggleEl.addEventListener("change", () => {
     const val = blockUnboundJoinToggleEl.checked ? "1" : "0";
-    savePolicyDraft("blockUnboundJoinBeforeWarYear", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
+    savePolicyDraft("blockUnboundJoinBeforeWarYear", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, false)
+      .then((ok) => { if (ok) appendReply(`宣战后禁止加入无主国已${val === "1" ? "开启" : "关闭"}。`, true); })
       .catch((error) => { appendReply(error.message, false); blockUnboundJoinToggleEl.checked = !blockUnboundJoinToggleEl.checked; });
   });
 }
