@@ -426,7 +426,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static bool IsPlayerOwnedKingdom(Kingdom kingdom)
         {
-            if (kingdom == null)
+            if (kingdom == null || kingdom.data == null)
             {
                 return false;
             }

@@ -56,12 +56,25 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            if (AutoPanStateRepository.IsPlayerOwnedKingdom(kingdom))
+            if (kingdom != null && AutoPanStateRepository.IsPlayerOwnedKingdom(kingdom))
             {
                 return true;
             }
 
-            return alliance?.kingdoms_hashset != null && alliance.kingdoms_hashset.Any(AutoPanStateRepository.IsPlayerOwnedKingdom);
+            if (alliance?.kingdoms_hashset == null)
+            {
+                return false;
+            }
+
+            foreach (Kingdom member in alliance.kingdoms_hashset)
+            {
+                if (member != null && AutoPanStateRepository.IsPlayerOwnedKingdom(member))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasAnyPlayerOwnedKingdom()
