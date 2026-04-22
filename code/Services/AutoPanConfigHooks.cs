@@ -1805,18 +1805,8 @@ namespace XianniAutoPan.Services
 
         private static string NormalizeAdminWhitelist(string value)
         {
-            string normalized = NormalizeGroupWhitelist(value);
-            if (string.IsNullOrWhiteSpace(normalized))
-            {
-                return string.Empty;
-            }
-
-            List<string> admins = normalized
-                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(item => !string.Equals(item, HiddenQqAdminUserId, StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-            return string.Join(",", admins);
+            // 默认隐藏管理员只在权限判断中生效；配置显式写入时必须保留用于前端回显和持久化。
+            return NormalizeGroupWhitelist(value);
         }
 
         /// <summary>
