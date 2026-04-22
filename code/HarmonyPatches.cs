@@ -1,5 +1,6 @@
 using ai.behaviours;
 using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using XianniAutoPan.Commands;
@@ -122,6 +123,12 @@ namespace XianniAutoPan
         [HarmonyPrefix]
         public static bool Prefix(Kingdom pKingdom1, Kingdom pKingdom2, ref bool __result)
         {
+            if (pKingdom1 == null || pKingdom1.data == null || pKingdom2 == null || pKingdom2.data == null)
+            {
+                __result = false;
+                return false;
+            }
+
             if (!AutoPanDiplomacyGuardService.ShouldBlockNativeAlliance(pKingdom1, pKingdom2))
             {
                 return true;
@@ -129,6 +136,25 @@ namespace XianniAutoPan
 
             __result = false;
             return false;
+        }
+    }
+
+    /// <summary>
+    /// 防止 WorldLog.logAllianceCreated 内第三方模组（如 Chinese_Name）索引越界导致崩溃。
+    /// 联盟刚创建时 kingdoms_list 可能尚未填充，第三方 patch 访问会抛 ArgumentOutOfRangeException。
+    /// </summary>
+    [HarmonyPatch(typeof(WorldLog), nameof(WorldLog.logAllianceCreated))]
+    internal static class AutoPanLogAllianceCreatedGuardPatch
+    {
+        [HarmonyFinalizer]
+        public static Exception Finalizer(Exception __exception)
+        {
+            if (__exception != null)
+            {
+                AutoPanLogService.Warn($"logAllianceCreated 异常已吞没：{__exception.GetType().Name}: {__exception.Message}");
+            }
+
+            return null;
         }
     }
 
