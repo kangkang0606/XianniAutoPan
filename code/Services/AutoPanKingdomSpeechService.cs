@@ -92,6 +92,7 @@ namespace XianniAutoPan.Services
         }
 
         private const float SpeechLifetimeSeconds = 18f;
+        private const float AnchorRefreshIntervalSeconds = 0.1f;
         private const float BubbleRefreshIntervalSeconds = 0.8f;
         private const float BubbleYOffset = 42f;
         private const float BubbleMinWidth = 110f;
@@ -103,6 +104,7 @@ namespace XianniAutoPan.Services
         private const int MaxLineLength = 56;
         private static readonly Dictionary<long, SpeechAnchor> Anchors = new Dictionary<long, SpeechAnchor>();
         private static readonly Dictionary<long, SpeechVisual> Visuals = new Dictionary<long, SpeechVisual>();
+        private static float _nextAnchorRefreshAt;
 
         /// <summary>
         /// 记录国家铭牌的屏幕坐标，供气泡锚定使用。
@@ -200,7 +202,14 @@ namespace XianniAutoPan.Services
                 return;
             }
 
-            foreach (KeyValuePair<long, SpeechVisual> pair in Visuals.ToList())
+            float now = Time.unscaledTime;
+            if (now < _nextAnchorRefreshAt)
+            {
+                return;
+            }
+
+            _nextAnchorRefreshAt = now + AnchorRefreshIntervalSeconds;
+            foreach (KeyValuePair<long, SpeechVisual> pair in Visuals)
             {
                 Kingdom kingdom = World.world?.kingdoms?.get(pair.Key);
                 SpeechVisual visual = pair.Value;
@@ -225,6 +234,7 @@ namespace XianniAutoPan.Services
 
             Visuals.Clear();
             Anchors.Clear();
+            _nextAnchorRefreshAt = 0f;
         }
 
         /// <summary>

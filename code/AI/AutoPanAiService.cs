@@ -50,6 +50,7 @@ namespace XianniAutoPan.AI
                 return;
             }
 
+            AutoPanKingdomService.RefreshRuntimeStatsCacheForCurrentYear(includeSnapshots: true);
             int scheduledCount = 0;
             int maxScheduleCount = GetMaxKingdomsPerSchedule();
             int startIndex = Math.Abs(_scheduleOffset) % candidates.Count;
@@ -137,7 +138,7 @@ namespace XianniAutoPan.AI
                 return false;
             }
 
-            AutoPanAiRequestContext context = AutoPanKingdomService.BuildAiContext(kingdom);
+            AutoPanAiRequestContext context = AutoPanKingdomService.BuildAiContext(kingdom, forceRefresh: true);
             List<string> suggestions = BuildPlayerChatSuggestions(context);
             string suggestionText = suggestions.Count == 0 ? "先观察战况攒金币" : suggestions[0];
             reply = "Ai:" + TrimForNotice($"{context.KingdomName}国库{context.Treasury}，{suggestionText}", 50);

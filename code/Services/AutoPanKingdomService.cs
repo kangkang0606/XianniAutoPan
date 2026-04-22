@@ -54,10 +54,126 @@ namespace XianniAutoPan.Services
             public XianniKingdomSnapshot Snapshot { get; set; }
         }
 
+        private sealed class KingdomRuntimeStats
+        {
+            /// <summary>
+            /// 当前仍然存活的国家对象引用。
+            /// </summary>
+            public Kingdom Kingdom { get; set; }
+
+            /// <summary>
+            /// 国家 ID。
+            /// </summary>
+            public long KingdomId { get; set; }
+
+            /// <summary>
+            /// 带 ID 的国家标签。
+            /// </summary>
+            public string Label { get; set; }
+
+            /// <summary>
+            /// 国家名称。
+            /// </summary>
+            public string KingdomName { get; set; }
+
+            /// <summary>
+            /// 绑定玩家名称。
+            /// </summary>
+            public string OwnerName { get; set; }
+
+            /// <summary>
+            /// 绑定玩家 ID。
+            /// </summary>
+            public string OwnerUserId { get; set; }
+
+            /// <summary>
+            /// 是否为玩家绑定国家。
+            /// </summary>
+            public bool IsPlayerOwned { get; set; }
+
+            /// <summary>
+            /// 当前国库。
+            /// </summary>
+            public int Treasury { get; set; }
+
+            /// <summary>
+            /// 国家等级。
+            /// </summary>
+            public int NationLevel { get; set; }
+
+            /// <summary>
+            /// 修真国等级。
+            /// </summary>
+            public int XiuzhenguoLevel { get; set; }
+
+            /// <summary>
+            /// 城市数量。
+            /// </summary>
+            public int CityCount { get; set; }
+
+            /// <summary>
+            /// 人口数量。
+            /// </summary>
+            public int Population { get; set; }
+
+            /// <summary>
+            /// 领土格数量。
+            /// </summary>
+            public int TerritoryCount { get; set; }
+
+            /// <summary>
+            /// 军队数量。
+            /// </summary>
+            public int ArmyCount { get; set; }
+
+            /// <summary>
+            /// 有效灵气。
+            /// </summary>
+            public int TotalAura { get; set; }
+
+            /// <summary>
+            /// 年收入。
+            /// </summary>
+            public int AnnualIncome { get; set; }
+
+            /// <summary>
+            /// 国家占领政策文本。
+            /// </summary>
+            public string OccupationPolicy { get; set; }
+
+            /// <summary>
+            /// 当前联盟。
+            /// </summary>
+            public Alliance Alliance { get; set; }
+
+            /// <summary>
+            /// 联盟名称。
+            /// </summary>
+            public string AllianceName { get; set; }
+
+            /// <summary>
+            /// 是否处于战争。
+            /// </summary>
+            public bool AtWar { get; set; }
+
+            /// <summary>
+            /// 可选的修仙快照，只有 AI 或前端需要时才填充。
+            /// </summary>
+            public XianniKingdomSnapshot Snapshot { get; set; }
+        }
+
+        private const float RuntimeStatsCacheSeconds = 1f;
+        private static readonly object RuntimeStatsSync = new object();
         private static readonly Dictionary<long, SnapshotCacheEntry> SnapshotCache = new Dictionary<long, SnapshotCacheEntry>();
+        private static readonly List<KingdomRuntimeStats> RuntimeStatsCache = new List<KingdomRuntimeStats>();
+        private static readonly Dictionary<long, KingdomRuntimeStats> RuntimeStatsLookup = new Dictionary<long, KingdomRuntimeStats>();
+        private static readonly Dictionary<long, int> MilitiaUntilYearCache = new Dictionary<long, int>();
         private static readonly Dictionary<long, DateTime> MobilizedCityExpiryUtc = new Dictionary<long, DateTime>();
         private static readonly HashSet<long> DefeatedDefendKingdomIds = new HashSet<long>();
         private static readonly Dictionary<long, long> DefeatedDefendUnitKingdomIds = new Dictionary<long, long>();
+        private static int _runtimeStatsCacheYear = -1;
+        private static float _runtimeStatsBuiltAt = -999f;
+        private static bool _runtimeStatsIncludeSnapshots;
         private static readonly XiuzhenguoLevelRequirement[] XiuzhenguoRequirements =
         {
             new XiuzhenguoLevelRequirement { Level = 0, RequiredRealmIndex = -1, RequiredCount = 0, SecondaryRealmIndex = -1, SecondaryCount = 0 },
@@ -377,6 +493,7 @@ namespace XianniAutoPan.Services
             }
 
             kingdom.data.set(AutoPanConstants.KeyTreasury, Math.Max(0, value));
+            ClearRuntimeStatsCache();
         }
 
         /// <summary>
@@ -502,6 +619,8 @@ namespace XianniAutoPan.Services
         {
             DefeatedDefendKingdomIds.Clear();
             DefeatedDefendUnitKingdomIds.Clear();
+            MilitiaUntilYearCache.Clear();
+            ClearRuntimeStatsCache();
         }
 
         /// <summary>
@@ -586,6 +705,7 @@ namespace XianniAutoPan.Services
             kingdom.data.set(AutoPanConstants.KeyGatherSpiritUntilYear, 0);
             kingdom.data.set(AutoPanConstants.KeyOccupationPolicy, AutoPanConstants.OccupationPolicyOpen);
             kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, 0);
+            MilitiaUntilYearCache[kingdom.getID()] = 0;
             kingdom.data.set(AutoPanConstants.KeyOwnerUserId, string.Empty);
             kingdom.data.set(AutoPanConstants.KeyOwnerName, string.Empty);
             ClearSnapshotCache(kingdom.getID());
@@ -627,6 +747,7 @@ namespace XianniAutoPan.Services
             }
 
             kingdom.data.set(AutoPanConstants.KeyLevel, Math.Max(1, level));
+            ClearRuntimeStatsCache();
         }
 
         /// <summary>
@@ -665,6 +786,7 @@ namespace XianniAutoPan.Services
             int currentYear = Date.getCurrentYear();
             int baseYear = Math.Max(currentYear, GetGatherSpiritUntilYear(kingdom));
             kingdom.data.set(AutoPanConstants.KeyGatherSpiritUntilYear, baseYear + AutoPanConfigHooks.GatherSpiritDurationYears);
+            ClearRuntimeStatsCache();
         }
 
         /// <summary>
@@ -726,6 +848,7 @@ namespace XianniAutoPan.Services
             }
 
             kingdom.data.set(AutoPanConstants.KeyOccupationPolicy, targetPolicy);
+            ClearRuntimeStatsCache();
             message = $"{FormatKingdomLabel(kingdom)} 已切换为 {GetOccupationPolicyText(kingdom)} 政策，消耗 {cost} 金币。";
             return true;
         }
@@ -740,8 +863,15 @@ namespace XianniAutoPan.Services
                 return 0;
             }
 
+            long kingdomId = kingdom.getID();
+            if (MilitiaUntilYearCache.TryGetValue(kingdomId, out int cachedUntilYear))
+            {
+                return cachedUntilYear;
+            }
+
             EnsureKingdomStateInitialized(kingdom);
             kingdom.data.get(AutoPanConstants.KeyMilitiaUntilYear, out int untilYear, 0);
+            MilitiaUntilYearCache[kingdomId] = untilYear;
             return untilYear;
         }
 
@@ -776,6 +906,8 @@ namespace XianniAutoPan.Services
             int baseYear = Math.Max(currentYear, GetMilitiaUntilYear(kingdom));
             int untilYear = baseYear + AutoPanConfigHooks.NationalMilitiaDurationYears;
             kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, untilYear);
+            MilitiaUntilYearCache[kingdom.getID()] = untilYear;
+            ClearRuntimeStatsCache();
             message = $"{FormatKingdomLabel(kingdom)} 已开启全民皆兵，持续到第 {untilYear} 年；该国平民会按愤怒村民机制参与本国战争，消耗 {cost} 金币。";
             return true;
         }
@@ -943,14 +1075,7 @@ namespace XianniAutoPan.Services
             int cityCount = kingdom.countCities();
             int population = kingdom.getPopulationTotal();
             int effectiveAura = GetEffectiveAura(kingdom);
-            int populationGain = AutoPanConfigHooks.IncomePopulationDivisor <= 0 ? population : population / AutoPanConfigHooks.IncomePopulationDivisor;
-            int auraGain = AutoPanConfigHooks.IncomeAuraDivisor <= 0 ? effectiveAura : effectiveAura / AutoPanConfigHooks.IncomeAuraDivisor;
-            int income = AutoPanConfigHooks.IncomeBase
-                + AutoPanConfigHooks.IncomePerCity * cityCount
-                + populationGain
-                + AutoPanConfigHooks.IncomePerLevel * GetLevel(kingdom)
-                + auraGain;
-            return Math.Max(0, income);
+            return ComputeYearlyIncome(cityCount, population, effectiveAura, GetLevel(kingdom));
         }
 
         /// <summary>
@@ -958,24 +1083,37 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static void ApplyYearlyIncomeToAll(int year)
         {
-            if (World.world?.kingdoms == null)
+            List<KingdomRuntimeStats> statsList = GetAllKingdomRuntimeStats(forceRefresh: true, includeSnapshots: false).ToList();
+            if (statsList.Count == 0)
             {
                 return;
             }
 
-            foreach (Kingdom kingdom in World.world.kingdoms)
+            foreach (KingdomRuntimeStats stats in statsList)
             {
+                Kingdom kingdom = stats.Kingdom;
                 if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
                 {
                     continue;
                 }
 
                 EnsureKingdomStateInitialized(kingdom);
-                int income = ComputeYearlyIncome(kingdom);
-                AddTreasury(kingdom, income);
+                AddTreasury(kingdom, stats.AnnualIncome);
                 UpdateNationalMilitiaForYear(kingdom, year);
                 ClearSnapshotCache(kingdom.getID());
             }
+        }
+
+        private static int ComputeYearlyIncome(int cityCount, int population, int effectiveAura, int level)
+        {
+            int populationGain = AutoPanConfigHooks.IncomePopulationDivisor <= 0 ? population : population / AutoPanConfigHooks.IncomePopulationDivisor;
+            int auraGain = AutoPanConfigHooks.IncomeAuraDivisor <= 0 ? effectiveAura : effectiveAura / AutoPanConfigHooks.IncomeAuraDivisor;
+            int income = AutoPanConfigHooks.IncomeBase
+                + AutoPanConfigHooks.IncomePerCity * cityCount
+                + populationGain
+                + AutoPanConfigHooks.IncomePerLevel * level
+                + auraGain;
+            return Math.Max(0, income);
         }
 
         /// <summary>
@@ -1027,11 +1165,136 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 为当前年份强制刷新运行时国家统计，供同一轮 AI 决策复用。
+        /// </summary>
+        public static void RefreshRuntimeStatsCacheForCurrentYear(bool includeSnapshots)
+        {
+            GetAllKingdomRuntimeStats(forceRefresh: true, includeSnapshots: includeSnapshots);
+        }
+
+        /// <summary>
         /// 清理指定国家的榜单缓存。
         /// </summary>
         public static void ClearSnapshotCache(long kingdomId)
         {
             SnapshotCache.Remove(kingdomId);
+            ClearRuntimeStatsCache();
+        }
+
+        private static IReadOnlyList<KingdomRuntimeStats> GetAllKingdomRuntimeStats(bool forceRefresh, bool includeSnapshots)
+        {
+            lock (RuntimeStatsSync)
+            {
+                int currentYear = Date.getCurrentYear();
+                bool cacheValid = !forceRefresh
+                    && _runtimeStatsCacheYear == currentYear
+                    && (!includeSnapshots || _runtimeStatsIncludeSnapshots)
+                    && Time.unscaledTime - _runtimeStatsBuiltAt <= RuntimeStatsCacheSeconds
+                    && RuntimeStatsCache.All(item => item?.Kingdom != null && item.Kingdom.isAlive() && item.Kingdom.isCiv());
+                if (!cacheValid)
+                {
+                    RebuildRuntimeStatsCache(currentYear, includeSnapshots, forceSnapshotRefresh: forceRefresh && includeSnapshots);
+                }
+
+                // 返回副本，避免年度加金币等失效缓存动作影响正在遍历的调用方。
+                return RuntimeStatsCache.ToList();
+            }
+        }
+
+        private static void RebuildRuntimeStatsCache(int currentYear, bool includeSnapshots, bool forceSnapshotRefresh)
+        {
+            RuntimeStatsCache.Clear();
+            RuntimeStatsLookup.Clear();
+            _runtimeStatsCacheYear = currentYear;
+            _runtimeStatsBuiltAt = Time.unscaledTime;
+            _runtimeStatsIncludeSnapshots = includeSnapshots;
+
+            if (World.world?.kingdoms == null)
+            {
+                return;
+            }
+
+            foreach (Kingdom kingdom in World.world.kingdoms)
+            {
+                if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+                {
+                    continue;
+                }
+
+                KingdomRuntimeStats stats = BuildRuntimeStats(kingdom, includeSnapshots, forceSnapshotRefresh);
+                RuntimeStatsCache.Add(stats);
+                RuntimeStatsLookup[stats.KingdomId] = stats;
+            }
+        }
+
+        private static KingdomRuntimeStats BuildRuntimeStats(Kingdom kingdom, bool includeSnapshot, bool forceSnapshotRefresh)
+        {
+            EnsureKingdomStateInitialized(kingdom);
+            int currentYear = Date.getCurrentYear();
+            int cityCount = kingdom.countCities();
+            int population = kingdom.getPopulationTotal();
+            int level = GetLevel(kingdom);
+            int totalAura = XianniAutoPanApi.GetKingdomAura(kingdom);
+            if (GetGatherSpiritUntilYear(kingdom) >= currentYear)
+            {
+                totalAura += cityCount * AutoPanConfigHooks.GatherSpiritAuraBonusPerCity;
+            }
+
+            XianniKingdomSnapshot snapshot = includeSnapshot ? GetSnapshot(kingdom, forceSnapshotRefresh) : null;
+            kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, string.Empty);
+            kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, string.Empty);
+            Alliance alliance = kingdom.getAlliance();
+            return new KingdomRuntimeStats
+            {
+                Kingdom = kingdom,
+                KingdomId = kingdom.getID(),
+                Label = FormatKingdomLabel(kingdom),
+                KingdomName = kingdom.name,
+                OwnerName = ownerName ?? string.Empty,
+                OwnerUserId = ownerUserId ?? string.Empty,
+                IsPlayerOwned = !string.IsNullOrWhiteSpace(ownerUserId),
+                Treasury = GetTreasury(kingdom),
+                NationLevel = level,
+                XiuzhenguoLevel = snapshot?.XiuzhenguoLevel ?? 0,
+                CityCount = cityCount,
+                Population = population,
+                TerritoryCount = kingdom.countZones(),
+                ArmyCount = CountArmyUnits(kingdom),
+                TotalAura = totalAura,
+                AnnualIncome = ComputeYearlyIncome(cityCount, population, totalAura, level),
+                OccupationPolicy = GetOccupationPolicyText(kingdom),
+                Alliance = alliance,
+                AllianceName = alliance?.name ?? string.Empty,
+                AtWar = kingdom.getWars().Any(),
+                Snapshot = snapshot
+            };
+        }
+
+        private static KingdomRuntimeStats GetRuntimeStats(Kingdom kingdom, bool forceRefresh, bool includeSnapshots)
+        {
+            if (kingdom == null)
+            {
+                return null;
+            }
+
+            lock (RuntimeStatsSync)
+            {
+                GetAllKingdomRuntimeStats(forceRefresh, includeSnapshots);
+                RuntimeStatsLookup.TryGetValue(kingdom.getID(), out KingdomRuntimeStats stats);
+                return stats;
+            }
+        }
+
+        private static void ClearRuntimeStatsCache()
+        {
+            lock (RuntimeStatsSync)
+            {
+                RuntimeStatsCache.Clear();
+                RuntimeStatsLookup.Clear();
+                _runtimeStatsCacheYear = -1;
+                _runtimeStatsBuiltAt = -999f;
+                _runtimeStatsIncludeSnapshots = false;
+            }
         }
 
         /// <summary>
@@ -1891,37 +2154,29 @@ namespace XianniAutoPan.Services
         public static List<AutoPanKingdomDashboardInfo> BuildDashboardKingdoms()
         {
             List<AutoPanKingdomDashboardInfo> result = new List<AutoPanKingdomDashboardInfo>();
-            if (World.world?.kingdoms == null)
+            foreach (KingdomRuntimeStats stats in GetAllKingdomRuntimeStats(forceRefresh: false, includeSnapshots: true))
             {
-                return result;
-            }
-
-            foreach (Kingdom kingdom in World.world.kingdoms)
-            {
+                Kingdom kingdom = stats.Kingdom;
                 if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
                 {
                     continue;
                 }
 
-                XianniKingdomSnapshot snapshot = GetSnapshot(kingdom);
-                kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, string.Empty);
-                kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, string.Empty);
-                Alliance alliance = kingdom.getAlliance();
                 result.Add(new AutoPanKingdomDashboardInfo
                 {
-                    KingdomId = kingdom.getID(),
-                    KingdomName = kingdom.name,
-                    OwnerName = ownerName,
-                    OwnerUserId = ownerUserId,
-                    Treasury = GetTreasury(kingdom),
-                    NationLevel = GetLevel(kingdom),
-                    XiuzhenguoLevel = snapshot.XiuzhenguoLevel,
-                    CityCount = kingdom.countCities(),
-                    Population = kingdom.getPopulationTotal(),
-                    TotalAura = GetEffectiveAura(kingdom),
-                    AnnualIncome = ComputeYearlyIncome(kingdom),
-                    AllianceName = alliance?.name ?? string.Empty,
-                    AtWar = kingdom.getWars().Any()
+                    KingdomId = stats.KingdomId,
+                    KingdomName = stats.KingdomName,
+                    OwnerName = stats.OwnerName,
+                    OwnerUserId = stats.OwnerUserId,
+                    Treasury = stats.Treasury,
+                    NationLevel = stats.NationLevel,
+                    XiuzhenguoLevel = stats.XiuzhenguoLevel,
+                    CityCount = stats.CityCount,
+                    Population = stats.Population,
+                    TotalAura = stats.TotalAura,
+                    AnnualIncome = stats.AnnualIncome,
+                    AllianceName = stats.AllianceName,
+                    AtWar = stats.AtWar
                 });
             }
 
@@ -1999,6 +2254,8 @@ namespace XianniAutoPan.Services
             if (untilYear < year)
             {
                 kingdom.data.set(AutoPanConstants.KeyMilitiaUntilYear, 0);
+                MilitiaUntilYearCache[kingdom.getID()] = 0;
+                ClearRuntimeStatsCache();
                 string text = $"{FormatKingdomLabel(kingdom)} 的全民皆兵状态已结束。";
                 XianniAutoPanApi.Broadcast(text);
                 AutoPanNotificationService.NotifyKingdomOwners(kingdom, text);
@@ -2357,11 +2614,13 @@ namespace XianniAutoPan.Services
         /// <summary>
         /// 构建 AI 决策所需快照。
         /// </summary>
-        public static AutoPanAiRequestContext BuildAiContext(Kingdom kingdom)
+        public static AutoPanAiRequestContext BuildAiContext(Kingdom kingdom, bool forceRefresh = false)
         {
             int currentYear = Date.getCurrentYear();
-            XianniKingdomSnapshot snapshot = GetSnapshot(kingdom, forceRefresh: true);
-            Alliance alliance = kingdom.getAlliance();
+            IReadOnlyList<KingdomRuntimeStats> allStats = GetAllKingdomRuntimeStats(forceRefresh, includeSnapshots: true);
+            KingdomRuntimeStats selfStats = GetRuntimeStats(kingdom, forceRefresh: false, includeSnapshots: true);
+            XianniKingdomSnapshot snapshot = selfStats?.Snapshot ?? GetSnapshot(kingdom, forceRefresh: true);
+            Alliance alliance = selfStats?.Alliance ?? kingdom.getAlliance();
             AutoPanAiRequestContext context = new AutoPanAiRequestContext
             {
                 CurrentYear = currentYear,
@@ -2372,17 +2631,17 @@ namespace XianniAutoPan.Services
                 MaxActions = Math.Max(1, Math.Min(5, AutoPanConfigHooks.AiDecisionIntensity)),
                 KingdomId = kingdom.getID(),
                 KingdomName = kingdom.name,
-                Treasury = GetTreasury(kingdom),
-                NationLevel = GetLevel(kingdom),
+                Treasury = selfStats?.Treasury ?? GetTreasury(kingdom),
+                NationLevel = selfStats?.NationLevel ?? GetLevel(kingdom),
                 XiuzhenguoLevel = snapshot.XiuzhenguoLevel,
-                AnnualIncome = ComputeYearlyIncome(kingdom),
-                CityCount = kingdom.countCities(),
-                Population = kingdom.getPopulationTotal(),
-                TotalAura = GetEffectiveAura(kingdom),
-                ArmyCount = CountArmyUnits(kingdom),
-                OccupationPolicy = GetOccupationPolicyText(kingdom),
-                AllianceName = alliance?.name ?? string.Empty,
-                AtWar = kingdom.getWars().Any(),
+                AnnualIncome = selfStats?.AnnualIncome ?? ComputeYearlyIncome(kingdom),
+                CityCount = selfStats?.CityCount ?? kingdom.countCities(),
+                Population = selfStats?.Population ?? kingdom.getPopulationTotal(),
+                TotalAura = selfStats?.TotalAura ?? GetEffectiveAura(kingdom),
+                ArmyCount = selfStats?.ArmyCount ?? CountArmyUnits(kingdom),
+                OccupationPolicy = selfStats?.OccupationPolicy ?? GetOccupationPolicyText(kingdom),
+                AllianceName = selfStats?.AllianceName ?? alliance?.name ?? string.Empty,
+                AtWar = selfStats?.AtWar ?? kingdom.getWars().Any(),
                 GatherSpiritActive = IsGatherSpiritActive(kingdom),
                 GatherSpiritRemainYears = Math.Max(0, GetGatherSpiritUntilYear(kingdom) - currentYear),
                 MilitiaRemainYears = Math.Max(0, GetMilitiaUntilYear(kingdom) - currentYear)
@@ -2397,47 +2656,46 @@ namespace XianniAutoPan.Services
                 }
             }
 
-            foreach (Kingdom other in World.world.kingdoms)
+            foreach (KingdomRuntimeStats otherStats in allStats)
             {
+                Kingdom other = otherStats.Kingdom;
                 if (other == null || !other.isAlive() || !other.isCiv() || other == kingdom)
                 {
                     continue;
                 }
 
-                if (context.CanDeclareWar && !kingdom.isEnemy(other) && !Alliance.isSame(kingdom.getAlliance(), other.getAlliance()))
+                if (context.CanDeclareWar && !kingdom.isEnemy(other) && !Alliance.isSame(alliance, otherStats.Alliance))
                 {
-                    context.CandidateKingdomNames.Add(FormatKingdomLabel(other));
+                    context.CandidateKingdomNames.Add(otherStats.Label);
                 }
             }
 
-            foreach (Kingdom other in World.world.kingdoms)
+            foreach (KingdomRuntimeStats otherStats in allStats)
             {
+                Kingdom other = otherStats.Kingdom;
                 if (other == null || !other.isAlive() || !other.isCiv())
                 {
                     continue;
                 }
 
-                XianniKingdomSnapshot otherSnapshot = GetSnapshot(other);
-                other.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, string.Empty);
-                Alliance otherAlliance = other.getAlliance();
                 context.AllKingdoms.Add(new AutoPanAiKingdomSummary
                 {
-                    Label = FormatKingdomLabel(other),
+                    Label = otherStats.Label,
                     IsSelf = other == kingdom,
-                    IsPlayerOwned = AutoPanStateRepository.IsPlayerOwnedKingdom(other),
-                    OwnerName = ownerName ?? string.Empty,
+                    IsPlayerOwned = otherStats.IsPlayerOwned,
+                    OwnerName = otherStats.OwnerName,
                     RelationToSelf = BuildAiRelationText(kingdom, other),
-                    Treasury = GetTreasury(other),
-                    NationLevel = GetLevel(other),
-                    XiuzhenguoLevel = otherSnapshot.XiuzhenguoLevel,
-                    CityCount = other.countCities(),
-                    Population = other.getPopulationTotal(),
-                    ArmyCount = CountArmyUnits(other),
-                    TotalAura = GetEffectiveAura(other),
-                    AnnualIncome = ComputeYearlyIncome(other),
-                    OccupationPolicy = GetOccupationPolicyText(other),
-                    AllianceName = otherAlliance?.name ?? string.Empty,
-                    AtWar = other.getWars().Any()
+                    Treasury = otherStats.Treasury,
+                    NationLevel = otherStats.NationLevel,
+                    XiuzhenguoLevel = otherStats.XiuzhenguoLevel,
+                    CityCount = otherStats.CityCount,
+                    Population = otherStats.Population,
+                    ArmyCount = otherStats.ArmyCount,
+                    TotalAura = otherStats.TotalAura,
+                    AnnualIncome = otherStats.AnnualIncome,
+                    OccupationPolicy = otherStats.OccupationPolicy,
+                    AllianceName = otherStats.AllianceName,
+                    AtWar = otherStats.AtWar
                 });
             }
 
