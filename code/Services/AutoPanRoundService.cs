@@ -74,6 +74,7 @@ namespace XianniAutoPan.Services
         private const string GaiaLawId = "world_law_gaias_covenant";
         private const string HundredPopulationLawId = "world_law_civ_limit_population_100";
         private const string EvolutionEventsLawId = "world_law_evolution_events";
+        private const string DiplomacyLawId = "world_law_diplomacy";
         private const string DiplomacyGroupId = "diplomacy";
         private static bool _isEndingRound;
         private static bool _isGeneratingNewRound;
@@ -443,17 +444,10 @@ namespace XianniAutoPan.Services
             }
 
             World.world.world_laws.init();
-            foreach (WorldLawAsset asset in AssetManager.world_laws_library.list)
-            {
-                if (asset != null && string.Equals(asset.group_id, DiplomacyGroupId, StringComparison.Ordinal))
-                {
-                    SetWorldLaw(asset.id, enabled: true);
-                }
-            }
-
-            SetWorldLaw(EvolutionEventsLawId, enabled: true);
+            // 只开启原版外交总开关，避免连带打开魔法仪式、叛乱和边境偷取等同组法则。
+            SetWorldLaw(DiplomacyLawId, enabled: true);
             _diplomacyAutoOpenedForWorld = true;
-            AutoPanLogService.Info($"第 {currentYear} 年达到可宣战年份，已按前端配置自动开启外交组与随机事件法则。");
+            AutoPanLogService.Info($"第 {currentYear} 年达到可宣战年份，已按前端配置自动开启外交法则。");
         }
 
         private static void SetWorldLaw(string lawId, bool enabled)

@@ -25,6 +25,7 @@ const aiEnableToggleEl = document.getElementById("aiEnableToggle");
 const aiQqChatToggleEl = document.getElementById("aiQqChatToggle");
 const autoOpenDiplomacyToggleEl = document.getElementById("autoOpenDiplomacyToggle");
 const allowSubspeciesToggleEl = document.getElementById("allowSubspeciesToggle");
+const blockUnboundJoinToggleEl = document.getElementById("blockUnboundJoinToggle");
 const pageSwitchEl = document.querySelector(".page-switch");
 const pageTabEls = Array.from(document.querySelectorAll("[data-page-target]"));
 const pageViewEls = Array.from(document.querySelectorAll("[data-page-view]"));
@@ -874,7 +875,7 @@ function renderAiControls(snapshot) {
     aiQqChatToggleEl.checked = aiQqChatEnabled;
   }
 
-  // 从 policy snapshot 读取外交自动开和允许亚种加入的当前值
+  // 从 policy snapshot 读取快捷开关的当前值
   const policy = pick(snapshot, "policy", "Policy");
   const policyItems = policy ? (pick(policy, "items", "Items") || []) : [];
   const findPolicyValue = (key) => {
@@ -892,6 +893,10 @@ function renderAiControls(snapshot) {
   if (allowSubspeciesToggleEl) {
     const val = findPolicyValue("allowSubspeciesJoin");
     allowSubspeciesToggleEl.checked = val === null ? true : val !== 0;
+  }
+  if (blockUnboundJoinToggleEl) {
+    const val = findPolicyValue("blockUnboundJoinBeforeWarYear");
+    blockUnboundJoinToggleEl.checked = val !== null && val !== 0;
   }
 }
 
@@ -1378,6 +1383,14 @@ if (allowSubspeciesToggleEl) {
     const val = allowSubspeciesToggleEl.checked ? "1" : "0";
     savePolicyDraft("allowSubspeciesJoin", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
       .catch((error) => { appendReply(error.message, false); allowSubspeciesToggleEl.checked = !allowSubspeciesToggleEl.checked; });
+  });
+}
+
+if (blockUnboundJoinToggleEl) {
+  blockUnboundJoinToggleEl.addEventListener("change", () => {
+    const val = blockUnboundJoinToggleEl.checked ? "1" : "0";
+    savePolicyDraft("blockUnboundJoinBeforeWarYear", { value: val, randomEnabled: false, randomMinValue: "0", randomMaxValue: "0" }, true)
+      .catch((error) => { appendReply(error.message, false); blockUnboundJoinToggleEl.checked = !blockUnboundJoinToggleEl.checked; });
   });
 }
 

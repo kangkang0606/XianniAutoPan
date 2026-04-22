@@ -228,6 +228,16 @@ namespace XianniAutoPan.Services
                 message = $"{FormatKingdomLabel(target)} 已经有玩家绑定，不能重复加入。";
                 return false;
             }
+            if (AutoPanConfigHooks.BlockUnboundJoinBeforeWarYear)
+            {
+                int currentYear = Date.getCurrentYear();
+                int startYear = AutoPanConfigHooks.PlayerDecisionStartYear;
+                if (currentYear < startYear)
+                {
+                    message = $"当前为第 {currentYear} 年，未到第 {startYear} 年，暂时不能绑定现有无主国家。";
+                    return false;
+                }
+            }
 
             EnsureKingdomStateInitialized(target);
             string raceId = string.IsNullOrWhiteSpace(target.data?.original_actor_asset)

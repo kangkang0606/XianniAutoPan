@@ -606,7 +606,7 @@ namespace XianniAutoPan.Services
         public static int PlayerDecisionStartYear { get; private set; } = 1;
 
         /// <summary>
-        /// 到达可宣战年份后是否自动开启外交与随机事件法则。
+        /// 到达可宣战年份后是否自动开启原版外交法则。
         /// </summary>
         public static int AutoOpenDiplomacyLaw { get; private set; } = 0;
 
@@ -696,6 +696,11 @@ namespace XianniAutoPan.Services
         /// 无论此开关状态，没有高级脑特征的亚种始终无法加入。
         /// </summary>
         public static bool AllowSubspeciesJoin { get; private set; } = true;
+
+        /// <summary>
+        /// 未到玩家宣战年份时是否禁止玩家绑定现有无主国家。
+        /// </summary>
+        public static bool BlockUnboundJoinBeforeWarYear { get; private set; } = false;
 
         /// <summary>
         /// 从当前配置初始化静态缓存。
@@ -1393,6 +1398,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressStageStepCost", "妖兽降阶阶梯值", "妖兽每高一阶和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => BeastSuppressStageStepCost, value => BeastSuppressStageStepCost = value);
 
             RegisterPolicy("join", "加入规则", "玩家加入国家的种族限制与初始参数。", "allowSubspeciesJoin", "允许亚种加入", "1=允许玩家用加入种族指令选择含高级脑的亚种建国；0=只允许人类/兽人/精灵/矮人四个原始种族。无论此开关，无高级脑的亚种始终禁止加入。", "", 0, 1, () => AllowSubspeciesJoin ? 1 : 0, value => AllowSubspeciesJoin = value != 0);
+            RegisterPolicy("join", "加入规则", "玩家加入国家的种族限制与初始参数。", "blockUnboundJoinBeforeWarYear", "宣战前年禁加无主国", "1=未到玩家宣战开始年份时禁止“加入 国家名”绑定现有无主国家；0=允许提前绑定。已绑定玩家不受影响。", "", 0, 1, () => BlockUnboundJoinBeforeWarYear ? 1 : 0, value => BlockUnboundJoinBeforeWarYear = value != 0);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "增加人数每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "放置遗迹每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
             RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "快速成年每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
@@ -1426,7 +1432,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiAutoJoinCount", "新盘AI自动加入数", "新盘开启时自动生成的 AI 国家数量，0=不自动生成；不依赖 AI 决策开关。", "个", 0, 100, () => AiAutoJoinCount, value => AiAutoJoinCount = value);
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiQqChatEnabled", "AI QQ回包", "0=关闭，1=开启；开启后 AI 决策摘要会发送到最近活跃 QQ 群。", "", 0, 1, () => AiQqChatEnabled, value => AiQqChatEnabled = value);
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "playerDecisionStartYear", "玩家宣战开始年份", "世界年份达到该值后，玩家和 AI 国家才允许宣战；其它指令不受该年份限制。", "年", 1, 100000, () => PlayerDecisionStartYear, value => PlayerDecisionStartYear = value);
-            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "autoOpenDiplomacyLaw", "外交自动开", "0=关闭，1=开启；开启后到可宣战年份自动打开外交与随机事件法则。", "", 0, 1, () => AutoOpenDiplomacyLaw, value => AutoOpenDiplomacyLaw = value);
+            RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "autoOpenDiplomacyLaw", "外交自动开", "0=关闭，1=开启；开启后到可宣战年份只自动打开原版外交法则，不打开魔法仪式、叛乱、边境偷取或演化事件。", "", 0, 1, () => AutoOpenDiplomacyLaw, value => AutoOpenDiplomacyLaw = value);
 
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenPunishCost", "天运惩罚成本", "执行天运惩罚消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenPunishCost, value => HeavenPunishCost = value);
             RegisterPolicy("heaven", "天运事件", "天运惩罚与天运赐福的成本和目标数量上限。", "heavenBlessCost", "天运赐福成本", "执行天运赐福消耗的金币。", "金币", 0, 1_000_000_000, () => HeavenBlessCost, value => HeavenBlessCost = value);
