@@ -171,6 +171,8 @@ namespace XianniAutoPan.Services
         private static readonly Dictionary<long, DateTime> MobilizedCityExpiryUtc = new Dictionary<long, DateTime>();
         private static readonly HashSet<long> DefeatedDefendKingdomIds = new HashSet<long>();
         private static readonly Dictionary<long, long> DefeatedDefendUnitKingdomIds = new Dictionary<long, long>();
+        private static readonly object IncomeRandomSync = new object();
+        private static readonly System.Random IncomeRandom = new System.Random();
         private static int _runtimeStatsCacheYear = -1;
         private static float _runtimeStatsBuiltAt = -999f;
         private static bool _runtimeStatsIncludeSnapshots;
@@ -428,7 +430,7 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            if (World.world == null || World.world.city_zone_helper == null)
+            if (Config.worldLoading || World.world == null || World.world.city_zone_helper == null)
             {
                 message = "当前世界尚未完全加载。";
                 return false;
@@ -1098,7 +1100,7 @@ namespace XianniAutoPan.Services
                 }
 
                 EnsureKingdomStateInitialized(kingdom);
-                AddTreasury(kingdom, stats.AnnualIncome);
+                AddTreasury(kingdom, ComputeYearlyIncomePayout(stats.AnnualIncome, stats.NationLevel));
                 UpdateNationalMilitiaForYear(kingdom, year);
                 ClearSnapshotCache(kingdom.getID());
             }
@@ -1114,6 +1116,54 @@ namespace XianniAutoPan.Services
                 + AutoPanConfigHooks.IncomePerLevel * level
                 + auraGain;
             return Math.Max(0, income);
+        }
+
+        private static int ComputeYearlyIncomePayout(int baseIncome, int nationLevel)
+        {
+            if (baseIncome <= 0 || AutoPanConfigHooks.IncomeLevelRandomEnabled <= 0)
+            {
+                return Math.Max(0, baseIncome);
+            }
+
+            int maxBonusPercent = GetIncomeLevelRandomMaxPercent(nationLevel);
+            if (maxBonusPercent <= 0)
+            {
+                return Math.Max(0, baseIncome);
+            }
+
+            int bonusPercent;
+            lock (IncomeRandomSync)
+            {
+                bonusPercent = IncomeRandom.Next(0, maxBonusPercent + 1);
+            }
+
+            long payout = (long)baseIncome + (long)baseIncome * bonusPercent / 100L;
+            return payout > int.MaxValue ? int.MaxValue : (int)Math.Max(0L, payout);
+        }
+
+        private static int GetIncomeLevelRandomMaxPercent(int nationLevel)
+        {
+            if (nationLevel <= 0)
+            {
+                return 0;
+            }
+
+            long levelCap = (long)nationLevel * Math.Max(0, AutoPanConfigHooks.IncomeLevelRandomPercentPerLevel);
+            long maxCap = Math.Max(0, AutoPanConfigHooks.IncomeLevelRandomMaxPercent);
+            return (int)Math.Min(int.MaxValue, Math.Min(levelCap, maxCap));
+        }
+
+        private static string BuildYearlyIncomeText(Kingdom kingdom)
+        {
+            int baseIncome = ComputeYearlyIncome(kingdom);
+            if (AutoPanConfigHooks.IncomeLevelRandomEnabled <= 0)
+            {
+                return baseIncome.ToString();
+            }
+
+            int maxBonusPercent = GetIncomeLevelRandomMaxPercent(GetLevel(kingdom));
+            long maxIncome = (long)baseIncome + (long)baseIncome * maxBonusPercent / 100L;
+            return $"{baseIncome}（实际 {baseIncome}~{Math.Min(int.MaxValue, Math.Max(0L, maxIncome))}）";
         }
 
         /// <summary>
@@ -1307,7 +1357,7 @@ namespace XianniAutoPan.Services
             int gatherSpiritUntil = GetGatherSpiritUntilYear(kingdom);
             int gatherSpiritRemain = Math.Max(0, gatherSpiritUntil - Date.getCurrentYear());
             int militiaRemain = Math.Max(0, GetMilitiaUntilYear(kingdom) - Date.getCurrentYear());
-            return $"{FormatKingdomLabel(kingdom)}：国库 {GetTreasury(kingdom)}，国家等级 {GetLevel(kingdom)}，修真国等级 {snapshot.XiuzhenguoLevel}，城市 {kingdom.countCities()}，人口 {kingdom.getPopulationTotal()}，军队 {CountArmyUnits(kingdom)}，灵气 {GetEffectiveAura(kingdom)}，年收入 {ComputeYearlyIncome(kingdom)}，国家政策 {GetOccupationPolicyText(kingdom)}，聚灵剩余 {gatherSpiritRemain} 年，全民皆兵剩余 {militiaRemain} 年，{BuildDiplomacySummaryText(kingdom)}。";
+            return $"{FormatKingdomLabel(kingdom)}：国库 {GetTreasury(kingdom)}，国家等级 {GetLevel(kingdom)}，修真国等级 {snapshot.XiuzhenguoLevel}，城市 {kingdom.countCities()}，人口 {kingdom.getPopulationTotal()}，军队 {CountArmyUnits(kingdom)}，灵气 {GetEffectiveAura(kingdom)}，年收入 {BuildYearlyIncomeText(kingdom)}，国家政策 {GetOccupationPolicyText(kingdom)}，聚灵剩余 {gatherSpiritRemain} 年，全民皆兵剩余 {militiaRemain} 年，{BuildDiplomacySummaryText(kingdom)}。";
         }
 
         /// <summary>
@@ -1581,7 +1631,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 解析外交或管理员命令中的国家名，优先精确匹配，其次唯一包含匹配。
+        /// 解析外交或管理员命令中的国家目标，支持 @玩家、AI 快捷名、纯 kingdomId、带标签 id、国家名精确或唯一模糊匹配。
         /// </summary>
         public static bool TryResolveKingdom(string rawName, out Kingdom kingdom, out string error)
         {
@@ -1978,43 +2028,46 @@ namespace XianniAutoPan.Services
                 return true;
             }
 
-            if (sourceAlliance == null && targetAlliance == null)
+            using (AutoPanDiplomacyGuardService.AllowAutoPanDiplomacyChange())
             {
-                World.world.alliances.forceAlliance(source, target);
+                if (sourceAlliance == null && targetAlliance == null)
+                {
+                    World.world.alliances.forceAlliance(source, target);
+                    return Alliance.isSame(source.getAlliance(), target.getAlliance());
+                }
+
+                if (sourceAlliance != null && targetAlliance == null)
+                {
+                    return sourceAlliance.join(target, pRecalc: true, pForce: true);
+                }
+
+                if (sourceAlliance == null && targetAlliance != null)
+                {
+                    return targetAlliance.join(source, pRecalc: true, pForce: true);
+                }
+
+                List<Kingdom> migratingMembers = targetAlliance.kingdoms_list
+                    .Where(item => item != null && item.isAlive())
+                    .ToList();
+                foreach (Kingdom member in migratingMembers)
+                {
+                    targetAlliance.leave(member, pRecalc: false);
+                }
+                targetAlliance.recalculate();
+
+                foreach (Kingdom member in migratingMembers)
+                {
+                    sourceAlliance.join(member, pRecalc: false, pForce: true);
+                }
+                sourceAlliance.recalculate();
+
+                if (targetAlliance.kingdoms_hashset.Count == 0)
+                {
+                    World.world.alliances.dissolveAlliance(targetAlliance);
+                }
+
                 return Alliance.isSame(source.getAlliance(), target.getAlliance());
             }
-
-            if (sourceAlliance != null && targetAlliance == null)
-            {
-                return sourceAlliance.join(target, pRecalc: true, pForce: true);
-            }
-
-            if (sourceAlliance == null && targetAlliance != null)
-            {
-                return targetAlliance.join(source, pRecalc: true, pForce: true);
-            }
-
-            List<Kingdom> migratingMembers = targetAlliance.kingdoms_list
-                .Where(item => item != null && item.isAlive())
-                .ToList();
-            foreach (Kingdom member in migratingMembers)
-            {
-                targetAlliance.leave(member, pRecalc: false);
-            }
-            targetAlliance.recalculate();
-
-            foreach (Kingdom member in migratingMembers)
-            {
-                sourceAlliance.join(member, pRecalc: false, pForce: true);
-            }
-            sourceAlliance.recalculate();
-
-            if (targetAlliance.kingdoms_hashset.Count == 0)
-            {
-                World.world.alliances.dissolveAlliance(targetAlliance);
-            }
-
-            return Alliance.isSame(source.getAlliance(), target.getAlliance());
         }
 
         /// <summary>
@@ -2030,7 +2083,10 @@ namespace XianniAutoPan.Services
             }
 
             allianceName = alliance.name;
-            alliance.leave(kingdom);
+            using (AutoPanDiplomacyGuardService.AllowAutoPanDiplomacyChange())
+            {
+                alliance.leave(kingdom);
+            }
             if (alliance.kingdoms_hashset.Count < 2)
             {
                 World.world.alliances.dissolveAlliance(alliance);
@@ -2550,10 +2606,21 @@ namespace XianniAutoPan.Services
             return snapshot.Cultivators
                 .Concat(snapshot.Ancients)
                 .Concat(snapshot.Beasts)
-                .Select(item => ((long)Math.Max(0, item.StageIndex) + 1L) * 1_000_000_000L + Math.Max(0L, item.PowerValue))
+                .GroupBy(item => item.ActorId)
+                .Select(group => group
+                    .Select(GetActorPowerScore)
+                    .DefaultIfEmpty(0L)
+                    .Max())
                 .OrderByDescending(item => item)
                 .Take(count)
                 .Sum();
+        }
+
+        private static long GetActorPowerScore(XianniActorEntry entry)
+        {
+            Actor actor = World.world?.units?.get(entry.ActorId);
+            long score = XianniAutoPanApi.GetPowerScore(actor);
+            return score > 0 ? score : Math.Max(0L, entry.PowerValue);
         }
 
         private static List<WorldTile> CollectKingdomGroundTiles(Kingdom kingdom)
@@ -2598,6 +2665,12 @@ namespace XianniAutoPan.Services
             if (string.IsNullOrWhiteSpace(rawText))
             {
                 return false;
+            }
+
+            string trimmed = rawText.Trim();
+            if (long.TryParse(trimmed, out objectId))
+            {
+                return objectId > 0L;
             }
 
             int left = rawText.LastIndexOf('[');
@@ -2879,7 +2952,7 @@ namespace XianniAutoPan.Services
                     continue;
                 }
 
-                if (!CanFounderStartCivilization(founder) || !founder.buildCityAndStartCivilization())
+                if (!TryBuildCityAndStartCivilization(founder))
                 {
                     World.world.units.destroyObject(founder);
                     continue;
@@ -3019,6 +3092,11 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (!founder.hasSubspecies() || founder.subspecies == null)
+            {
+                return false;
+            }
+
             if (founder.kingdom?.asset != null && founder.kingdom.asset.is_forced_by_trait)
             {
                 return false;
@@ -3060,6 +3138,60 @@ namespace XianniAutoPan.Services
             return true;
         }
 
+        private static bool TryBuildCityAndStartCivilization(Actor founder)
+        {
+            if (!CanFounderStartCivilization(founder))
+            {
+                return false;
+            }
+
+            try
+            {
+                return founder.buildCityAndStartCivilization();
+            }
+            catch (Exception ex)
+            {
+                CleanupFailedCivilizationFounder(founder);
+                AutoPanLogService.Error($"自动盘建国失败，已跳过当前出生点：{ex.GetType().Name} {ex.Message}");
+                return false;
+            }
+        }
+
+        private static void CleanupFailedCivilizationFounder(Actor founder)
+        {
+            if (founder == null)
+            {
+                return;
+            }
+
+            long founderId = founder.getID();
+            City city = founder.city;
+            Kingdom kingdom = founder.kingdom;
+            try
+            {
+                if (city != null && city.isAlive() && city.data != null && city.data.founder_id == founderId)
+                {
+                    World.world?.cities?.removeObject(city);
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"清理建国失败城市时出错：{ex.GetType().Name} {ex.Message}");
+            }
+
+            try
+            {
+                if (kingdom != null && kingdom.isAlive() && kingdom.king == founder && kingdom.countCities() <= 0)
+                {
+                    World.world?.kingdoms?.removeObject(kingdom);
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"清理建国失败国家时出错：{ex.GetType().Name} {ex.Message}");
+            }
+        }
+
         private static List<WorldTile> CollectZoneGroundTiles(TileZone zone)
         {
             List<WorldTile> tiles = new List<WorldTile>();
@@ -3095,6 +3227,12 @@ namespace XianniAutoPan.Services
             Actor actor = World.world?.units?.spawnNewUnit(actorAssetId, tile, pSpawnSound: false, pMiracleSpawn: true, pSpawnHeight: 6f, pSubspecies: null, pGiveOwnerlessItems: true, pAdultAge: true);
             if (actor == null)
             {
+                return null;
+            }
+
+            if (!actor.hasSubspecies() || actor.subspecies == null)
+            {
+                World.world?.units?.destroyObject(actor);
                 return null;
             }
 
@@ -3180,6 +3318,11 @@ namespace XianniAutoPan.Services
         private static bool IsCivilizationActorAsset(ActorAsset actorAsset)
         {
             if (actorAsset == null || string.IsNullOrWhiteSpace(actorAsset.kingdom_id_civilization))
+            {
+                return false;
+            }
+
+            if (!actorAsset.can_have_subspecies)
             {
                 return false;
             }

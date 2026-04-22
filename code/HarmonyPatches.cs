@@ -89,6 +89,88 @@ namespace XianniAutoPan
     }
 
     /// <summary>
+    /// 阻止原版外交法则让玩家绑定国家进入非自动盘战争。
+    /// </summary>
+    [HarmonyPatch(typeof(DiplomacyManager), nameof(DiplomacyManager.startWar))]
+    internal static class AutoPanNativeDiplomacyWarPatch
+    {
+        /// <summary>
+        /// 绑定国家只能通过自动盘指令进入战争；原版外交、叛乱、魔法等路径不应影响绑定国家。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Kingdom pAttacker, Kingdom pDefender, WarTypeAsset pAsset, ref War __result)
+        {
+            if (!AutoPanDiplomacyGuardService.ShouldBlockNativeWar(pAttacker, pDefender, pAsset))
+            {
+                return true;
+            }
+
+            __result = null;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 阻止原版力量或外交逻辑强制绑定国家结盟。
+    /// </summary>
+    [HarmonyPatch(typeof(AllianceManager), nameof(AllianceManager.forceAlliance))]
+    internal static class AutoPanNativeForceAlliancePatch
+    {
+        /// <summary>
+        /// 原版强制结盟如果被阻止，需要直接返回 false，避免内部 newAlliance 被拦截后继续访问空联盟。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Kingdom pKingdom1, Kingdom pKingdom2, ref bool __result)
+        {
+            if (!AutoPanDiplomacyGuardService.ShouldBlockNativeAlliance(pKingdom1, pKingdom2))
+            {
+                return true;
+            }
+
+            __result = false;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 阻止原版外交法则修改包含玩家绑定国家的联盟成员。
+    /// </summary>
+    [HarmonyPatch(typeof(Alliance), nameof(Alliance.join))]
+    internal static class AutoPanNativeAllianceJoinPatch
+    {
+        /// <summary>
+        /// 避免原版联盟剧情把绑定国家拉入或拖出自动盘外的联盟关系。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Alliance __instance, Kingdom pKingdom, ref bool __result)
+        {
+            if (!AutoPanDiplomacyGuardService.ShouldBlockNativeAllianceMembershipChange(__instance, pKingdom))
+            {
+                return true;
+            }
+
+            __result = false;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 阻止原版外交法则让玩家绑定国家离开联盟。
+    /// </summary>
+    [HarmonyPatch(typeof(Alliance), nameof(Alliance.leave))]
+    internal static class AutoPanNativeAllianceLeavePatch
+    {
+        /// <summary>
+        /// 绑定国家退盟只允许走自动盘退盟指令。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Alliance __instance, Kingdom pKingdom)
+        {
+            return !AutoPanDiplomacyGuardService.ShouldBlockNativeAllianceMembershipChange(__instance, pKingdom);
+        }
+    }
+
+    /// <summary>
     /// 让开启全民皆兵的国家按原版愤怒村民法则参与战争。
     /// </summary>
     [HarmonyPatch(typeof(BaseSimObject), nameof(BaseSimObject.canAttackTarget))]

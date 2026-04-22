@@ -291,6 +291,21 @@ namespace XianniAutoPan.Services
         public static int IncomeAuraDivisor { get; private set; } = 200;
 
         /// <summary>
+        /// 是否启用按国运等级计算的年收入随机加成。
+        /// </summary>
+        public static int IncomeLevelRandomEnabled { get; private set; }
+
+        /// <summary>
+        /// 每级国运提供的年收入随机加成百分比上限。
+        /// </summary>
+        public static int IncomeLevelRandomPercentPerLevel { get; private set; } = 2;
+
+        /// <summary>
+        /// 年收入随机加成百分比总上限。
+        /// </summary>
+        public static int IncomeLevelRandomMaxPercent { get; private set; } = 50;
+
+        /// <summary>
         /// 聚灵每城额外灵气。
         /// </summary>
         public static int GatherSpiritAuraBonusPerCity { get; private set; } = 500;
@@ -1416,6 +1431,9 @@ namespace XianniAutoPan.Services
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePopulationDivisor", "人口收入除数", "年收入中的人口项 = 总人口 / 该除数。数值越小，人口越值钱。", "", 1, 1_000_000_000, () => IncomePopulationDivisor, value => IncomePopulationDivisor = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomePerLevel", "等级收入", "每级国家等级每年额外带来的金币。", "金币", 0, 1_000_000_000, () => IncomePerLevel, value => IncomePerLevel = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeAuraDivisor", "灵气收入除数", "年收入中的灵气项 = 总灵气 / 该除数。", "", 1, 1_000_000_000, () => IncomeAuraDivisor, value => IncomeAuraDivisor = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeLevelRandomEnabled", "国运收入随机开关", "0=关闭，1=开启；开启后年度实际收入会在基础公式收入上按国运等级获得随机百分比加成。", "", 0, 1, () => IncomeLevelRandomEnabled, value => IncomeLevelRandomEnabled = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeLevelRandomPercentPerLevel", "国运每级随机加成", "每级国运提供的年收入随机加成百分比上限；实际每年从 0 到该上限随机。", "%", 0, 1000, () => IncomeLevelRandomPercentPerLevel, value => IncomeLevelRandomPercentPerLevel = value);
+            RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "incomeLevelRandomMaxPercent", "国运收入随机总上限", "国运等级随机加成百分比不会超过这个总上限，避免高等级滚雪球过快。", "%", 0, 1000, () => IncomeLevelRandomMaxPercent, value => IncomeLevelRandomMaxPercent = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritAuraBonusPerCity", "聚灵每城灵气", "国策聚灵生效时，每座城市临时视作增加的灵气。", "灵气", 0, 1_000_000_000, () => GatherSpiritAuraBonusPerCity, value => GatherSpiritAuraBonusPerCity = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritDurationYears", "聚灵持续年数", "每次执行国策 聚灵后持续生效的年数。", "年", 1, 1000, () => GatherSpiritDurationYears, value => GatherSpiritDurationYears = value);
             RegisterPolicy("nation", "国家成长", "国家等级、年收入和聚灵持续等核心成长参数。", "gatherSpiritCost", "聚灵成本", "执行国策 聚灵需要消耗的金币。", "金币", 0, 1_000_000_000, () => GatherSpiritCost, value => GatherSpiritCost = value);

@@ -135,7 +135,7 @@ namespace XianniAutoPan.Services
                 Enabled = AutoPanConfigHooks.WorldSpeedScheduleEnabled,
                 RawText = AutoPanConfigHooks.WorldSpeedScheduleText,
                 NormalizedText = AutoPanConfigHooks.WorldSpeedScheduleText,
-                CurrentSpeedText = Config.time_scale_asset == null ? string.Empty : FormatSpeedValue(Config.time_scale_asset.multiplier)
+                CurrentSpeedText = GetCurrentSpeedText()
             };
 
             if (TryParseSchedule(AutoPanConfigHooks.WorldSpeedScheduleText, out List<SpeedScheduleEntry> entries, out _))
@@ -165,6 +165,14 @@ namespace XianniAutoPan.Services
             }
 
             return $"当前倍速计划（开关：{(AutoPanConfigHooks.WorldSpeedScheduleEnabled ? "开启" : "关闭")}）：\n" + AutoPanConfigHooks.WorldSpeedScheduleText;
+        }
+
+        /// <summary>
+        /// 获取当前游戏倍速的展示文本。
+        /// </summary>
+        public static string GetCurrentSpeedText()
+        {
+            return Config.time_scale_asset == null ? "未知" : FormatSpeedValue(Config.time_scale_asset.multiplier);
         }
 
         /// <summary>

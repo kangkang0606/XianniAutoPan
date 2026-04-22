@@ -394,8 +394,9 @@ namespace XianniAutoPan.Services
                     }
                 }
 
+                string payoutKingdomLabel = winnerKingdom == null ? "获胜国家" : AutoPanKingdomService.FormatKingdomLabel(winnerKingdom);
                 finalReason = payable > 0
-                    ? $"{reason} 本场赌金 {duel.BetAmount}，实际兑现 {payable} 金币给胜方国家。"
+                    ? $"{reason} 本场赌金 {duel.BetAmount}，实际兑现 {payable} 金币给 {payoutKingdomLabel}。"
                     : $"{reason} 本场赌金 {duel.BetAmount}，败方国家国库不足，未能兑现赌金。";
             }
 

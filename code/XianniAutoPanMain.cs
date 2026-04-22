@@ -39,6 +39,10 @@ namespace XianniAutoPan
             _harmony.PatchAll(typeof(AutoPanKingdomRemovePatch));
             _harmony.PatchAll(typeof(AutoPanMapFinishingUpLoadingPatch));
             _harmony.PatchAll(typeof(AutoPanWarEndPatch));
+            _harmony.PatchAll(typeof(AutoPanNativeDiplomacyWarPatch));
+            _harmony.PatchAll(typeof(AutoPanNativeForceAlliancePatch));
+            _harmony.PatchAll(typeof(AutoPanNativeAllianceJoinPatch));
+            _harmony.PatchAll(typeof(AutoPanNativeAllianceLeavePatch));
             _harmony.PatchAll(typeof(AutoPanCityCapturePatch));
             _harmony.PatchAll(typeof(AutoPanDefeatedDefendBuildCityPatch));
             _harmony.PatchAll(typeof(AutoPanDefeatedDefendStartCivilizationPatch));
@@ -64,6 +68,7 @@ namespace XianniAutoPan
             AutoPanDuelService.Update();
             AutoPanTournamentService.Update();
             AutoPanKingdomSpeechService.Update();
+            AutoPanRoundService.Update();
 
             if (World.world == null || World.world.map_stats == null)
             {
@@ -100,7 +105,7 @@ namespace XianniAutoPan
         private void OnWorldLoaded()
         {
             AutoPanStateRepository.LoadFromWorld();
-            ResetFreshWorldYearIfNeeded();
+            bool isFreshAutoPanWorld = ResetFreshWorldYearIfNeeded();
             AutoPanStateRepository.CleanupDeadBindings();
             ClearLegacyXiuzhenguoOffsets();
             AutoPanKingdomService.ClearDefeatedDefendSettlementGuards();
@@ -108,23 +113,29 @@ namespace XianniAutoPan
             AutoPanDuelService.ClearAll();
             AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.ClearAll();
-            AutoPanRoundService.OnWorldLoaded();
+            AutoPanRoundService.OnWorldLoaded(isFreshAutoPanWorld);
             AutoPanWorldSpeedService.ApplyScheduledSpeedForYear(Date.getCurrentYear(), force: true);
             _lastObservedYear = Date.getCurrentYear();
             AutoPanLogService.Info($"世界已加载，当前年份 {_lastObservedYear}，自动盘状态已恢复。");
         }
 
-        private void ResetFreshWorldYearIfNeeded()
+        private bool ResetFreshWorldYearIfNeeded()
         {
             if (World.world?.map_stats == null)
             {
-                return;
+                return false;
+            }
+
+            if (AutoPanStateRepository.IsWorldInitialized())
+            {
+                return false;
             }
 
             World.world.map_stats.world_time = 0.0;
             World.world.map_stats.history_current_year = -1;
             AutoPanLogService.Info("已将年份重置为 1 年。");
             AutoPanStateRepository.MarkWorldInitialized();
+            return true;
         }
 
         private static void ClearLegacyXiuzhenguoOffsets()

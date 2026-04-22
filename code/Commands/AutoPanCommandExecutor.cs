@@ -737,7 +737,11 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            War war = World.world.diplomacy.startWar(kingdom, target, WarTypeLibrary.normal);
+            War war;
+            using (AutoPanDiplomacyGuardService.AllowAutoPanDiplomacyChange())
+            {
+                war = World.world.diplomacy.startWar(kingdom, target, WarTypeLibrary.normal);
+            }
             if (war == null)
             {
                 AutoPanKingdomService.AddTreasury(kingdom, cost);
@@ -942,36 +946,48 @@ namespace XianniAutoPan.Commands
 
         private static AutoPanCommandResult ExecuteCultivatorSuppress(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            result.Success = AutoPanInteractionService.TrySuppressEnemyCultivators(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out string message);
+            string message;
+            result.Success = command.ObjectIdArg > 0
+                ? AutoPanInteractionService.TrySuppressEnemyCultivatorByActorId(kingdom, command.ObjectIdArg, command.SecondaryNumericValue, out message)
+                : AutoPanInteractionService.TrySuppressEnemyCultivators(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out message);
             result.Text = message;
             if (result.Success)
             {
-                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动修士压境：{command.TargetName}");
-                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士压境：{kingdom.name} -> {command.TargetName} / 人数{command.NumericValue} / 等级{command.SecondaryNumericValue}");
+                string targetText = command.ObjectIdArg > 0 ? $"单位 {command.ObjectIdArg}" : command.TargetName;
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动修士压境：{targetText}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士压境：{kingdom.name} -> {targetText} / 人数{Math.Max(1, command.NumericValue)} / 等级{Math.Max(1, command.SecondaryNumericValue)}");
             }
             return result;
         }
 
         private static AutoPanCommandResult ExecuteAncientSuppress(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            result.Success = AutoPanInteractionService.TrySuppressEnemyAncients(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out string message);
+            string message;
+            result.Success = command.ObjectIdArg > 0
+                ? AutoPanInteractionService.TrySuppressEnemyAncientByActorId(kingdom, command.ObjectIdArg, command.SecondaryNumericValue, out message)
+                : AutoPanInteractionService.TrySuppressEnemyAncients(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out message);
             result.Text = message;
             if (result.Success)
             {
-                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动古神压境：{command.TargetName}");
-                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神压境：{kingdom.name} -> {command.TargetName} / 人数{command.NumericValue} / 层数{command.SecondaryNumericValue}");
+                string targetText = command.ObjectIdArg > 0 ? $"单位 {command.ObjectIdArg}" : command.TargetName;
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动古神压境：{targetText}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神压境：{kingdom.name} -> {targetText} / 人数{Math.Max(1, command.NumericValue)} / 层数{Math.Max(1, command.SecondaryNumericValue)}");
             }
             return result;
         }
 
         private static AutoPanCommandResult ExecuteBeastSuppress(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            result.Success = AutoPanInteractionService.TrySuppressEnemyBeasts(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out string message);
+            string message;
+            result.Success = command.ObjectIdArg > 0
+                ? AutoPanInteractionService.TrySuppressEnemyBeastByActorId(kingdom, command.ObjectIdArg, command.SecondaryNumericValue, out message)
+                : AutoPanInteractionService.TrySuppressEnemyBeasts(kingdom, command.TargetName, command.NumericValue, command.SecondaryNumericValue, out message);
             result.Text = message;
             if (result.Success)
             {
-                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动妖兽压境：{command.TargetName}");
-                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 妖兽压境：{kingdom.name} -> {command.TargetName} / 人数{command.NumericValue} / 层数{command.SecondaryNumericValue}");
+                string targetText = command.ObjectIdArg > 0 ? $"单位 {command.ObjectIdArg}" : command.TargetName;
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动妖兽压境：{targetText}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 妖兽压境：{kingdom.name} -> {targetText} / 人数{Math.Max(1, command.NumericValue)} / 层数{Math.Max(1, command.SecondaryNumericValue)}");
             }
             return result;
         }
@@ -1513,8 +1529,9 @@ namespace XianniAutoPan.Commands
                 "玩家指令总览：",
                 "加入人类 / 加入兽人 / 加入精灵 / 加入矮人(其它文明种族)",
                 "加入 国家名（绑定现有无主国）",
+                "目标国家可写国家名、@对方、[kingdomId] 或纯 kingdomId",
                 "我的国家 / 国家信息",
-                "当前局势 / 查看所有国家信息 / 玩家排名",
+                "当前局势 / 所有国家 / 玩家排名",
                 "国家改名 新名字",
                 "城市列表 / 城市信息",
                 "升级国运 / 升级修真国",
@@ -1534,9 +1551,9 @@ namespace XianniAutoPan.Commands
                 "斩首 目标国家 [kingdomId]",
                 "诅咒 目标国家 [kingdomId] 3",
                 "国家祝福 全员 或 国家祝福 5",
-                "修士降境 目标国家 [kingdomId] 3 1",
-                "古神降星 目标国家 [kingdomId] 3 1",
-                "妖兽降阶 目标国家 [kingdomId] 3 1",
+                "修士降境 单位id 层级",
+                "古神降星 单位id 层级",
+                "妖兽降阶 单位id 层级",
                 "修士榜 / 古神榜 / 妖兽榜",
                 "修士 单位id 闭关 / 修士 单位id 升境",
                 "古神 单位id 炼体 / 古神 单位id 升星",
@@ -1549,9 +1566,7 @@ namespace XianniAutoPan.Commands
                 "天运惩罚(赐福) 目标国家（可@）",
                 "扰动国家 目标国家（可@）",
                 "陨石 目标国家（可@） 数量",
-                "开启比武大会",
-                "#5x / #查看倍速计划 / #设置倍速计划 1年5倍速，10年20倍速 / #开启倍速计划（管理员）",
-                "#结盘（管理员）"
+                "开启比武大会"
             });
         }
     }

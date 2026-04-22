@@ -76,9 +76,16 @@ namespace XianniAutoPan.Services
         private const string EvolutionEventsLawId = "world_law_evolution_events";
         private const string DiplomacyLawId = "world_law_diplomacy";
         private const string DiplomacyGroupId = "diplomacy";
+        private const int AiSpawnStartDelayFrames = 30;
         private static bool _isEndingRound;
         private static bool _isGeneratingNewRound;
         private static bool _pendingNewRoundNotice;
+        private static bool _pendingAiSpawn;
+        private static int _pendingAiSpawnTargetCount;
+        private static int _pendingAiSpawnSuccessCount;
+        private static int _pendingAiSpawnAttempts;
+        private static int _pendingAiSpawnMaxAttempts;
+        private static int _pendingAiSpawnDelayFrames;
         private static bool _diplomacyAutoOpenedForWorld;
         private static int _lastAutoRoundYear = -1;
 
@@ -90,6 +97,7 @@ namespace XianniAutoPan.Services
             _isEndingRound = false;
             _isGeneratingNewRound = false;
             _pendingNewRoundNotice = false;
+            ResetPendingAiSpawn();
             _diplomacyAutoOpenedForWorld = false;
             _lastAutoRoundYear = -1;
         }
@@ -165,55 +173,141 @@ namespace XianniAutoPan.Services
         /// <summary>
         /// 世界加载完成后应用新局法则，并按需播报新局开启。
         /// </summary>
-        public static void OnWorldLoaded()
+        public static void OnWorldLoaded(bool isFreshAutoPanWorld)
         {
             ApplyRoundWorldRules();
             EnsureDiplomacyLawsForYear(Date.getCurrentYear());
             _isGeneratingNewRound = false;
-            if (!_pendingNewRoundNotice)
+            bool shouldSendNewRoundNotice = _pendingNewRoundNotice;
+            bool shouldSpawnAi = isFreshAutoPanWorld || _pendingNewRoundNotice;
+            _pendingNewRoundNotice = false;
+            if (shouldSpawnAi)
+            {
+                ScheduleAiKingdomsIfConfigured();
+            }
+            else
+            {
+                ResetPendingAiSpawn();
+            }
+
+            if (!shouldSendNewRoundNotice)
             {
                 return;
             }
 
-            _pendingNewRoundNotice = false;
-            AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
-            SpawnAiKingdomsIfConfigured();
             const string text = "新一局游戏已经开启。";
             XianniAutoPanApi.Broadcast(text);
             AutoPanNotificationService.BroadcastToKnownGroups(text);
         }
 
         /// <summary>
-        /// 根据配置在新盘开启时自动生成 AI 国家。
+        /// 每帧处理新盘 AI 自动建国队列，避开世界加载回调和城市枚举中的重入修改。
         /// </summary>
-        private static void SpawnAiKingdomsIfConfigured()
+        public static void Update()
         {
+            ProcessPendingAiSpawn();
+        }
+
+        /// <summary>
+        /// 根据配置把新盘 AI 自动建国加入延迟队列。
+        /// </summary>
+        private static void ScheduleAiKingdomsIfConfigured()
+        {
+            ResetPendingAiSpawn();
+
+            AutoPanConfigHooks.RollRandomPolicyValuesForOperation();
             int count = AutoPanConfigHooks.AiAutoJoinCount;
             if (count <= 0)
             {
                 return;
             }
 
-            int spawned = 0;
-            for (int i = 0; i < count; i++)
+            _pendingAiSpawn = true;
+            _pendingAiSpawnTargetCount = count;
+            _pendingAiSpawnMaxAttempts = Math.Max(count, count * 4);
+            _pendingAiSpawnDelayFrames = AiSpawnStartDelayFrames;
+            AutoPanLogService.Info($"新盘 AI 自动建国已排队：目标 {count} 个，延迟 {AiSpawnStartDelayFrames} 帧后开始。");
+        }
+
+        private static void ResetPendingAiSpawn()
+        {
+            _pendingAiSpawn = false;
+            _pendingAiSpawnTargetCount = 0;
+            _pendingAiSpawnSuccessCount = 0;
+            _pendingAiSpawnAttempts = 0;
+            _pendingAiSpawnMaxAttempts = 0;
+            _pendingAiSpawnDelayFrames = 0;
+        }
+
+        private static void ProcessPendingAiSpawn()
+        {
+            if (!_pendingAiSpawn)
             {
-                if (AutoPanKingdomService.TrySpawnUnboundKingdom("随机", out string message))
-                {
-                    spawned++;
-                    AutoPanLogService.Info($"新盘自动生成 AI 国家 ({i + 1}/{count})：{message}");
-                }
-                else
-                {
-                    AutoPanLogService.Error($"新盘自动生成 AI 国家失败 ({i + 1}/{count})：{message}");
-                }
+                return;
             }
+
+            if (!IsWorldReadyForAiSpawn())
+            {
+                return;
+            }
+
+            if (_pendingAiSpawnDelayFrames > 0)
+            {
+                _pendingAiSpawnDelayFrames--;
+                return;
+            }
+
+            if (_pendingAiSpawnSuccessCount >= _pendingAiSpawnTargetCount || _pendingAiSpawnAttempts >= _pendingAiSpawnMaxAttempts)
+            {
+                FinishPendingAiSpawn();
+                return;
+            }
+
+            _pendingAiSpawnAttempts++;
+            if (AutoPanKingdomService.TrySpawnUnboundKingdom("随机", out string message))
+            {
+                _pendingAiSpawnSuccessCount++;
+                AutoPanLogService.Info($"新盘自动生成 AI 国家 ({_pendingAiSpawnSuccessCount}/{_pendingAiSpawnTargetCount})：{message}");
+            }
+            else
+            {
+                AutoPanLogService.Error($"新盘自动生成 AI 国家失败 ({_pendingAiSpawnAttempts}/{_pendingAiSpawnMaxAttempts})：{message}");
+            }
+
+            if (_pendingAiSpawnSuccessCount >= _pendingAiSpawnTargetCount || _pendingAiSpawnAttempts >= _pendingAiSpawnMaxAttempts)
+            {
+                FinishPendingAiSpawn();
+            }
+        }
+
+        private static bool IsWorldReadyForAiSpawn()
+        {
+            return !Config.worldLoading
+                && MapBox.instance != null
+                && World.world?.map_stats != null
+                && World.world.units != null
+                && World.world.cities != null
+                && World.world.kingdoms != null
+                && World.world.city_zone_helper?.city_place_finder != null;
+        }
+
+        private static void FinishPendingAiSpawn()
+        {
+            int requested = _pendingAiSpawnTargetCount;
+            int spawned = _pendingAiSpawnSuccessCount;
+            _pendingAiSpawn = false;
 
             if (spawned > 0)
             {
-                string notice = $"新盘已自动生成 {spawned} 个 AI 国家。";
+                string notice = spawned >= requested
+                    ? $"新盘已自动生成 {spawned} 个 AI 国家。"
+                    : $"新盘计划生成 {requested} 个 AI 国家，实际成功 {spawned} 个。";
                 XianniAutoPanApi.Broadcast(notice);
                 AutoPanNotificationService.BroadcastToKnownGroups(notice);
+                return;
             }
+
+            AutoPanLogService.Error($"新盘配置需要自动生成 {requested} 个 AI 国家，但所有尝试均失败。");
         }
 
         private static string BuildRoundResult(string reason, string operatorName, bool skipScore = false)
@@ -231,7 +325,7 @@ namespace XianniAutoPan.Services
             {
                 RoundCandidate candidate = topThree[index];
                 int points = GetPlacePoints(index);
-                string rankStats = $"领土 {candidate.TerritoryCount}，战力榜前三 {candidate.TopPowerScore}，人口 {candidate.Population}，军队 {candidate.ArmyCount}，综合分 {candidate.Score:0.###}";
+                string rankStats = $"领土 {candidate.TerritoryCount}，战力榜前三 {candidate.TopPowerScore}，人口 {candidate.Population}，军队 {candidate.ArmyCount}，国运 {candidate.NationLevel}，综合分 {candidate.Score:0.###}";
                 if (skipScore)
                 {
                     awardLines.Add($"{index + 1}. {BuildCandidateOwnerText(candidate)} 的 {candidate.KingdomLabel}：{rankStats}，本局不计积分。");
@@ -257,9 +351,9 @@ namespace XianniAutoPan.Services
             List<string> lines = new List<string>
             {
                 $"本局结盘：{reason}。",
-                $"胜者：{BuildCandidateOwnerText(winner)} 的 {winner.KingdomLabel}，领土 {winner.TerritoryCount}，战力榜前三 {winner.TopPowerScore}，人口 {winner.Population}，军队 {winner.ArmyCount}，综合分 {winner.Score:0.###}。",
+                $"胜者：{BuildCandidateOwnerText(winner)} 的 {winner.KingdomLabel}，领土 {winner.TerritoryCount}，战力榜前三 {winner.TopPowerScore}，人口 {winner.Population}，军队 {winner.ArmyCount}，国运 {winner.NationLevel}，综合分 {winner.Score:0.###}。",
                 winner.IsAi ? "本轮结果：AI 胜利。" : $"本轮结果：玩家 {winner.PlayerName} 胜利。",
-                "裁定规则：国家领土 40%、战力榜前三 30%、人口 20%、军队数量 10% 综合评分。",
+                "裁定规则：领土 35%、战力榜前三 25%、人口 10%、军队 10%、国运 20% 综合评分。",
                 "积分发放：",
                 string.Join("\n", awardLines)
             };
@@ -290,6 +384,7 @@ namespace XianniAutoPan.Services
                 .ThenByDescending(item => item.TopPowerScore)
                 .ThenByDescending(item => item.Population)
                 .ThenByDescending(item => item.ArmyCount)
+                .ThenByDescending(item => item.NationLevel)
                 .ThenBy(item => item.KingdomId)
                 .ToList();
         }
@@ -346,13 +441,15 @@ namespace XianniAutoPan.Services
             long maxPower = Math.Max(1L, candidates.Max(item => item.TopPowerScore));
             int maxPopulation = Math.Max(1, candidates.Max(item => item.Population));
             int maxArmy = Math.Max(1, candidates.Max(item => item.ArmyCount));
+            int maxNationLevel = Math.Max(1, candidates.Max(item => item.NationLevel));
             foreach (RoundCandidate candidate in candidates)
             {
                 candidate.Score =
-                    BuildWeightedScore(candidate.TerritoryCount, maxTerritory, 40d) +
-                    BuildWeightedScore(candidate.TopPowerScore, maxPower, 30d) +
-                    BuildWeightedScore(candidate.Population, maxPopulation, 20d) +
-                    BuildWeightedScore(candidate.ArmyCount, maxArmy, 10d);
+                    BuildWeightedScore(candidate.TerritoryCount, maxTerritory, 35d) +
+                    BuildWeightedScore(candidate.TopPowerScore, maxPower, 25d) +
+                    BuildWeightedScore(candidate.Population, maxPopulation, 10d) +
+                    BuildWeightedScore(candidate.ArmyCount, maxArmy, 10d) +
+                    BuildWeightedScore(candidate.NationLevel, maxNationLevel, 20d);
             }
         }
 

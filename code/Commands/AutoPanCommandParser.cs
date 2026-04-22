@@ -13,13 +13,13 @@ namespace XianniAutoPan.Commands
         private static readonly Regex JoinExistingKingdomRegex = new Regex(@"^加入\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex ScoreRankRegex = new Regex(@"^(玩家排名|积分排名|胜场排名)$", RegexOptions.Compiled);
         private static readonly Regex RenameKingdomRegex = new Regex(@"^国家改名\s+(.+)$", RegexOptions.Compiled);
-        private static readonly Regex DeclareWarRegex = new Regex(@"^宣战\s+(.+)$", RegexOptions.Compiled);
-        private static readonly Regex SeekPeaceRegex = new Regex(@"^求和\s+(.+)$", RegexOptions.Compiled);
-        private static readonly Regex AllianceRegex = new Regex(@"^(结盟|联盟)\s+(.+)$", RegexOptions.Compiled);
+        private static readonly Regex DeclareWarRegex = new Regex(@"^宣战\s*(.+)$", RegexOptions.Compiled);
+        private static readonly Regex SeekPeaceRegex = new Regex(@"^求和\s*(.+)$", RegexOptions.Compiled);
+        private static readonly Regex AllianceRegex = new Regex(@"^(结盟|联盟)\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex AcceptAllianceRegex = new Regex(@"^同意结盟(?:\s+(.+))?$", RegexOptions.Compiled);
         private static readonly Regex RejectAllianceRegex = new Regex(@"^拒绝结盟(?:\s+(.+))?$", RegexOptions.Compiled);
         private static readonly Regex LeaveAllianceRegex = new Regex(@"^(退盟|解盟|退出联盟)$", RegexOptions.Compiled);
-        private static readonly Regex ChallengeDuelRegex = new Regex(@"^约斗\s+(.+?)(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
+        private static readonly Regex ChallengeDuelRegex = new Regex(@"^约斗\s*(.+?)(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
         private static readonly Regex AcceptDuelRegex = new Regex(@"^同意约斗(?:\s+(.+))?$", RegexOptions.Compiled);
         private static readonly Regex RejectDuelRegex = new Regex(@"^拒绝约斗(?:\s+(.+))?$", RegexOptions.Compiled);
         private static readonly Regex BloodlineCreateRegex = new Regex(@"^血脉创立(?:\s+(\d+))?$", RegexOptions.Compiled);
@@ -31,10 +31,13 @@ namespace XianniAutoPan.Commands
         private static readonly Regex CultivatorSuppressRegex = new Regex(@"^修士降境\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex AncientSuppressRegex = new Regex(@"^古神降星\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex BeastSuppressRegex = new Regex(@"^妖兽降阶\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex CultivatorSuppressActorRegex = new Regex(@"^修士降境\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex AncientSuppressActorRegex = new Regex(@"^古神降星\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex BeastSuppressActorRegex = new Regex(@"^妖兽降阶\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
         private static readonly Regex AddPopulationRegex = new Regex(@"^(增加人数|增加人口)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex KingdomPolicyRegex = new Regex(@"^(政策|国家政策)\s+(开放占领|坚守城池)$", RegexOptions.Compiled);
         private static readonly Regex PlaceRuinsRegex = new Regex(@"^放置遗迹(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
-        private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s+(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
+        private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s*(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex FastAdultRegex = new Regex(@"^快速成年\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队(?:\s+(.+?)\s+(全部|\d+)|\s+(全部|\d+))?$", RegexOptions.Compiled);
@@ -319,6 +322,15 @@ namespace XianniAutoPan.Commands
                 return command;
             }
 
+            match = CultivatorSuppressActorRegex.Match(text);
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long suppressActorId))
+            {
+                command.CommandType = AutoPanCommandType.CultivatorSuppress;
+                command.ObjectIdArg = suppressActorId;
+                command.SecondaryNumericValue = string.IsNullOrWhiteSpace(match.Groups[2].Value) ? 1 : int.Parse(match.Groups[2].Value);
+                return command;
+            }
+
             match = AncientSuppressRegex.Match(text);
             if (match.Success && int.TryParse(match.Groups[2].Value, out int ancientSuppressCount) && int.TryParse(match.Groups[3].Value, out int ancientSuppressLevels))
             {
@@ -329,6 +341,15 @@ namespace XianniAutoPan.Commands
                 return command;
             }
 
+            match = AncientSuppressActorRegex.Match(text);
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long ancientSuppressActorId))
+            {
+                command.CommandType = AutoPanCommandType.AncientSuppress;
+                command.ObjectIdArg = ancientSuppressActorId;
+                command.SecondaryNumericValue = string.IsNullOrWhiteSpace(match.Groups[2].Value) ? 1 : int.Parse(match.Groups[2].Value);
+                return command;
+            }
+
             match = BeastSuppressRegex.Match(text);
             if (match.Success && int.TryParse(match.Groups[2].Value, out int beastSuppressCount) && int.TryParse(match.Groups[3].Value, out int beastSuppressLevels))
             {
@@ -336,6 +357,15 @@ namespace XianniAutoPan.Commands
                 command.TargetName = match.Groups[1].Value.Trim();
                 command.NumericValue = beastSuppressCount;
                 command.SecondaryNumericValue = beastSuppressLevels;
+                return command;
+            }
+
+            match = BeastSuppressActorRegex.Match(text);
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long beastSuppressActorId))
+            {
+                command.CommandType = AutoPanCommandType.BeastSuppress;
+                command.ObjectIdArg = beastSuppressActorId;
+                command.SecondaryNumericValue = string.IsNullOrWhiteSpace(match.Groups[2].Value) ? 1 : int.Parse(match.Groups[2].Value);
                 return command;
             }
 

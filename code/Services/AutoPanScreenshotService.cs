@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using XianniAutoPan.Frontend;
 using XianniAutoPan.Model;
+using xn.api;
 
 namespace XianniAutoPan.Services
 {
@@ -93,7 +94,8 @@ namespace XianniAutoPan.Services
                 }
 
                 FrontendInboundMessage replySource = CloneReplySource(message);
-                _ = Task.Run(() => SendScreenshotWhenReadyAsync(replySource, filePath));
+                string titleText = $"当前{Date.getCurrentYear()}年倍速{AutoPanWorldSpeedService.GetCurrentSpeedText()}倍：";
+                _ = Task.Run(() => SendScreenshotWhenReadyAsync(replySource, filePath, titleText));
                 replyText = "正在截取当前局势，稍后发送图片。";
                 return true;
             }
@@ -119,7 +121,7 @@ namespace XianniAutoPan.Services
             };
         }
 
-        private static async Task SendScreenshotWhenReadyAsync(FrontendInboundMessage sourceMessage, string filePath)
+        private static async Task SendScreenshotWhenReadyAsync(FrontendInboundMessage sourceMessage, string filePath, string titleText)
         {
             bool ready = false;
             for (int attempt = 0; attempt < ScreenshotReadyAttempts; attempt++)
@@ -134,7 +136,7 @@ namespace XianniAutoPan.Services
             }
 
             string message = ready
-                ? $"当前局势：\n[CQ:image,file={new Uri(Path.GetFullPath(filePath)).AbsoluteUri}]"
+                ? $"{titleText}\n[CQ:image,file={new Uri(Path.GetFullPath(filePath)).AbsoluteUri}]"
                 : "当前局势截图失败：截图文件未生成。";
             AutoPanLocalWebServer.Instance.SendQqGroupRawMessage(sourceMessage, message);
         }
