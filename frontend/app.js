@@ -934,7 +934,7 @@ function renderAiControls(snapshot) {
 
   // 从 policy snapshot 读取快捷开关的当前值
   const policy = pick(snapshot, "policy", "Policy");
-  const policyItems = policy ? (pick(policy, "items", "Items") || []) : [];
+  const policyItems = policy ? (pick(policy, "modules", "Modules") || []) : [];
   const findPolicyValue = (key) => {
     for (const module of policyItems) {
       const items = pick(module, "items", "Items") || [];
