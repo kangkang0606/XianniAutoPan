@@ -35,6 +35,7 @@ const saveDirtyConfigButtonEl = document.getElementById("saveDirtyConfigButton")
 const discardDirtyConfigButtonEl = document.getElementById("discardDirtyConfigButton");
 const configDirtyStatusEl = document.getElementById("configDirtyStatus");
 const speedScheduleTextEl = document.getElementById("speedScheduleText");
+const speedScheduleEnabledToggleEl = document.getElementById("speedScheduleEnabledToggle");
 const speedCurrentTextEl = document.getElementById("speedCurrentText");
 const speedSchedulePreviewEl = document.getElementById("speedSchedulePreview");
 const speedScheduleSaveButtonEl = document.getElementById("speedScheduleSaveButton");
@@ -62,6 +63,17 @@ function pick(obj, camelKey, pascalKey) {
     return obj[camelKey];
   }
   return obj[pascalKey];
+}
+
+function parseConfigBool(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const text = String(value || "").trim().toLowerCase();
+  return text === "1" || text === "true" || text === "yes" || text === "on" || text === "开启";
 }
 
 function switchPage(pageName, force = false) {
@@ -885,6 +897,7 @@ function renderSpeedSchedule(speedSchedule) {
   const currentSpeed = pick(data, "currentSpeedText", "CurrentSpeedText") || "";
   const normalizedText = pick(data, "normalizedText", "NormalizedText") || rawText;
   const entries = pick(data, "entries", "Entries") || [];
+  const enabled = !!pick(data, "enabled", "Enabled");
   const value = speedDirtyKeys.has("worldSpeedSchedule")
     ? speedDrafts.worldSpeedSchedule
     : rawText;
@@ -892,14 +905,18 @@ function renderSpeedSchedule(speedSchedule) {
   if (speedScheduleTextEl) {
     speedScheduleTextEl.value = String(value || "");
   }
+  if (speedScheduleEnabledToggleEl) {
+    speedScheduleEnabledToggleEl.checked = enabled;
+  }
   if (speedCurrentTextEl) {
-    speedCurrentTextEl.textContent = currentSpeed ? `${currentSpeed}x` : "未读取";
+    const prefix = enabled ? "已开启" : "已关闭";
+    speedCurrentTextEl.textContent = currentSpeed ? `${prefix} / ${currentSpeed}x` : prefix;
   }
   if (speedSchedulePreviewEl) {
     if (entries.length > 0) {
       speedSchedulePreviewEl.textContent = `已配置 ${entries.length} 条：${String(normalizedText || "").replace(/\n/g, " / ")}`;
     } else {
-      speedSchedulePreviewEl.textContent = "未配置倍速计划；保存空内容会关闭自动倍速。";
+      speedSchedulePreviewEl.textContent = "未配置倍速计划；保存空内容会清空计划。";
     }
   }
 }
@@ -1211,6 +1228,25 @@ async function saveSpeedSchedule(value, refreshAfter = false) {
   return true;
 }
 
+async function saveSpeedScheduleEnabled(enabled, refreshAfter = false) {
+  const response = await fetch(`/api/speed-schedule-enabled/set?value=${enabled ? "1" : "0"}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`倍速计划开关保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.ok) {
+    appendReply(payload.text || "倍速计划开关保存失败。", false);
+    return false;
+  }
+
+  if (refreshAfter) {
+    appendReply(payload.text || "倍速计划开关已保存。", true);
+    await refreshDashboard();
+  }
+  return true;
+}
+
 async function saveDirtyConfig() {
   const policyEntries = Array.from(policyDirtyKeys).map((key) => [key, policyDrafts[key]]);
   const qqEntries = Array.from(qqDirtyKeys).map((key) => [key, qqDrafts[key]]);
@@ -1479,6 +1515,17 @@ if (speedScheduleSaveButtonEl) {
   });
 }
 
+if (speedScheduleEnabledToggleEl) {
+  speedScheduleEnabledToggleEl.addEventListener("change", () => {
+    const enabled = speedScheduleEnabledToggleEl.checked;
+    saveSpeedScheduleEnabled(enabled, true)
+      .catch((error) => {
+        appendReply(error.message, false);
+        speedScheduleEnabledToggleEl.checked = !enabled;
+      });
+  });
+}
+
 if (blockUnboundJoinToggleEl) {
   blockUnboundJoinToggleEl.addEventListener("change", () => {
     const val = blockUnboundJoinToggleEl.checked ? "1" : "0";
@@ -1551,11 +1598,12 @@ async function exportConfig() {
     const speedSchedule = pick(snapshot, "speedSchedule", "SpeedSchedule") || {};
 
     const exportData = {
-      _exportVersion: 3,
+      _exportVersion: 4,
       _exportTime: new Date().toISOString(),
       policy: policyData,
       qqBridge: qqData,
       speedSchedule: {
+        enabled: !!pick(speedSchedule, "enabled", "Enabled"),
         worldSpeedSchedule: pick(speedSchedule, "rawText", "RawText") || ""
       }
     };
@@ -1634,6 +1682,10 @@ async function importConfig() {
 
     if (data.speedSchedule && typeof data.speedSchedule === "object") {
       try {
+        if (Object.prototype.hasOwnProperty.call(data.speedSchedule, "enabled")) {
+          await saveSpeedScheduleEnabled(parseConfigBool(data.speedSchedule.enabled), false);
+          count++;
+        }
         await saveSpeedSchedule(data.speedSchedule.worldSpeedSchedule || "", false);
         count++;
       } catch (error) {

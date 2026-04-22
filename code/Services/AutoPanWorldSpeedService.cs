@@ -97,7 +97,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static bool ApplyScheduledSpeedForYear(int currentYear, bool force = false)
         {
-            if (currentYear <= 0 || !TryParseSchedule(AutoPanConfigHooks.WorldSpeedScheduleText, out List<SpeedScheduleEntry> entries, out _))
+            if (!AutoPanConfigHooks.WorldSpeedScheduleEnabled || currentYear <= 0 || !TryParseSchedule(AutoPanConfigHooks.WorldSpeedScheduleText, out List<SpeedScheduleEntry> entries, out _))
             {
                 return false;
             }
@@ -132,6 +132,7 @@ namespace XianniAutoPan.Services
         {
             AutoPanSpeedScheduleSnapshot snapshot = new AutoPanSpeedScheduleSnapshot
             {
+                Enabled = AutoPanConfigHooks.WorldSpeedScheduleEnabled,
                 RawText = AutoPanConfigHooks.WorldSpeedScheduleText,
                 NormalizedText = AutoPanConfigHooks.WorldSpeedScheduleText,
                 CurrentSpeedText = Config.time_scale_asset == null ? string.Empty : FormatSpeedValue(Config.time_scale_asset.multiplier)
@@ -160,10 +161,10 @@ namespace XianniAutoPan.Services
         {
             if (string.IsNullOrWhiteSpace(AutoPanConfigHooks.WorldSpeedScheduleText))
             {
-                return "当前未配置倍速计划。示例：#设置倍速计划 1年5倍速，10年20倍速";
+                return $"当前未配置倍速计划，开关：{(AutoPanConfigHooks.WorldSpeedScheduleEnabled ? "开启" : "关闭")}。示例：#设置倍速计划 1年5倍速，10年20倍速";
             }
 
-            return "当前倍速计划：\n" + AutoPanConfigHooks.WorldSpeedScheduleText;
+            return $"当前倍速计划（开关：{(AutoPanConfigHooks.WorldSpeedScheduleEnabled ? "开启" : "关闭")}）：\n" + AutoPanConfigHooks.WorldSpeedScheduleText;
         }
 
         /// <summary>

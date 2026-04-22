@@ -75,6 +75,8 @@ namespace XianniAutoPan.Model
         AdminSetSpeed,
         AdminViewSpeedSchedule,
         AdminSetSpeedSchedule,
+        AdminEnableSpeedSchedule,
+        AdminDisableSpeedSchedule,
         AdminSpawnKingdom,
         AdminEndRound,
         AdminEndRoundNoScore,
@@ -613,6 +615,11 @@ namespace XianniAutoPan.Model
     /// </summary>
     public sealed class AutoPanSpeedScheduleSnapshot
     {
+        /// <summary>
+        /// 是否启用自动倍速计划。
+        /// </summary>
+        public bool Enabled { get; set; }
+
         /// <summary>
         /// 当前保存的倍速计划文本。
         /// </summary>

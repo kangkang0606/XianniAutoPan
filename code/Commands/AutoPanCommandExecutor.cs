@@ -200,6 +200,10 @@ namespace XianniAutoPan.Commands
                     return ExecuteAdminViewSpeedSchedule(result);
                 case AutoPanCommandType.AdminSetSpeedSchedule:
                     return ExecuteAdminSetSpeedSchedule(command, playerName, result);
+                case AutoPanCommandType.AdminEnableSpeedSchedule:
+                    return ExecuteAdminToggleSpeedSchedule(true, playerName, result);
+                case AutoPanCommandType.AdminDisableSpeedSchedule:
+                    return ExecuteAdminToggleSpeedSchedule(false, playerName, result);
                 case AutoPanCommandType.AdminSpawnKingdom:
                     return ExecuteAdminSpawnKingdom(command, playerName, result);
                 case AutoPanCommandType.AdminEndRound:
@@ -1312,6 +1316,8 @@ namespace XianniAutoPan.Commands
                 case AutoPanCommandType.AdminSetSpeed:
                 case AutoPanCommandType.AdminViewSpeedSchedule:
                 case AutoPanCommandType.AdminSetSpeedSchedule:
+                case AutoPanCommandType.AdminEnableSpeedSchedule:
+                case AutoPanCommandType.AdminDisableSpeedSchedule:
                 case AutoPanCommandType.AdminCurrentSituationScreenshot:
                     return false;
                 default:
@@ -1368,6 +1374,20 @@ namespace XianniAutoPan.Commands
             if (result.Success)
             {
                 AutoPanLogService.Info($"{operatorName} 设置倍速计划：{command.TargetName}");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 开启或关闭按年份自动切换的倍速计划。
+        /// </summary>
+        private static AutoPanCommandResult ExecuteAdminToggleSpeedSchedule(bool enabled, string operatorName, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanConfigHooks.TrySetWorldSpeedScheduleEnabled(enabled ? "1" : "0", out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                AutoPanLogService.Info($"{operatorName} {(enabled ? "开启" : "关闭")}倍速计划");
             }
             return result;
         }
@@ -1530,7 +1550,7 @@ namespace XianniAutoPan.Commands
                 "扰动国家 目标国家（可@）",
                 "陨石 目标国家（可@） 数量",
                 "开启比武大会",
-                "#5x / #查看倍速计划 / #设置倍速计划 1年5倍速，10年20倍速（管理员）",
+                "#5x / #查看倍速计划 / #设置倍速计划 1年5倍速，10年20倍速 / #开启倍速计划（管理员）",
                 "#结盘（管理员）"
             });
         }

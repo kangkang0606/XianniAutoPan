@@ -145,6 +145,11 @@ namespace XianniAutoPan.Services
             /// 世界倍速计划文本。
             /// </summary>
             public string WorldSpeedSchedule { get; set; }
+
+            /// <summary>
+            /// 是否启用世界倍速计划；为空表示旧配置文件未写入该字段。
+            /// </summary>
+            public bool? WorldSpeedScheduleEnabled { get; set; }
         }
 
         private static readonly List<PolicyDefinition> PolicyDefinitions = new List<PolicyDefinition>();
@@ -713,6 +718,11 @@ namespace XianniAutoPan.Services
         public static string WorldSpeedScheduleText { get; private set; } = string.Empty;
 
         /// <summary>
+        /// 是否启用按年份自动切换世界倍速。
+        /// </summary>
+        public static bool WorldSpeedScheduleEnabled { get; private set; }
+
+        /// <summary>
         /// 从当前配置初始化静态缓存。
         /// 这里只处理启动前必须可用的基础配置与旧版政策兼容导入。
         /// </summary>
@@ -1097,10 +1107,30 @@ namespace XianniAutoPan.Services
 
             WorldSpeedScheduleText = normalizedSchedule;
             SaveBackendSettings();
-            if (World.world?.map_stats != null)
+            if (WorldSpeedScheduleEnabled && World.world?.map_stats != null)
             {
                 AutoPanWorldSpeedService.ApplyScheduledSpeedForYear(Date.getCurrentYear(), force: true);
             }
+            else if (!WorldSpeedScheduleEnabled)
+            {
+                message += "\n当前倍速计划开关关闭，请在前端开启或发送 #开启倍速计划 后生效。";
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 通过前端页面或管理员指令设置世界倍速计划启用状态并立即持久化。
+        /// </summary>
+        public static bool TrySetWorldSpeedScheduleEnabled(string rawValue, out string message)
+        {
+            WorldSpeedScheduleEnabled = ParseBool(rawValue, WorldSpeedScheduleEnabled);
+            SaveBackendSettings();
+            if (WorldSpeedScheduleEnabled && World.world?.map_stats != null)
+            {
+                AutoPanWorldSpeedService.ApplyScheduledSpeedForYear(Date.getCurrentYear(), force: true);
+            }
+
+            message = WorldSpeedScheduleEnabled ? "倍速计划已开启。" : "倍速计划已关闭。";
             return true;
         }
 
@@ -1548,10 +1578,12 @@ namespace XianniAutoPan.Services
                 if (AutoPanWorldSpeedService.TryNormalizeSchedule(persisted.WorldSpeedSchedule, out string speedSchedule, out string speedScheduleMessage))
                 {
                     WorldSpeedScheduleText = speedSchedule;
+                    WorldSpeedScheduleEnabled = persisted.WorldSpeedScheduleEnabled ?? !string.IsNullOrWhiteSpace(speedSchedule);
                 }
                 else
                 {
                     WorldSpeedScheduleText = string.Empty;
+                    WorldSpeedScheduleEnabled = persisted.WorldSpeedScheduleEnabled ?? false;
                     AutoPanLogService.Error($"读取倍速计划失败：{speedScheduleMessage}");
                 }
             }
@@ -1585,7 +1617,8 @@ namespace XianniAutoPan.Services
                     QqReplyAtSender = QqReplyAtSender,
                     QqGroupWhitelist = QqGroupWhitelist,
                     QqAdminWhitelist = NormalizeAdminWhitelist(QqAdminWhitelist),
-                    WorldSpeedSchedule = WorldSpeedScheduleText
+                    WorldSpeedSchedule = WorldSpeedScheduleText,
+                    WorldSpeedScheduleEnabled = WorldSpeedScheduleEnabled
                 };
                 File.WriteAllText(_backendSettingsPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
             }
