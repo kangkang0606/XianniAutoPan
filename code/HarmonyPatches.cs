@@ -151,7 +151,7 @@ namespace XianniAutoPan
         {
             if (__exception != null)
             {
-                AutoPanLogService.Warn($"logAllianceCreated 异常已吞没：{__exception.GetType().Name}: {__exception.Message}");
+                AutoPanLogService.Info($"logAllianceCreated 异常已吞没：{__exception.GetType().Name}: {__exception.Message}");
             }
 
             return null;
