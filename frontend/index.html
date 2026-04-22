@@ -217,6 +217,7 @@
           <p class="muted">配置页拆成独立模块；修改政策或 QQ 配置后会先标记为待保存，可一次性保存所有改动。</p>
           <nav class="config-module-switch" role="tablist" aria-label="配置模块切换">
             <button class="config-module-tab is-active" type="button" data-config-target="score">积分</button>
+            <button class="config-module-tab" type="button" data-config-target="rank">段位</button>
             <button class="config-module-tab" type="button" data-config-target="qq">QQ 接入</button>
             <button class="config-module-tab" type="button" data-config-target="speed">倍速计划</button>
             <button class="config-module-tab" type="button" data-config-target="policy">政策配置</button>
@@ -265,11 +266,49 @@
                   <th>userId</th>
                   <th>playerName</th>
                   <th>积分</th>
+                  <th>段位</th>
                   <th>最后更新</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody id="scoreTableBody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="config-group config-module-view" data-config-view="rank">
+        <div class="group-head">
+          <div>
+            <p class="group-tag">段位配置</p>
+            <h2>玩家段位</h2>
+          </div>
+          <span class="muted">按玩家累计积分匹配段位，影响新建国家初始人口、初始国库和每年额外收入</span>
+        </div>
+        <article class="panel rank-panel">
+          <div class="rank-toolbar">
+            <label class="qq-toggle">启用段位系统
+              <input id="rankConfigEnabledToggle" type="checkbox" />
+            </label>
+            <div class="row-actions">
+              <button id="rankAddButton" class="ghost-btn" type="button">新增段位</button>
+              <button id="rankSaveButton" class="primary-btn" type="button">保存段位配置</button>
+            </div>
+          </div>
+          <div class="table-wrap rank-table-wrap">
+            <table class="kingdom-table rank-table">
+              <thead>
+                <tr>
+                  <th>段位名称</th>
+                  <th>入场前缀</th>
+                  <th>最低积分</th>
+                  <th>初始人口</th>
+                  <th>初始国库</th>
+                  <th>每年额外收入</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="rankConfigTableBody"></tbody>
             </table>
           </div>
         </article>

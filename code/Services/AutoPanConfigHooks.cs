@@ -1064,6 +1064,33 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 为局部作用域读取单条随机政策值，不写回运行时全局配置。
+        /// </summary>
+        public static int RollPolicyValueForScope(string rawKey, int fallbackValue)
+        {
+            if (!TryResolvePolicyDefinition(rawKey, out PolicyDefinition definition))
+            {
+                return fallbackValue;
+            }
+
+            if (!RandomPolicyValues.TryGetValue(definition.Key, out PersistedRandomPolicyValue randomValue) || randomValue == null || !randomValue.Enabled)
+            {
+                return fallbackValue;
+            }
+
+            int minValue = ClampValue(randomValue.MinValue, definition.MinValue, definition.MaxValue);
+            int maxValue = ClampValue(randomValue.MaxValue, definition.MinValue, definition.MaxValue);
+            if (minValue > maxValue)
+            {
+                int tmp = minValue;
+                minValue = maxValue;
+                maxValue = tmp;
+            }
+
+            return RandomInclusive(minValue, maxValue);
+        }
+
+        /// <summary>
         /// 通过前端页面设置 QQ 接入配置并立即持久化。
         /// </summary>
         public static bool TrySetQqSetting(string rawKey, string rawValue, out string message)

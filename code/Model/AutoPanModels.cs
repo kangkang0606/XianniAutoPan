@@ -569,6 +569,11 @@ namespace XianniAutoPan.Model
         public List<AutoPanScoreDashboardRecord> Scoreboard { get; set; } = new List<AutoPanScoreDashboardRecord>();
 
         /// <summary>
+        /// 当前段位系统配置。
+        /// </summary>
+        public AutoPanRankConfigSnapshot RankConfig { get; set; }
+
+        /// <summary>
         /// 当前后端政策配置。
         /// </summary>
         public AutoPanPolicySnapshot Policy { get; set; }
@@ -665,6 +670,63 @@ namespace XianniAutoPan.Model
         /// 最近积分增加或手动修改时间，UTC ISO 字符串。
         /// </summary>
         public string LastWinUtc { get; set; }
+
+        /// <summary>
+        /// 当前积分对应的段位名称。
+        /// </summary>
+        public string RankName { get; set; }
+    }
+
+    /// <summary>
+    /// 前端展示和导入导出的段位配置快照。
+    /// </summary>
+    public sealed class AutoPanRankConfigSnapshot
+    {
+        /// <summary>
+        /// 是否启用段位系统。
+        /// </summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>
+        /// 当前段位列表。
+        /// </summary>
+        public List<AutoPanRankTierSnapshot> Ranks { get; set; } = new List<AutoPanRankTierSnapshot>();
+    }
+
+    /// <summary>
+    /// 单个段位配置。
+    /// </summary>
+    public sealed class AutoPanRankTierSnapshot
+    {
+        /// <summary>
+        /// 段位名称。
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
+        /// 达到该段位需要的最低积分。
+        /// </summary>
+        public int MinPoints { get; set; }
+
+        /// <summary>
+        /// 新建国家时的初始人口。
+        /// </summary>
+        public int InitialPopulation { get; set; }
+
+        /// <summary>
+        /// 新建国家时的初始国库。
+        /// </summary>
+        public int InitialTreasury { get; set; }
+
+        /// <summary>
+        /// 每年额外发放到国库的金币。
+        /// </summary>
+        public int YearlyIncomeBonus { get; set; }
+
+        /// <summary>
+        /// 加入成功回包前缀；可为空，支持 (段位) 或 {段位} 占位。
+        /// </summary>
+        public string EntryPrefix { get; set; }
     }
 
     /// <summary>

@@ -104,6 +104,25 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 获取指定玩家的累计积分。
+        /// </summary>
+        public static int GetPoints(string userId)
+        {
+            string normalizedUserId = (userId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedUserId))
+            {
+                return 0;
+            }
+
+            lock (Sync)
+            {
+                return ScoresByUser.TryGetValue(normalizedUserId, out AutoPanScoreRecord record) && record != null
+                    ? Math.Max(0, record.Wins)
+                    : 0;
+            }
+        }
+
+        /// <summary>
         /// 构建积分排名文本。
         /// </summary>
         public static string BuildRankingText()
@@ -129,7 +148,8 @@ namespace XianniAutoPan.Services
             for (int index = 0; index < rankings.Count; index++)
             {
                 AutoPanScoreRecord item = rankings[index];
-                lines.Add($"{index + 1}. {item.PlayerName}({item.UserId})：{item.Wins} 分");
+                string rankName = AutoPanRankService.GetRankNameForPoints(item.Wins);
+                lines.Add($"{index + 1}. {item.PlayerName}({item.UserId})：{item.Wins} 分，段位 {rankName}");
             }
 
             return string.Join("\n", lines);
@@ -152,7 +172,8 @@ namespace XianniAutoPan.Services
                         UserId = item.UserId,
                         PlayerName = string.IsNullOrWhiteSpace(item.PlayerName) ? item.UserId : item.PlayerName,
                         Wins = Math.Max(0, item.Wins),
-                        LastWinUtc = item.LastWinUtc
+                        LastWinUtc = item.LastWinUtc,
+                        RankName = AutoPanRankService.GetRankNameForPoints(item.Wins)
                     })
                     .ToList();
             }

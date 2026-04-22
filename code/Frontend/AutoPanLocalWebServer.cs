@@ -551,6 +551,20 @@ namespace XianniAutoPan.Frontend
                 return;
             }
 
+            if (path.StartsWith("/api/rank-config/set", StringComparison.OrdinalIgnoreCase))
+            {
+                string enabled = ExtractQueryParam(rawPath, "enabled");
+                string ranks = ExtractQueryParam(rawPath, "ranks");
+                bool success = AutoPanRankService.TrySetConfig(enabled, ranks, out string message);
+                await ServeJsonAsync(stream, new
+                {
+                    ok = success,
+                    text = message,
+                    rankConfig = AutoPanRankService.BuildSnapshot()
+                }, token).ConfigureAwait(false);
+                return;
+            }
+
             if (path.StartsWith("/api/score/set", StringComparison.OrdinalIgnoreCase))
             {
                 string userId = ExtractQueryParam(rawPath, "userId");

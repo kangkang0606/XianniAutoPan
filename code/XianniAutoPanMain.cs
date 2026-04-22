@@ -31,6 +31,7 @@ namespace XianniAutoPan
             AutoPanConfigHooks.InitializeBackendPolicy(_modFolder);
             AutoPanNotificationService.Initialize(_modFolder);
             AutoPanScoreService.Initialize(_modFolder);
+            AutoPanRankService.Initialize(_modFolder);
             AutoPanScreenshotService.Initialize(_modFolder);
             AutoPanRoundService.Initialize();
             ValidateCommandBook();

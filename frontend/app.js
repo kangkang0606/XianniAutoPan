@@ -18,6 +18,10 @@ const scoreUserIdEl = document.getElementById("scoreUserId");
 const scorePlayerNameEl = document.getElementById("scorePlayerName");
 const scoreWinsEl = document.getElementById("scoreWins");
 const scoreSaveButtonEl = document.getElementById("scoreSaveButton");
+const rankConfigEnabledToggleEl = document.getElementById("rankConfigEnabledToggle");
+const rankConfigTableBodyEl = document.getElementById("rankConfigTableBody");
+const rankAddButtonEl = document.getElementById("rankAddButton");
+const rankSaveButtonEl = document.getElementById("rankSaveButton");
 const sendButtonEl = document.getElementById("sendButton");
 const refreshButtonEl = document.getElementById("refreshButton");
 const viewBindingButtonEl = document.getElementById("viewBindingButton");
@@ -54,6 +58,7 @@ const qqDrafts = Object.create(null);
 const qqDirtyKeys = new Set();
 const speedDrafts = Object.create(null);
 const speedDirtyKeys = new Set();
+let currentRankRows = [];
 
 function pick(obj, camelKey, pascalKey) {
   if (!obj) {
@@ -957,13 +962,98 @@ function renderAiControls(snapshot) {
   }
 }
 
+function normalizeRankTier(rank) {
+  return {
+    name: String(pick(rank, "name", "Name") || "新人").trim() || "新人",
+    entryPrefix: String(pick(rank, "entryPrefix", "EntryPrefix") || "").trim(),
+    minPoints: Math.max(0, Number.parseInt(String(pick(rank, "minPoints", "MinPoints") ?? 0), 10) || 0),
+    initialPopulation: Math.max(1, Number.parseInt(String(pick(rank, "initialPopulation", "InitialPopulation") ?? 5), 10) || 5),
+    initialTreasury: Math.max(0, Number.parseInt(String(pick(rank, "initialTreasury", "InitialTreasury") ?? 200), 10) || 0),
+    yearlyIncomeBonus: Math.max(0, Number.parseInt(String(pick(rank, "yearlyIncomeBonus", "YearlyIncomeBonus") ?? 0), 10) || 0)
+  };
+}
+
+function getRankRowsFromSnapshot(rankConfig) {
+  const ranks = pick(rankConfig, "ranks", "Ranks") || [];
+  const rows = Array.isArray(ranks) ? ranks.map(normalizeRankTier) : [];
+  if (rows.length === 0) {
+    rows.push({ name: "新人", entryPrefix: "", minPoints: 0, initialPopulation: 5, initialTreasury: 200, yearlyIncomeBonus: 0 });
+  }
+  return rows.sort((left, right) => left.minPoints - right.minPoints);
+}
+
+function collectRankRows() {
+  if (!rankConfigTableBodyEl) {
+    return [];
+  }
+
+  return Array.from(rankConfigTableBodyEl.querySelectorAll("tr")).map((row) => ({
+    name: row.querySelector("[data-rank-field='name']")?.value.trim() || "新人",
+    entryPrefix: row.querySelector("[data-rank-field='entryPrefix']")?.value.trim() || "",
+    minPoints: Math.max(0, Number.parseInt(row.querySelector("[data-rank-field='minPoints']")?.value || "0", 10) || 0),
+    initialPopulation: Math.max(1, Number.parseInt(row.querySelector("[data-rank-field='initialPopulation']")?.value || "5", 10) || 5),
+    initialTreasury: Math.max(0, Number.parseInt(row.querySelector("[data-rank-field='initialTreasury']")?.value || "0", 10) || 0),
+    yearlyIncomeBonus: Math.max(0, Number.parseInt(row.querySelector("[data-rank-field='yearlyIncomeBonus']")?.value || "0", 10) || 0)
+  })).sort((left, right) => left.minPoints - right.minPoints);
+}
+
+function renderRankConfig(rankConfig) {
+  if (!rankConfigTableBodyEl || !rankConfigEnabledToggleEl) {
+    return;
+  }
+
+  rankConfigEnabledToggleEl.checked = !!pick(rankConfig, "enabled", "Enabled");
+  currentRankRows = getRankRowsFromSnapshot(rankConfig);
+  rankConfigTableBodyEl.innerHTML = "";
+  currentRankRows.forEach((rank, index) => {
+    const row = document.createElement("tr");
+    const fields = [
+      ["name", "text", rank.name, null, null, "rank-name-input"],
+      ["entryPrefix", "text", rank.entryPrefix, null, null, "rank-prefix-input"],
+      ["minPoints", "number", rank.minPoints, "0", null, "score-wins-input"],
+      ["initialPopulation", "number", rank.initialPopulation, "1", "100", "score-wins-input"],
+      ["initialTreasury", "number", rank.initialTreasury, "0", null, "score-wins-input"],
+      ["yearlyIncomeBonus", "number", rank.yearlyIncomeBonus, "0", null, "score-wins-input"]
+    ];
+
+    fields.forEach(([field, type, value, min, max, extraClass]) => {
+      const cell = document.createElement("td");
+      const input = document.createElement("input");
+      input.className = `score-inline-input ${extraClass || ""}`.trim();
+      input.type = type;
+      input.value = String(value);
+      input.dataset.rankField = field;
+      if (min !== null) input.min = min;
+      if (max !== null) input.max = max;
+      cell.appendChild(input);
+      row.appendChild(cell);
+    });
+
+    const actionCell = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    actions.appendChild(createMiniButton("删除", "mini-btn-danger", () => {
+      const rows = collectRankRows();
+      if (rows.length <= 1) {
+        appendReply("至少保留一个段位。", false);
+        return;
+      }
+      rows.splice(index, 1);
+      renderRankConfig({ enabled: rankConfigEnabledToggleEl.checked, ranks: rows });
+    }));
+    actionCell.appendChild(actions);
+    row.appendChild(actionCell);
+    rankConfigTableBodyEl.appendChild(row);
+  });
+}
+
 function renderScoreboard(scoreboard) {
   scoreTableBodyEl.innerHTML = "";
   const items = Array.isArray(scoreboard) ? scoreboard : [];
   if (items.length === 0) {
     const emptyRow = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     cell.className = "table-empty";
     cell.textContent = "当前还没有积分记录。";
     emptyRow.appendChild(cell);
@@ -1002,6 +1092,10 @@ function renderScoreboard(scoreboard) {
     winsInput.value = String(Math.max(0, wins));
     winsCell.appendChild(winsInput);
     row.appendChild(winsCell);
+
+    const rankNameCell = document.createElement("td");
+    rankNameCell.textContent = pick(record, "rankName", "RankName") || "未启用";
+    row.appendChild(rankNameCell);
 
     const lastWinCell = document.createElement("td");
     lastWinCell.textContent = formatIsoTime(pick(record, "lastWinUtc", "LastWinUtc"));
@@ -1111,6 +1205,7 @@ async function refreshDashboard() {
   renderKingdoms(pick(snapshot, "kingdoms", "Kingdoms"));
   renderPendingRequests(pick(snapshot, "pendingRequests", "PendingRequests"));
   renderScoreboard(pick(snapshot, "scoreboard", "Scoreboard"));
+  renderRankConfig(pick(snapshot, "rankConfig", "RankConfig"));
   renderPolicy(pick(snapshot, "policy", "Policy"));
   renderQqBridge(pick(snapshot, "qqBridge", "QqBridge"), listenAddresses);
   renderSpeedSchedule(pick(snapshot, "speedSchedule", "SpeedSchedule"));
@@ -1245,6 +1340,30 @@ async function saveSpeedScheduleEnabled(enabled, refreshAfter = false) {
 
   if (refreshAfter) {
     appendReply(payload.text || "倍速计划开关已保存。", true);
+    await refreshDashboard();
+  }
+  return true;
+}
+
+async function saveRankConfig(enabled, ranks, refreshAfter = false) {
+  const normalizedRanks = (Array.isArray(ranks) ? ranks : []).map(normalizeRankTier);
+  const url = `/api/rank-config/set?enabled=${enabled ? "1" : "0"}&ranks=${encodeURIComponent(JSON.stringify(normalizedRanks))}`;
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`段位配置保存失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.ok) {
+    appendReply(payload.text || "段位配置保存失败。", false);
+    return false;
+  }
+
+  if (payload.rankConfig) {
+    renderRankConfig(payload.rankConfig);
+  }
+  if (refreshAfter) {
+    appendReply(payload.text || "段位配置已保存。", true);
     await refreshDashboard();
   }
   return true;
@@ -1544,6 +1663,29 @@ scoreSaveButtonEl.addEventListener("click", () => {
   saveScore(scoreUserIdEl.value, scorePlayerNameEl.value, scoreWinsEl.value).catch((error) => appendReply(error.message, false));
 });
 
+if (rankAddButtonEl) {
+  rankAddButtonEl.addEventListener("click", () => {
+    const rows = collectRankRows();
+    const nextMinPoints = rows.length > 0 ? Math.max(...rows.map((item) => item.minPoints)) + 10 : 0;
+    rows.push({
+      name: `段位${rows.length + 1}`,
+      entryPrefix: "",
+      minPoints: nextMinPoints,
+      initialPopulation: 5,
+      initialTreasury: 200,
+      yearlyIncomeBonus: 0
+    });
+    renderRankConfig({ enabled: rankConfigEnabledToggleEl ? rankConfigEnabledToggleEl.checked : false, ranks: rows });
+  });
+}
+
+if (rankSaveButtonEl) {
+  rankSaveButtonEl.addEventListener("click", () => {
+    saveRankConfig(rankConfigEnabledToggleEl ? rankConfigEnabledToggleEl.checked : false, collectRankRows(), true)
+      .catch((error) => appendReply(error.message, false));
+  });
+}
+
 commandTextEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
     sendCommand();
@@ -1602,15 +1744,20 @@ async function exportConfig() {
       qqAdminWhitelist: pick(qqBridge, "adminWhitelist", "AdminWhitelist") || ""
     };
     const speedSchedule = pick(snapshot, "speedSchedule", "SpeedSchedule") || {};
+    const rankConfig = pick(snapshot, "rankConfig", "RankConfig") || {};
 
     const exportData = {
-      _exportVersion: 4,
+      _exportVersion: 5,
       _exportTime: new Date().toISOString(),
       policy: policyData,
       qqBridge: qqData,
       speedSchedule: {
         enabled: !!pick(speedSchedule, "enabled", "Enabled"),
         worldSpeedSchedule: pick(speedSchedule, "rawText", "RawText") || ""
+      },
+      rankConfig: {
+        enabled: !!pick(rankConfig, "enabled", "Enabled"),
+        ranks: getRankRowsFromSnapshot(rankConfig)
       }
     };
 
@@ -1696,6 +1843,15 @@ async function importConfig() {
         count++;
       } catch (error) {
         errors.push(`倍速计划: ${error.message}`);
+      }
+    }
+
+    if (data.rankConfig && typeof data.rankConfig === "object") {
+      try {
+        await saveRankConfig(parseConfigBool(data.rankConfig.enabled), getRankRowsFromSnapshot(data.rankConfig), false);
+        count++;
+      } catch (error) {
+        errors.push(`段位配置: ${error.message}`);
       }
     }
 

@@ -162,6 +162,52 @@ namespace XianniAutoPan.Services
             public XianniKingdomSnapshot Snapshot { get; set; }
         }
 
+        /// <summary>
+        /// 单个国家年度收入结算时使用的政策值快照。
+        /// </summary>
+        private sealed class YearlyIncomePolicyValues
+        {
+            /// <summary>
+            /// 年收入基础金币。
+            /// </summary>
+            public int IncomeBase { get; set; }
+
+            /// <summary>
+            /// 每座城市提供的年收入。
+            /// </summary>
+            public int IncomePerCity { get; set; }
+
+            /// <summary>
+            /// 人口折算收入的除数。
+            /// </summary>
+            public int IncomePopulationDivisor { get; set; }
+
+            /// <summary>
+            /// 每级国运提供的年收入。
+            /// </summary>
+            public int IncomePerLevel { get; set; }
+
+            /// <summary>
+            /// 灵气折算收入的除数。
+            /// </summary>
+            public int IncomeAuraDivisor { get; set; }
+
+            /// <summary>
+            /// 国运收入随机加成开关。
+            /// </summary>
+            public int IncomeLevelRandomEnabled { get; set; }
+
+            /// <summary>
+            /// 每级国运提供的随机加成百分比上限。
+            /// </summary>
+            public int IncomeLevelRandomPercentPerLevel { get; set; }
+
+            /// <summary>
+            /// 国运随机加成百分比总上限。
+            /// </summary>
+            public int IncomeLevelRandomMaxPercent { get; set; }
+        }
+
         private const float RuntimeStatsCacheSeconds = 1f;
         private static readonly object RuntimeStatsSync = new object();
         private static readonly Dictionary<long, SnapshotCacheEntry> SnapshotCache = new Dictionary<long, SnapshotCacheEntry>();
@@ -227,6 +273,7 @@ namespace XianniAutoPan.Services
             }
 
             string kingdomName = BuildUniqueKingdomName(playerName);
+            AutoPanRankService.RankBenefits rankBenefits = AutoPanRankService.GetBenefitsForPoints(AutoPanScoreService.GetPoints(userId));
 
             CityPlaceFinder finder = World.world.city_zone_helper.city_place_finder;
             finder.setDirty();
@@ -246,17 +293,17 @@ namespace XianniAutoPan.Services
                     continue;
                 }
 
-                if (TryCreateKingdomInZone(zone, actorAssetId, kingdomName, out kingdom))
+                if (TryCreateKingdomInZone(zone, actorAssetId, kingdomName, rankBenefits.InitialPopulation, out kingdom))
                 {
                     EnsureKingdomStateInitialized(kingdom);
-                    SetTreasury(kingdom, AutoPanConfigHooks.InitialTreasury);
+                    SetTreasury(kingdom, rankBenefits.InitialTreasury);
                     SetLevel(kingdom, AutoPanConfigHooks.InitialLevel);
                     kingdom.data.set(AutoPanConstants.KeyOwnerUserId, userId);
                     kingdom.data.set(AutoPanConstants.KeyOwnerName, playerName);
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, raceId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {AutoPanConfigHooks.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领，可发送“政策 坚守城池”或“政策 开放占领”变更。";
+                    message = FormatJoinSuccessMessage(rankBenefits, $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。政策为开放占领");
                     return true;
                 }
             }
@@ -284,6 +331,7 @@ namespace XianniAutoPan.Services
             }
 
             string kingdomName = BuildUniqueKingdomName(playerName);
+            AutoPanRankService.RankBenefits rankBenefits = AutoPanRankService.GetBenefitsForPoints(AutoPanScoreService.GetPoints(userId));
             CityPlaceFinder finder = World.world.city_zone_helper.city_place_finder;
             finder.setDirty();
             finder.recalc();
@@ -302,17 +350,17 @@ namespace XianniAutoPan.Services
                     continue;
                 }
 
-                if (TryCreateKingdomInZone(zone, actorAssetId, kingdomName, out kingdom))
+                if (TryCreateKingdomInZone(zone, actorAssetId, kingdomName, rankBenefits.InitialPopulation, out kingdom))
                 {
                     EnsureKingdomStateInitialized(kingdom);
-                    SetTreasury(kingdom, AutoPanConfigHooks.InitialTreasury);
+                    SetTreasury(kingdom, rankBenefits.InitialTreasury);
                     SetLevel(kingdom, AutoPanConfigHooks.InitialLevel);
                     kingdom.data.set(AutoPanConstants.KeyOwnerUserId, userId);
                     kingdom.data.set(AutoPanConstants.KeyOwnerName, playerName);
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, actorAssetId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {AutoPanConfigHooks.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领，可发送“政策 坚守城池”或“政策 开放占领”变更。";
+                    message = FormatJoinSuccessMessage(rankBenefits, $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领");
                     return true;
                 }
             }
@@ -358,6 +406,7 @@ namespace XianniAutoPan.Services
             }
 
             EnsureKingdomStateInitialized(target);
+            AutoPanRankService.RankBenefits rankBenefits = AutoPanRankService.GetBenefitsForPoints(AutoPanScoreService.GetPoints(userId));
             string raceId = string.IsNullOrWhiteSpace(target.data?.original_actor_asset)
                 ? target.getFounderSpecies()?.id ?? string.Empty
                 : target.data.original_actor_asset;
@@ -365,8 +414,22 @@ namespace XianniAutoPan.Services
             ClearSnapshotCache(target.getID());
             kingdom = target;
             XianniAutoPanApi.Broadcast($"{playerName} 加入了现有国家 {target.name}");
-            message = $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。";
+            message = FormatJoinSuccessMessage(rankBenefits, $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。");
             return true;
+        }
+
+        private static string FormatJoinSuccessMessage(AutoPanRankService.RankBenefits rankBenefits, string message)
+        {
+            if (rankBenefits == null || string.IsNullOrWhiteSpace(rankBenefits.EntryPrefix))
+            {
+                return message;
+            }
+
+            string rankName = string.IsNullOrWhiteSpace(rankBenefits.RankName) ? "新人" : rankBenefits.RankName.Trim();
+            string prefix = rankBenefits.EntryPrefix
+                .Replace("(段位)", rankName)
+                .Replace("{段位}", rankName);
+            return string.IsNullOrWhiteSpace(prefix) ? message : $"{prefix}加入战场：\n{message}";
         }
 
         /// <summary>
@@ -1100,7 +1163,14 @@ namespace XianniAutoPan.Services
                 }
 
                 EnsureKingdomStateInitialized(kingdom);
-                AddTreasury(kingdom, ComputeYearlyIncomePayout(stats.AnnualIncome, stats.NationLevel));
+                YearlyIncomePolicyValues policyValues = CreateYearlyIncomePolicyValuesForSettlement();
+                int baseIncome = ComputeYearlyIncome(stats.CityCount, stats.Population, stats.TotalAura, stats.NationLevel, policyValues);
+                int payout = ComputeYearlyIncomePayout(baseIncome, stats.NationLevel, policyValues);
+                if (stats.IsPlayerOwned)
+                {
+                    payout = AddSafe(payout, GetRankYearlyIncomeBonus(stats.OwnerUserId));
+                }
+                AddTreasury(kingdom, payout);
                 UpdateNationalMilitiaForYear(kingdom, year);
                 ClearSnapshotCache(kingdom.getID());
             }
@@ -1108,24 +1178,83 @@ namespace XianniAutoPan.Services
 
         private static int ComputeYearlyIncome(int cityCount, int population, int effectiveAura, int level)
         {
-            int populationGain = AutoPanConfigHooks.IncomePopulationDivisor <= 0 ? population : population / AutoPanConfigHooks.IncomePopulationDivisor;
-            int auraGain = AutoPanConfigHooks.IncomeAuraDivisor <= 0 ? effectiveAura : effectiveAura / AutoPanConfigHooks.IncomeAuraDivisor;
-            int income = AutoPanConfigHooks.IncomeBase
-                + AutoPanConfigHooks.IncomePerCity * cityCount
+            return ComputeYearlyIncome(cityCount, population, effectiveAura, level, CreateCurrentYearlyIncomePolicyValues());
+        }
+
+        private static int GetRankYearlyIncomeBonus(string ownerUserId)
+        {
+            if (string.IsNullOrWhiteSpace(ownerUserId))
+            {
+                return 0;
+            }
+
+            AutoPanRankService.RankBenefits benefits = AutoPanRankService.GetBenefitsForPoints(AutoPanScoreService.GetPoints(ownerUserId));
+            return benefits.Enabled ? Math.Max(0, benefits.YearlyIncomeBonus) : 0;
+        }
+
+        private static int AddSafe(int left, int right)
+        {
+            long value = (long)Math.Max(0, left) + Math.Max(0, right);
+            return value > int.MaxValue ? int.MaxValue : (int)value;
+        }
+
+        private static int ComputeYearlyIncome(int cityCount, int population, int effectiveAura, int level, YearlyIncomePolicyValues policyValues)
+        {
+            YearlyIncomePolicyValues values = policyValues ?? CreateCurrentYearlyIncomePolicyValues();
+            int populationGain = values.IncomePopulationDivisor <= 0 ? population : population / values.IncomePopulationDivisor;
+            int auraGain = values.IncomeAuraDivisor <= 0 ? effectiveAura : effectiveAura / values.IncomeAuraDivisor;
+            int income = values.IncomeBase
+                + values.IncomePerCity * cityCount
                 + populationGain
-                + AutoPanConfigHooks.IncomePerLevel * level
+                + values.IncomePerLevel * level
                 + auraGain;
             return Math.Max(0, income);
         }
 
+        private static YearlyIncomePolicyValues CreateCurrentYearlyIncomePolicyValues()
+        {
+            return new YearlyIncomePolicyValues
+            {
+                IncomeBase = AutoPanConfigHooks.IncomeBase,
+                IncomePerCity = AutoPanConfigHooks.IncomePerCity,
+                IncomePopulationDivisor = AutoPanConfigHooks.IncomePopulationDivisor,
+                IncomePerLevel = AutoPanConfigHooks.IncomePerLevel,
+                IncomeAuraDivisor = AutoPanConfigHooks.IncomeAuraDivisor,
+                IncomeLevelRandomEnabled = AutoPanConfigHooks.IncomeLevelRandomEnabled,
+                IncomeLevelRandomPercentPerLevel = AutoPanConfigHooks.IncomeLevelRandomPercentPerLevel,
+                IncomeLevelRandomMaxPercent = AutoPanConfigHooks.IncomeLevelRandomMaxPercent
+            };
+        }
+
+        private static YearlyIncomePolicyValues CreateYearlyIncomePolicyValuesForSettlement()
+        {
+            return new YearlyIncomePolicyValues
+            {
+                IncomeBase = AutoPanConfigHooks.RollPolicyValueForScope("incomeBase", AutoPanConfigHooks.IncomeBase),
+                IncomePerCity = AutoPanConfigHooks.RollPolicyValueForScope("incomePerCity", AutoPanConfigHooks.IncomePerCity),
+                IncomePopulationDivisor = AutoPanConfigHooks.RollPolicyValueForScope("incomePopulationDivisor", AutoPanConfigHooks.IncomePopulationDivisor),
+                IncomePerLevel = AutoPanConfigHooks.RollPolicyValueForScope("incomePerLevel", AutoPanConfigHooks.IncomePerLevel),
+                IncomeAuraDivisor = AutoPanConfigHooks.RollPolicyValueForScope("incomeAuraDivisor", AutoPanConfigHooks.IncomeAuraDivisor),
+                IncomeLevelRandomEnabled = AutoPanConfigHooks.RollPolicyValueForScope("incomeLevelRandomEnabled", AutoPanConfigHooks.IncomeLevelRandomEnabled),
+                IncomeLevelRandomPercentPerLevel = AutoPanConfigHooks.RollPolicyValueForScope("incomeLevelRandomPercentPerLevel", AutoPanConfigHooks.IncomeLevelRandomPercentPerLevel),
+                IncomeLevelRandomMaxPercent = AutoPanConfigHooks.RollPolicyValueForScope("incomeLevelRandomMaxPercent", AutoPanConfigHooks.IncomeLevelRandomMaxPercent)
+            };
+        }
+
         private static int ComputeYearlyIncomePayout(int baseIncome, int nationLevel)
         {
-            if (baseIncome <= 0 || AutoPanConfigHooks.IncomeLevelRandomEnabled <= 0)
+            return ComputeYearlyIncomePayout(baseIncome, nationLevel, CreateCurrentYearlyIncomePolicyValues());
+        }
+
+        private static int ComputeYearlyIncomePayout(int baseIncome, int nationLevel, YearlyIncomePolicyValues policyValues)
+        {
+            YearlyIncomePolicyValues values = policyValues ?? CreateCurrentYearlyIncomePolicyValues();
+            if (baseIncome <= 0 || values.IncomeLevelRandomEnabled <= 0)
             {
                 return Math.Max(0, baseIncome);
             }
 
-            int maxBonusPercent = GetIncomeLevelRandomMaxPercent(nationLevel);
+            int maxBonusPercent = GetIncomeLevelRandomMaxPercent(nationLevel, values);
             if (maxBonusPercent <= 0)
             {
                 return Math.Max(0, baseIncome);
@@ -1143,27 +1272,40 @@ namespace XianniAutoPan.Services
 
         private static int GetIncomeLevelRandomMaxPercent(int nationLevel)
         {
+            return GetIncomeLevelRandomMaxPercent(nationLevel, CreateCurrentYearlyIncomePolicyValues());
+        }
+
+        private static int GetIncomeLevelRandomMaxPercent(int nationLevel, YearlyIncomePolicyValues policyValues)
+        {
             if (nationLevel <= 0)
             {
                 return 0;
             }
 
-            long levelCap = (long)nationLevel * Math.Max(0, AutoPanConfigHooks.IncomeLevelRandomPercentPerLevel);
-            long maxCap = Math.Max(0, AutoPanConfigHooks.IncomeLevelRandomMaxPercent);
+            YearlyIncomePolicyValues values = policyValues ?? CreateCurrentYearlyIncomePolicyValues();
+            long levelCap = (long)nationLevel * Math.Max(0, values.IncomeLevelRandomPercentPerLevel);
+            long maxCap = Math.Max(0, values.IncomeLevelRandomMaxPercent);
             return (int)Math.Min(int.MaxValue, Math.Min(levelCap, maxCap));
         }
 
         private static string BuildYearlyIncomeText(Kingdom kingdom)
         {
             int baseIncome = ComputeYearlyIncome(kingdom);
+            string ownerUserId = string.Empty;
+            if (kingdom?.data != null)
+            {
+                kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out ownerUserId, string.Empty);
+            }
+            int rankBonus = GetRankYearlyIncomeBonus(ownerUserId);
             if (AutoPanConfigHooks.IncomeLevelRandomEnabled <= 0)
             {
-                return baseIncome.ToString();
+                return rankBonus > 0 ? $"{baseIncome}+段位{rankBonus}" : baseIncome.ToString();
             }
 
             int maxBonusPercent = GetIncomeLevelRandomMaxPercent(GetLevel(kingdom));
             long maxIncome = (long)baseIncome + (long)baseIncome * maxBonusPercent / 100L;
-            return $"{baseIncome}（实际 {baseIncome}~{Math.Min(int.MaxValue, Math.Max(0L, maxIncome))}）";
+            string incomeText = $"{baseIncome}（实际 {baseIncome}~{Math.Min(int.MaxValue, Math.Max(0L, maxIncome))}）";
+            return rankBonus > 0 ? $"{incomeText}+段位{rankBonus}" : incomeText;
         }
 
         /// <summary>
@@ -1294,6 +1436,11 @@ namespace XianniAutoPan.Services
             kingdom.data.get(AutoPanConstants.KeyOwnerName, out string ownerName, string.Empty);
             kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, string.Empty);
             Alliance alliance = kingdom.getAlliance();
+            int annualIncome = ComputeYearlyIncome(cityCount, population, totalAura, level);
+            if (!string.IsNullOrWhiteSpace(ownerUserId))
+            {
+                annualIncome = AddSafe(annualIncome, GetRankYearlyIncomeBonus(ownerUserId));
+            }
             return new KingdomRuntimeStats
             {
                 Kingdom = kingdom,
@@ -1311,7 +1458,7 @@ namespace XianniAutoPan.Services
                 TerritoryCount = kingdom.countZones(),
                 ArmyCount = CountArmyUnits(kingdom),
                 TotalAura = totalAura,
-                AnnualIncome = ComputeYearlyIncome(cityCount, population, totalAura, level),
+                AnnualIncome = annualIncome,
                 OccupationPolicy = GetOccupationPolicyText(kingdom),
                 Alliance = alliance,
                 AllianceName = alliance?.name ?? string.Empty,
@@ -2936,9 +3083,16 @@ namespace XianniAutoPan.Services
 
         private static bool TryCreateKingdomInZone(TileZone zone, string actorAssetId, string kingdomName, out Kingdom kingdom)
         {
+            return TryCreateKingdomInZone(zone, actorAssetId, kingdomName, AutoPanConstants.JoinUnitCount, out kingdom);
+        }
+
+        private static bool TryCreateKingdomInZone(TileZone zone, string actorAssetId, string kingdomName, int initialPopulation, out Kingdom kingdom)
+        {
             kingdom = null;
+            int targetUnitCount = Math.Max(1, Math.Min(100, initialPopulation));
             List<WorldTile> candidateTiles = CollectZoneGroundTiles(zone);
-            if (candidateTiles.Count < AutoPanConstants.JoinUnitCount)
+            int requiredTileCount = Math.Min(targetUnitCount, AutoPanConstants.JoinUnitCount);
+            if (candidateTiles.Count < requiredTileCount)
             {
                 return false;
             }
@@ -2988,14 +3142,10 @@ namespace XianniAutoPan.Services
                     kingdom.setName(kingdomName);
                 }
                 int supporterCount = 0;
-                for (int i = 0; i < candidateTiles.Count && supporterCount < AutoPanConstants.JoinUnitCount - 1; i++)
+                for (int i = 0; supporterCount < targetUnitCount - 1 && i < targetUnitCount - 1; i++)
                 {
-                    if (i == founderIndex)
-                    {
-                        continue;
-                    }
-
-                    Actor supporter = SpawnAdult(actorAssetId, candidateTiles[i]);
+                    int tileIndex = (founderIndex + i + 1) % candidateTiles.Count;
+                    Actor supporter = SpawnAdult(actorAssetId, candidateTiles[tileIndex]);
                     if (supporter == null)
                     {
                         continue;
@@ -3006,9 +3156,9 @@ namespace XianniAutoPan.Services
                     supporterCount++;
                 }
 
-                if (supporterCount < AutoPanConstants.JoinUnitCount - 1)
+                if (supporterCount < targetUnitCount - 1)
                 {
-                    AutoPanLogService.Error($"国家 {kingdomName} 建立时仅成功补充 {supporterCount + 1}/{AutoPanConstants.JoinUnitCount} 个单位，已保留当前国家。");
+                    AutoPanLogService.Error($"国家 {kingdomName} 建立时仅成功补充 {supporterCount + 1}/{targetUnitCount} 个单位，已保留当前国家。");
                 }
                 return true;
             }

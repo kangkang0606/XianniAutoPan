@@ -450,6 +450,7 @@ namespace XianniAutoPan.Services
                 RecentLogs = AutoPanLogService.GetRecentEntries(),
                 Kingdoms = AutoPanKingdomService.BuildDashboardKingdoms(),
                 Scoreboard = AutoPanScoreService.BuildDashboardRecords(),
+                RankConfig = AutoPanRankService.BuildSnapshot(),
                 Policy = AutoPanConfigHooks.BuildPolicySnapshot(),
                 QqBridge = AutoPanQqBridgeService.BuildDashboardSnapshot(),
                 SpeedSchedule = AutoPanWorldSpeedService.BuildScheduleSnapshot()
