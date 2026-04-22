@@ -37,7 +37,7 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AddPopulationRegex = new Regex(@"^(增加人数|增加人口)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex KingdomPolicyRegex = new Regex(@"^(政策|国家政策)\s+(开放占领|坚守城池)$", RegexOptions.Compiled);
         private static readonly Regex PlaceRuinsRegex = new Regex(@"^放置遗迹(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
-        private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s*(.+?)\s+([1-9]\d*)$", RegexOptions.Compiled);
+        private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s*(.+?)\s+(全部|[1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex FastAdultRegex = new Regex(@"^快速成年\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队(?:\s+(.+?)\s+(全部|\d+)|\s+(全部|\d+))?$", RegexOptions.Compiled);
@@ -45,11 +45,11 @@ namespace XianniAutoPan.Commands
         private static readonly Regex RandomTransferCityRegex = new Regex(@"^移交\s+(.+?)\s*随机一座城市$", RegexOptions.Compiled);
         private static readonly Regex EquipArmyRegex = new Regex(@"^军备\s+(.+?)\s+(铜|青铜|白银|铁|钢|秘银|精金)\s+(全军|\d+)$", RegexOptions.Compiled);
         private static readonly Regex CultivatorActionRegex = new Regex(@"^修士\s+(\d+)\s+闭关$", RegexOptions.Compiled);
-        private static readonly Regex CultivatorRealmUpRegex = new Regex(@"^修士\s+(\d+)\s+(升境|提升境界)$", RegexOptions.Compiled);
+        private static readonly Regex CultivatorRealmUpRegex = new Regex(@"^修士(?:\s+(?<id>\d+)\s+(?:升境|提升境界)|\s*(?:升境|提升境界)\s+(?<id>\d+))$", RegexOptions.Compiled);
         private static readonly Regex AncientActionRegex = new Regex(@"^古神\s+(\d+)\s+炼体$", RegexOptions.Compiled);
-        private static readonly Regex AncientStarUpRegex = new Regex(@"^古神\s+(\d+)\s+(升星|提升一星|提升星级)$", RegexOptions.Compiled);
+        private static readonly Regex AncientStarUpRegex = new Regex(@"^古神(?:\s+(?<id>\d+)\s+(?:升星|提升一星|提升星级)|\s*(?:升星|提升一星|提升星级)\s+(?<id>\d+))$", RegexOptions.Compiled);
         private static readonly Regex BeastActionRegex = new Regex(@"^妖兽\s+(\d+)\s+养成$", RegexOptions.Compiled);
-        private static readonly Regex BeastStageUpRegex = new Regex(@"^妖兽\s+(\d+)\s+(升阶|提升一阶|提升阶级)$", RegexOptions.Compiled);
+        private static readonly Regex BeastStageUpRegex = new Regex(@"^妖兽(?:\s+(?<id>\d+)\s+(?:升阶|提升一阶|提升阶级)|\s*(?:升阶|提升一阶|提升阶级)\s+(?<id>\d+))$", RegexOptions.Compiled);
         private static readonly Regex AdminAddGoldRegex = new Regex(@"^#增加国家金币\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetGoldRegex = new Regex(@"^#设置国家金币\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminViewGoldRegex = new Regex(@"^#查看国家金币\s+(.+)$", RegexOptions.Compiled);
@@ -260,11 +260,12 @@ namespace XianniAutoPan.Commands
             }
 
             match = TransferTreasuryRegex.Match(text);
-            if (match.Success && int.TryParse(match.Groups[2].Value, out int transferAmount))
+            if (match.Success)
             {
                 command.CommandType = AutoPanCommandType.TransferTreasury;
                 command.TargetName = match.Groups[1].Value.Trim();
-                command.NumericValue = transferAmount;
+                command.TextArg = match.Groups[2].Value.Trim();
+                command.NumericValue = command.TextArg == "全部" ? -1 : int.Parse(command.TextArg);
                 return command;
             }
 
@@ -513,7 +514,7 @@ namespace XianniAutoPan.Commands
             }
 
             match = CultivatorRealmUpRegex.Match(text);
-            if (match.Success && long.TryParse(match.Groups[1].Value, out cultivatorId))
+            if (match.Success && long.TryParse(match.Groups["id"].Value, out cultivatorId))
             {
                 command.CommandType = AutoPanCommandType.CultivatorRealmUp;
                 command.ObjectIdArg = cultivatorId;
@@ -529,7 +530,7 @@ namespace XianniAutoPan.Commands
             }
 
             match = AncientStarUpRegex.Match(text);
-            if (match.Success && long.TryParse(match.Groups[1].Value, out ancientId))
+            if (match.Success && long.TryParse(match.Groups["id"].Value, out ancientId))
             {
                 command.CommandType = AutoPanCommandType.AncientStarUp;
                 command.ObjectIdArg = ancientId;
@@ -545,7 +546,7 @@ namespace XianniAutoPan.Commands
             }
 
             match = BeastStageUpRegex.Match(text);
-            if (match.Success && long.TryParse(match.Groups[1].Value, out beastId))
+            if (match.Success && long.TryParse(match.Groups["id"].Value, out beastId))
             {
                 command.CommandType = AutoPanCommandType.BeastStageUp;
                 command.ObjectIdArg = beastId;

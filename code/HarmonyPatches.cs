@@ -146,14 +146,91 @@ namespace XianniAutoPan
     [HarmonyPatch(typeof(WorldLog), nameof(WorldLog.logAllianceCreated))]
     internal static class AutoPanLogAllianceCreatedGuardPatch
     {
+        private static int _suppressedCount;
+
+        /// <summary>
+        /// 只吞掉联盟创建日志链路中的异常，避免第三方命名模组读取未填充成员列表时刷屏。
+        /// </summary>
         [HarmonyFinalizer]
         public static Exception Finalizer(Exception __exception)
         {
             if (__exception != null)
             {
-                AutoPanLogService.Info($"logAllianceCreated 异常已吞没：{__exception.GetType().Name}: {__exception.Message}");
+                _suppressedCount++;
+                if (_suppressedCount == 1 || _suppressedCount % 100 == 0)
+                {
+                    AutoPanLogService.Info($"logAllianceCreated 异常已吞没 {_suppressedCount} 次：{__exception.GetType().Name}: {__exception.Message}");
+                }
             }
 
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 原版联盟成员清理遇到已失效王国数据时只跳过异常，不改变正常退盟逻辑。
+    /// </summary>
+    [HarmonyPatch(typeof(Alliance), nameof(Alliance.leave))]
+    internal static class AutoPanAllianceLeaveRuntimeGuardPatch
+    {
+        private static int _suppressedCount;
+
+        /// <summary>
+        /// 仅吞掉日志中出现的空引用异常，避免坏成员导致联盟更新中断。
+        /// </summary>
+        [HarmonyFinalizer]
+        public static Exception Finalizer(Exception __exception)
+        {
+            if (__exception == null)
+            {
+                return null;
+            }
+
+            if (!(__exception is NullReferenceException))
+            {
+                return __exception;
+            }
+
+            _suppressedCount++;
+            if (_suppressedCount == 1 || _suppressedCount % 100 == 0)
+            {
+                AutoPanLogService.Info($"Alliance.leave 空引用异常已吞没 {_suppressedCount} 次：{__exception.Message}");
+            }
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 城市更新中若同帧移除城市导致枚举器失效，只跳过本帧剩余城市更新，下一帧自动恢复。
+    /// </summary>
+    [HarmonyPatch(typeof(CityManager), nameof(CityManager.update))]
+    internal static class AutoPanCityManagerUpdateGuardPatch
+    {
+        private static int _suppressedCount;
+
+        /// <summary>
+        /// 仅吞掉集合枚举被修改这一类异常，其他城市更新异常继续交给游戏日志暴露。
+        /// </summary>
+        [HarmonyFinalizer]
+        public static Exception Finalizer(Exception __exception)
+        {
+            if (__exception == null)
+            {
+                return null;
+            }
+
+            bool isKnownCollectionMutation = __exception is InvalidOperationException
+                && (__exception.Message ?? string.Empty).IndexOf("Collection was modified", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!isKnownCollectionMutation)
+            {
+                return __exception;
+            }
+
+            _suppressedCount++;
+            if (_suppressedCount == 1 || _suppressedCount % 100 == 0)
+            {
+                AutoPanLogService.Info($"CityManager.update 集合变更异常已吞没 {_suppressedCount} 次：{__exception.Message}");
+            }
             return null;
         }
     }

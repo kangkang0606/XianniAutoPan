@@ -496,12 +496,19 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            result.Success = AutoPanKingdomService.TryTransferTreasury(kingdom, target, command.NumericValue, out string message);
+            int transferAmount = command.NumericValue == -1 ? AutoPanKingdomService.GetTreasury(kingdom) : command.NumericValue;
+            if (command.NumericValue == -1 && transferAmount <= 0)
+            {
+                result.Text = "当前国库没有可转账金币。";
+                return result;
+            }
+
+            result.Success = AutoPanKingdomService.TryTransferTreasury(kingdom, target, transferAmount, out string message);
             result.Text = message;
             if (result.Success)
             {
-                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 转账 {command.NumericValue} 金币");
-                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 转账：{kingdom.name} -> {target.name} / {command.NumericValue}");
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 向 {target.name} 转账 {transferAmount} 金币");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 转账：{kingdom.name} -> {target.name} / {transferAmount}");
             }
             return result;
         }
@@ -1529,7 +1536,6 @@ namespace XianniAutoPan.Commands
                 "玩家指令总览：",
                 "加入人类 / 加入兽人 / 加入精灵 / 加入矮人(其它文明种族)",
                 "加入 国家名（绑定现有无主国）",
-                "目标国家可写国家名、@对方、[kingdomId] 或纯 kingdomId",
                 "我的国家 / 国家信息",
                 "当前局势 / 所有国家 / 玩家排名",
                 "国家改名 新名字",
@@ -1539,7 +1545,7 @@ namespace XianniAutoPan.Commands
                 "政策 开放占领 / 政策 坚守城池",
                 "国策 聚灵 / 全民皆兵 / 动员",
                 "增加人数 10 / 放置遗迹 1",
-                "转账 目标国家 [kingdomId] 1000",
+                "转账 目标国家 [kingdomId] 1000 / 转账目标国家 全部",
                 "宣战 目标国家 [kingdomId] 或 宣战 @对方",
                 "求和 目标国家 [kingdomId] 或 求和 @对方",
                 "结盟 目标国家 [kingdomId] 或 结盟 @对方",
@@ -1555,9 +1561,9 @@ namespace XianniAutoPan.Commands
                 "古神降星 单位id 层级",
                 "妖兽降阶 单位id 层级",
                 "修士榜 / 古神榜 / 妖兽榜",
-                "修士 单位id 闭关 / 修士 单位id 升境",
-                "古神 单位id 炼体 / 古神 单位id 升星",
-                "妖兽 单位id 养成 / 妖兽 单位id 升阶",
+                "修士 单位id 闭关 / 修士升境 单位id",
+                "古神 单位id 炼体 / 古神升星 单位id",
+                "妖兽 单位id 养成 / 妖兽升阶 单位id",
                 "快速成年 全城 或 快速成年 城市名 [cityId]",
                 "征集军队 城市名 [cityId] 全部/ 征集军队",
                 "移交城市 城市名 [cityId] 给 目标国家 [kingdomId]",

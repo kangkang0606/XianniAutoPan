@@ -41,8 +41,11 @@ namespace XianniAutoPan
             _harmony.PatchAll(typeof(AutoPanWarEndPatch));
             _harmony.PatchAll(typeof(AutoPanNativeDiplomacyWarPatch));
             _harmony.PatchAll(typeof(AutoPanNativeForceAlliancePatch));
+            _harmony.PatchAll(typeof(AutoPanLogAllianceCreatedGuardPatch));
             _harmony.PatchAll(typeof(AutoPanNativeAllianceJoinPatch));
             _harmony.PatchAll(typeof(AutoPanNativeAllianceLeavePatch));
+            _harmony.PatchAll(typeof(AutoPanAllianceLeaveRuntimeGuardPatch));
+            _harmony.PatchAll(typeof(AutoPanCityManagerUpdateGuardPatch));
             _harmony.PatchAll(typeof(AutoPanCityCapturePatch));
             _harmony.PatchAll(typeof(AutoPanDefeatedDefendBuildCityPatch));
             _harmony.PatchAll(typeof(AutoPanDefeatedDefendStartCivilizationPatch));
