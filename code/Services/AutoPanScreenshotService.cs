@@ -34,6 +34,36 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 清理上一局生成的当前局势截图文件。
+        /// </summary>
+        public static void ClearRoundScreenshots()
+        {
+            if (string.IsNullOrWhiteSpace(_screenshotFolder) || !Directory.Exists(_screenshotFolder))
+            {
+                return;
+            }
+
+            int deletedCount = 0;
+            foreach (string filePath in Directory.EnumerateFiles(_screenshotFolder, "current_situation_*.png"))
+            {
+                try
+                {
+                    File.Delete(filePath);
+                    deletedCount++;
+                }
+                catch (Exception ex)
+                {
+                    AutoPanLogService.Error($"清理当前局势截图失败：{filePath}，{ex.Message}");
+                }
+            }
+
+            if (deletedCount > 0)
+            {
+                AutoPanLogService.Info($"结盘已清理上一局当前局势截图 {deletedCount} 张。");
+            }
+        }
+
+        /// <summary>
         /// 截取当前游戏全屏画面，并通过 QQ 群发送图片。
         /// </summary>
         public static bool TrySendCurrentSituation(FrontendInboundMessage message, bool bypassCooldown, out string replyText)

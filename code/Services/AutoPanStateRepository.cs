@@ -134,7 +134,7 @@ namespace XianniAutoPan.Services
             }
 
             Kingdom current = World.world?.kingdoms?.get(snapshot.KingdomId);
-            if (current == null || !current.isAlive())
+            if (current == null || current.data == null || !current.isAlive())
             {
                 return false;
             }

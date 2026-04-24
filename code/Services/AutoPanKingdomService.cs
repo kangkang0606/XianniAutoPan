@@ -1774,7 +1774,7 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static string FormatKingdomLabel(Kingdom kingdom)
         {
-            return kingdom == null ? "未知国家" : $"{kingdom.name} [{kingdom.getID()}]";
+            return kingdom == null || kingdom.data == null ? "未知国家" : $"{kingdom.name} [{kingdom.getID()}]";
         }
 
         /// <summary>

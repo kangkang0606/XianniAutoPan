@@ -101,6 +101,16 @@ namespace XianniAutoPan
         [HarmonyPrefix]
         public static bool Prefix(Kingdom pAttacker, Kingdom pDefender, WarTypeAsset pAsset, ref War __result)
         {
+            if (pAsset == null
+                || !AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(pAttacker)
+                || (!pAsset.total_war && !AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(pDefender)))
+            {
+                __result = null;
+                return false;
+            }
+
+            AutoPanDiplomacyGuardService.SanitizeAllianceForKingdom(pAttacker);
+            AutoPanDiplomacyGuardService.SanitizeAllianceForKingdom(pDefender);
             if (!AutoPanDiplomacyGuardService.ShouldBlockNativeWar(pAttacker, pDefender, pAsset))
             {
                 return true;
@@ -247,6 +257,13 @@ namespace XianniAutoPan
         [HarmonyPrefix]
         public static bool Prefix(Alliance __instance, Kingdom pKingdom, ref bool __result)
         {
+            AutoPanDiplomacyGuardService.SanitizeAlliance(__instance);
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(pKingdom))
+            {
+                __result = false;
+                return false;
+            }
+
             if (!AutoPanDiplomacyGuardService.ShouldBlockNativeAllianceMembershipChange(__instance, pKingdom))
             {
                 return true;
@@ -269,7 +286,63 @@ namespace XianniAutoPan
         [HarmonyPrefix]
         public static bool Prefix(Alliance __instance, Kingdom pKingdom)
         {
+            AutoPanDiplomacyGuardService.SanitizeAlliance(__instance);
             return !AutoPanDiplomacyGuardService.ShouldBlockNativeAllianceMembershipChange(__instance, pKingdom);
+        }
+    }
+
+    /// <summary>
+    /// 防止原版联盟判断遍历到已销毁国家对象。
+    /// </summary>
+    [HarmonyPatch(typeof(Alliance), nameof(Alliance.canJoin))]
+    internal static class AutoPanAllianceCanJoinGuardPatch
+    {
+        /// <summary>
+        /// 原版 canJoin 会直接读取所有联盟成员的 kingdom id，失效成员需要先清理。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Alliance __instance, Kingdom pKingdom, ref bool __result)
+        {
+            AutoPanDiplomacyGuardService.SanitizeAlliance(__instance);
+            if (AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(pKingdom))
+            {
+                return true;
+            }
+
+            __result = false;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 防止战争加入攻方时访问已销毁国家对象。
+    /// </summary>
+    [HarmonyPatch(typeof(War), nameof(War.joinAttackers))]
+    internal static class AutoPanWarJoinAttackersGuardPatch
+    {
+        /// <summary>
+        /// 原版 War.joinAttackers 会直接访问 pKingdom.id，失效国家应跳过。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Kingdom pKingdom)
+        {
+            return AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(pKingdom);
+        }
+    }
+
+    /// <summary>
+    /// 防止战争加入防守方时访问已销毁国家对象。
+    /// </summary>
+    [HarmonyPatch(typeof(War), nameof(War.joinDefenders))]
+    internal static class AutoPanWarJoinDefendersGuardPatch
+    {
+        /// <summary>
+        /// 原版 War.joinDefenders 会直接访问 pKingdom.id，失效国家应跳过。
+        /// </summary>
+        [HarmonyPrefix]
+        public static bool Prefix(Kingdom pKingdom)
+        {
+            return AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(pKingdom);
         }
     }
 

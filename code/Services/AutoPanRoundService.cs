@@ -495,6 +495,7 @@ namespace XianniAutoPan.Services
             AutoPanDuelService.ClearAll();
             AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.ClearAll();
+            AutoPanScreenshotService.ClearRoundScreenshots();
             Config.customMapSize = "iceberg";
             Config.current_map_template = "box_world";
             AutoPanRoundUiService.RequestHideAfterNextWorldLoad();

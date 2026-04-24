@@ -722,6 +722,11 @@ namespace XianniAutoPan.Commands
                 result.Text = resolveError;
                 return result;
             }
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(kingdom) || !AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(target))
+            {
+                result.Text = "宣战失败：发起国或目标国家状态已失效。";
+                return result;
+            }
             if (target == kingdom)
             {
                 result.Text = "不能向自己的国家宣战。";
@@ -745,9 +750,21 @@ namespace XianniAutoPan.Commands
             }
 
             War war;
-            using (AutoPanDiplomacyGuardService.AllowAutoPanDiplomacyChange())
+            try
             {
-                war = World.world.diplomacy.startWar(kingdom, target, WarTypeLibrary.normal);
+                AutoPanDiplomacyGuardService.SanitizeAllianceForKingdom(kingdom);
+                AutoPanDiplomacyGuardService.SanitizeAllianceForKingdom(target);
+                using (AutoPanDiplomacyGuardService.AllowAutoPanDiplomacyChange())
+                {
+                    war = World.world.diplomacy.startWar(kingdom, target, WarTypeLibrary.normal);
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoPanKingdomService.AddTreasury(kingdom, cost);
+                result.Text = $"对 {target.name} 宣战失败：原版外交状态异常，已退回 {cost} 金币。";
+                AutoPanLogService.Error($"自动盘宣战失败：{kingdom.name} -> {target.name}，{ex.GetType().Name} {ex.Message}");
+                return result;
             }
             if (war == null)
             {
