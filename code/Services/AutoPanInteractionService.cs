@@ -243,15 +243,27 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            int cost = Math.Max(0, AutoPanConfigHooks.AuraRandomReduceCost);
+            if (cost > 0 && !AutoPanKingdomService.TrySpendTreasury(sourceKingdom, cost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
             if (!XianniAutoPanApi.TryReduceRandomCityAura(targetKingdom, out string cityName, out int actualReduced, out int currentAura, out int maxAura))
             {
+                if (cost > 0)
+                {
+                    AutoPanKingdomService.AddTreasury(sourceKingdom, cost);
+                }
                 message = $"{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 当前没有可降低的城市灵气。";
                 return false;
             }
 
             AutoPanKingdomService.ClearSnapshotCache(sourceKingdom.getID());
             AutoPanKingdomService.ClearSnapshotCache(targetKingdom.getID());
-            message = $"{AutoPanKingdomService.FormatKingdomLabel(sourceKingdom)} 已对 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 的 {cityName} 随机降低灵气 {actualReduced}，当前 {currentAura}/{maxAura}。";
+            string costText = cost > 0 ? $"，消耗 {cost} 金币" : string.Empty;
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(sourceKingdom)} 已对 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 的 {cityName} 随机降低灵气 {actualReduced}，当前 {currentAura}/{maxAura}{costText}。";
             return true;
         }
 

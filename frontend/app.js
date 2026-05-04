@@ -11,6 +11,7 @@ const commandBookEl = document.getElementById("commandBook");
 const kingdomTableBodyEl = document.getElementById("kingdomTableBody");
 const policyModulesEl = document.getElementById("policyModules");
 const policyModuleTabsEl = document.getElementById("policyModuleTabs");
+const policySearchInputEl = document.getElementById("policySearchInput");
 const qqBridgePanelEl = document.getElementById("qqBridgePanel");
 const pendingRequestsEl = document.getElementById("pendingRequests");
 const scoreTableBodyEl = document.getElementById("scoreTableBody");
@@ -51,6 +52,8 @@ let currentKingdoms = [];
 let currentPage = "dashboard";
 let currentConfigModule = "score";
 let currentPolicyModuleKey = "";
+let currentPolicySnapshot = null;
+let policySearchQuery = "";
 let isSavingDirtyConfig = false;
 const policyDrafts = Object.create(null);
 const policyDirtyKeys = new Set();
@@ -612,7 +615,34 @@ function buildRangePolicyItem(minItem, maxItem) {
   return box;
 }
 
+function normalizePolicySearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getPolicyItemSearchText(item) {
+  return [
+    pick(item, "key", "Key"),
+    pick(item, "displayName", "DisplayName"),
+    pick(item, "description", "Description"),
+    pick(item, "unitText", "UnitText")
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+}
+
+function getPolicyModuleSearchText(module) {
+  return [
+    pick(module, "key", "Key"),
+    pick(module, "id", "Id"),
+    pick(module, "displayName", "DisplayName"),
+    pick(module, "description", "Description")
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+}
+
+function policyItemMatches(item, query) {
+  return !query || getPolicyItemSearchText(item).includes(query);
+}
+
 function renderPolicy(policy) {
+  currentPolicySnapshot = policy || null;
   policyModulesEl.innerHTML = "";
   if (policyModuleTabsEl) {
     policyModuleTabsEl.innerHTML = "";
@@ -622,10 +652,12 @@ function renderPolicy(policy) {
     const empty = document.createElement("div");
     empty.className = "pending-empty";
     empty.textContent = "当前没有可显示的前端政策。";
-    policyModulesEl.appendChild(empty);
-    return;
+      policyModulesEl.appendChild(empty);
+      return;
   }
 
+  policySearchQuery = normalizePolicySearchText(policySearchInputEl ? policySearchInputEl.value : policySearchQuery);
+  const isSearching = policySearchQuery.length > 0;
   const moduleKeys = modules.map((module, index) => {
     const displayName = pick(module, "displayName", "DisplayName") || "未命名模块";
     return String(pick(module, "key", "Key") || pick(module, "id", "Id") || `${index}-${displayName}`);
@@ -637,7 +669,16 @@ function renderPolicy(policy) {
   modules.forEach((module, moduleIndex) => {
     const moduleKey = moduleKeys[moduleIndex];
     const displayName = pick(module, "displayName", "DisplayName") || "未命名模块";
-    const isActive = moduleKey === currentPolicyModuleKey;
+    const items = pick(module, "items", "Items") || [];
+    const moduleMatches = isSearching && getPolicyModuleSearchText(module).includes(policySearchQuery);
+    const visibleItems = isSearching
+      ? items.filter((item) => moduleMatches || policyItemMatches(item, policySearchQuery))
+      : items;
+    if (isSearching && visibleItems.length === 0 && !moduleMatches) {
+      return;
+    }
+
+    const isActive = isSearching || moduleKey === currentPolicyModuleKey;
     if (policyModuleTabsEl) {
       const tab = document.createElement("button");
       tab.type = "button";
@@ -667,12 +708,11 @@ function renderPolicy(policy) {
 
     const itemsWrap = document.createElement("div");
     itemsWrap.className = "policy-module-items";
-    const items = pick(module, "items", "Items") || [];
     const itemsByKey = Object.create(null);
     items.forEach((item) => { itemsByKey[pick(item, "key", "Key")] = item; });
     const rendered = new Set();
 
-    items.forEach((item) => {
+    visibleItems.forEach((item) => {
       const key = pick(item, "key", "Key");
       if (rendered.has(key)) return;
 
@@ -693,6 +733,13 @@ function renderPolicy(policy) {
     card.appendChild(itemsWrap);
     policyModulesEl.appendChild(card);
   });
+
+  if (isSearching && policyModulesEl.children.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pending-empty";
+    empty.textContent = `没有找到包含“${policySearchQuery}”的配置项。`;
+    policyModulesEl.appendChild(empty);
+  }
 }
 
 function createConfigActionButton(text, onClick) {
@@ -1567,6 +1614,13 @@ pageTabEls.forEach((button) => {
 configTabEls.forEach((button) => {
   button.addEventListener("click", () => switchConfigModule(button.dataset.configTarget));
 });
+
+if (policySearchInputEl) {
+  policySearchInputEl.addEventListener("input", () => {
+    policySearchQuery = normalizePolicySearchText(policySearchInputEl.value);
+    renderPolicy(currentPolicySnapshot);
+  });
+}
 
 if (saveDirtyConfigButtonEl) {
   saveDirtyConfigButtonEl.addEventListener("click", () => {

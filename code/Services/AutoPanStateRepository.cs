@@ -506,36 +506,15 @@ namespace XianniAutoPan.Services
                 return 100;
             }
 
-            int windowYears = Math.Max(1, AutoPanConfigHooks.ActivityWindowYears);
-            int requiredYears = Math.Max(0, AutoPanConfigHooks.ActivityRequiredYears);
-            int windowStart = currentYear - windowYears + 1;
-            int activeYears = (activity.ActivityYears ?? new List<int>())
-                .Where(year => year >= windowStart && year <= currentYear)
-                .Distinct()
-                .Count();
-            int missingSteps = Math.Max(0, requiredYears - activeYears);
-
-            int idleSteps = 0;
-            int idleYears = Math.Max(0, AutoPanConfigHooks.ActivityIdleYears);
-            if (idleYears > 0)
-            {
-                int lastActivityYear = activity.LastActivityYear <= 0 ? boundYear : activity.LastActivityYear;
-                int idleDuration = Math.Max(0, currentYear - lastActivityYear);
-                if (idleDuration >= idleYears)
-                {
-                    idleSteps = Math.Max(1, idleDuration / idleYears);
-                }
-            }
-
-            int penaltySteps = Math.Max(missingSteps, idleSteps);
-            if (penaltySteps <= 0)
+            int penaltyLevel = CalculateInactivePenaltyLevel(activity, currentYear);
+            if (penaltyLevel <= 0)
             {
                 return 100;
             }
 
             int minPercent = Math.Max(0, Math.Min(100, AutoPanConfigHooks.InactiveGrowthMinPercent));
             int stepPercent = Math.Max(0, AutoPanConfigHooks.InactiveGrowthStepPercent);
-            int percent = 100 - penaltySteps * stepPercent;
+            int percent = 100 - penaltyLevel * stepPercent;
             return Math.Max(minPercent, Math.Min(100, percent));
         }
 
@@ -761,6 +740,7 @@ namespace XianniAutoPan.Services
                 Math.Max(1, AutoPanConfigHooks.ActivityWindowYears)
                     + Math.Max(0, AutoPanConfigHooks.ActivityProtectionYears)
                     + Math.Max(0, AutoPanConfigHooks.ActivityIdleYears)
+                    + Math.Max(1, AutoPanConfigHooks.ActivityCoverageYears)
                     + 30);
             int minActivityYear = currentYear - keepYears + 1;
             _state.PlayerActivities = _state.PlayerActivities
@@ -812,6 +792,8 @@ namespace XianniAutoPan.Services
             activity.PlayerName = string.IsNullOrWhiteSpace(activity.PlayerName) ? activity.UserId : activity.PlayerName.Trim();
             activity.BoundYear = activity.BoundYear <= 0 ? currentYear : activity.BoundYear;
             activity.LastActivityYear = activity.LastActivityYear <= 0 ? activity.BoundYear : activity.LastActivityYear;
+            activity.InactivePenaltyLevel = Math.Max(0, Math.Min(GetMaxInactivePenaltyLevel(), activity.InactivePenaltyLevel));
+            activity.LastPenaltyYear = activity.LastPenaltyYear <= 0 ? activity.LastActivityYear : activity.LastPenaltyYear;
             activity.ActivityYears = (activity.ActivityYears ?? new List<int>())
                 .Where(year => year >= minActivityYear && year <= currentYear)
                 .Distinct()
@@ -887,6 +869,8 @@ namespace XianniAutoPan.Services
                     KingdomId = kingdomId,
                     BoundYear = year,
                     LastActivityYear = year,
+                    InactivePenaltyLevel = 0,
+                    LastPenaltyYear = year,
                     ActivityYears = new List<int>()
                 };
                 _state.PlayerActivities.Add(existing);
@@ -916,8 +900,38 @@ namespace XianniAutoPan.Services
                 existing.ActivityYears = new List<int>();
                 changed = true;
             }
-            if (!existing.ActivityYears.Contains(year))
+            if (treatAsBinding)
             {
+                if (existing.InactivePenaltyLevel != 0)
+                {
+                    existing.InactivePenaltyLevel = 0;
+                    changed = true;
+                }
+                if (existing.LastPenaltyYear != year)
+                {
+                    existing.LastPenaltyYear = year;
+                    changed = true;
+                }
+            }
+            bool isNewActivityYear = !existing.ActivityYears.Contains(year);
+            if (isNewActivityYear)
+            {
+                if (!treatAsBinding)
+                {
+                    int currentLevel = CalculateInactivePenaltyLevel(existing, year);
+                    int recoveredLevel = Math.Max(0, currentLevel - 1);
+                    if (existing.InactivePenaltyLevel != recoveredLevel)
+                    {
+                        existing.InactivePenaltyLevel = recoveredLevel;
+                        changed = true;
+                    }
+                    if (existing.LastPenaltyYear != year)
+                    {
+                        existing.LastPenaltyYear = year;
+                        changed = true;
+                    }
+                }
+
                 existing.ActivityYears.Add(year);
                 existing.ActivityYears.Sort();
                 changed = true;
@@ -949,6 +963,55 @@ namespace XianniAutoPan.Services
             return AutoPanConfigHooks.InactiveAffectsCultivator != 0;
         }
 
+        private static int CalculateInactivePenaltyLevel(AutoPanPlayerActivityRecord activity, int currentYear)
+        {
+            if (activity == null)
+            {
+                return 0;
+            }
+
+            int maxLevel = GetMaxInactivePenaltyLevel();
+            if (maxLevel <= 0)
+            {
+                return 0;
+            }
+
+            int boundYear = activity.BoundYear <= 0 ? currentYear : activity.BoundYear;
+            int protectionYears = Math.Max(0, AutoPanConfigHooks.ActivityProtectionYears);
+            int protectionEndYear = boundYear + protectionYears;
+            if (protectionYears > 0 && currentYear < protectionEndYear)
+            {
+                return 0;
+            }
+
+            int idleYears = Math.Max(0, AutoPanConfigHooks.ActivityIdleYears);
+            int level = Math.Max(0, Math.Min(maxLevel, activity.InactivePenaltyLevel));
+            if (idleYears <= 0)
+            {
+                return level;
+            }
+
+            int coverageYears = Math.Max(1, AutoPanConfigHooks.ActivityCoverageYears);
+            int lastActivityYear = activity.LastActivityYear <= 0 ? boundYear : activity.LastActivityYear;
+            int lastPenaltyYear = activity.LastPenaltyYear <= 0 ? lastActivityYear : activity.LastPenaltyYear;
+            int idleReferenceYear = Math.Max(Math.Max(lastPenaltyYear, protectionEndYear), lastActivityYear + coverageYears - 1);
+            int idleDuration = Math.Max(0, currentYear - idleReferenceYear);
+            int extraLevels = idleDuration / idleYears;
+            return Math.Max(0, Math.Min(maxLevel, level + extraLevels));
+        }
+
+        private static int GetMaxInactivePenaltyLevel()
+        {
+            int minPercent = Math.Max(0, Math.Min(100, AutoPanConfigHooks.InactiveGrowthMinPercent));
+            int stepPercent = Math.Max(0, AutoPanConfigHooks.InactiveGrowthStepPercent);
+            if (minPercent >= 100 || stepPercent <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, (int)Math.Ceiling((100 - minPercent) / (double)stepPercent));
+        }
+
         private static void RemoveTransferLedgersOutsideYearLocked(int year)
         {
             if (_state.TransferLedgers == null)
@@ -974,6 +1037,8 @@ namespace XianniAutoPan.Services
                 KingdomId = activity.KingdomId,
                 BoundYear = activity.BoundYear,
                 LastActivityYear = activity.LastActivityYear,
+                InactivePenaltyLevel = activity.InactivePenaltyLevel,
+                LastPenaltyYear = activity.LastPenaltyYear,
                 ActivityYears = new List<int>(activity.ActivityYears ?? new List<int>())
             };
         }

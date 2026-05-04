@@ -571,6 +571,11 @@ namespace XianniAutoPan.Services
         public static int AuraSabotageCostPer100Aura { get; private set; } = 35;
 
         /// <summary>
+        /// 降低灵气成本。
+        /// </summary>
+        public static int AuraRandomReduceCost { get; private set; }
+
+        /// <summary>
         /// 斩首基础成本。
         /// </summary>
         public static int AssassinateBaseCost { get; private set; } = 280;
@@ -724,6 +729,11 @@ namespace XianniAutoPan.Services
         /// 统计窗口内需要有活动的年份数量。
         /// </summary>
         public static int ActivityRequiredYears { get; private set; } = 3;
+
+        /// <summary>
+        /// 单次有效互动覆盖的游戏年份数量。
+        /// </summary>
+        public static int ActivityCoverageYears { get; private set; } = 3;
 
         /// <summary>
         /// 连续无活动多少年进入挂机风险。
@@ -1580,7 +1590,8 @@ namespace XianniAutoPan.Services
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthEnabled", "挂机压制开关", "开启后低活动玩家国家的自然修炼成长会按活动率降低；AI 国家不受影响。", "", 0, 1, () => InactiveGrowthEnabled, value => InactiveGrowthEnabled = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityProtectionYears", "挂机保护年数", "玩家绑定国家后多少年内不触发挂机压制。", "年", 0, 10000, () => ActivityProtectionYears, value => ActivityProtectionYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityWindowYears", "活动统计窗口", "挂机判定只统计最近多少年的活动年份。", "年", 1, 10000, () => ActivityWindowYears, value => ActivityWindowYears = value);
-            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityRequiredYears", "所需活动年份", "统计窗口内至少多少个不同年份有活动才算正常运营。", "年", 0, 10000, () => ActivityRequiredYears, value => ActivityRequiredYears = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityRequiredYears", "所需活动年份", "旧窗口判定兼容项；当前层级压制模式不再使用此值。", "年", 0, 10000, () => ActivityRequiredYears, value => ActivityRequiredYears = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityCoverageYears", "单次互动覆盖年数", "一次有效互动可覆盖多少个游戏年，适合高倍速时避免玩家难以连续踩年份；默认 3。", "年", 1, 10000, () => ActivityCoverageYears, value => ActivityCoverageYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityIdleYears", "连续挂机年数", "连续多少年没有活动后进入挂机风险。", "年", 0, 10000, () => ActivityIdleYears, value => ActivityIdleYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthMinPercent", "挂机最低成长", "挂机压制后的自然成长最低百分比。", "%", 0, 100, () => InactiveGrowthMinPercent, value => InactiveGrowthMinPercent = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthStepPercent", "挂机每级降低", "每个挂机惩罚步长降低的自然成长百分比。", "%", 0, 100, () => InactiveGrowthStepPercent, value => InactiveGrowthStepPercent = value);
@@ -1608,6 +1619,7 @@ namespace XianniAutoPan.Services
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "bloodlineCreateStageStepCost", "血脉创立层级加价", "血脉创立每提升一层战力阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => BloodlineCreateStageStepCost, value => BloodlineCreateStageStepCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "auraSabotageMinCost", "削灵最小成本", "削灵实际成本不会低于这个数值。", "金币", 0, 1_000_000_000, () => AuraSabotageMinCost, value => AuraSabotageMinCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "auraSabotageCostPer100Aura", "削灵每百灵气成本", "削灵成本 = max(最小成本, ceil(削减灵气 × 本值 / 100))。", "金币", 0, 1_000_000_000, () => AuraSabotageCostPer100Aura, value => AuraSabotageCostPer100Aura = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "auraRandomReduceCost", "降低灵气成本", "执行降低灵气 国家名时消耗的固定金币；默认 0 以兼容旧配置。", "金币", 0, 1_000_000_000, () => AuraRandomReduceCost, value => AuraRandomReduceCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "assassinateBaseCost", "斩首基础成本", "斩首成本 = 基础成本 + 目标层级 × 层级加价。", "金币", 0, 1_000_000_000, () => AssassinateBaseCost, value => AssassinateBaseCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "assassinateStageStepCost", "斩首层级加价", "斩首每提升一层目标阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => AssassinateStageStepCost, value => AssassinateStageStepCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "curseBaseCost", "诅咒基础成本", "诅咒成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => CurseBaseCost, value => CurseBaseCost = value);

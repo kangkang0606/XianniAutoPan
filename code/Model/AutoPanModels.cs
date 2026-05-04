@@ -288,6 +288,16 @@ namespace XianniAutoPan.Model
         public int LastActivityYear { get; set; }
 
         /// <summary>
+        /// 当前挂机压制层级。
+        /// </summary>
+        public int InactivePenaltyLevel { get; set; }
+
+        /// <summary>
+        /// 最近一次结算挂机层级的年份。
+        /// </summary>
+        public int LastPenaltyYear { get; set; }
+
+        /// <summary>
         /// 本局发生过活动的年份集合。
         /// </summary>
         public List<int> ActivityYears { get; set; } = new List<int>();

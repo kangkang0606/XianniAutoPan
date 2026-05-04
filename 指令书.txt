@@ -157,7 +157,7 @@
 妖兽升阶：妖兽升阶基础成本 + 当前阶级 × 妖兽升阶递增值
 血脉创立：血脉创立基础成本 + 目标当前层级 × 血脉创立层级加价
 削灵：max(削灵最小成本, ceil(削减灵气 × 削灵每百灵气成本 / 100))
-降低灵气：按仙逆灵气笔刷减少模式随机降低目标国家一个城市的灵气，不走削灵数量成本公式。
+降低灵气：按 `auraRandomReduceCost` 消耗固定金币，默认 0；按仙逆灵气笔刷减少模式随机降低目标国家一个城市的灵气，不走削灵数量成本公式。
 斩首：斩首基础成本 + 目标当前层级 × 斩首层级加价
 诅咒：诅咒基础成本 + 目标人数 × 诅咒单人加价
 国家祝福：祝福基础成本 + 目标人数 × 祝福单人加价
@@ -247,11 +247,11 @@
 9. “玩家宣战开始年份”只限制玩家和 AI 的宣战指令；其它玩家指令、AI 运营指令与普通聊天不受该年份限制。
 10. `roundEndYear` 控制自动结盘年份；默认 100 年；`roundParticipationPoints` 控制每名本局参与玩家的基础参与积分，默认 1。
 10.1 `transferRequireRelation`、`transferAllowAlliance`、`transferAllowSameWarSide` 控制转账关系要求；`transferYearlyOutBaseLimit`、`transferYearlyOutIncomePercent`、`transferYearlyInBaseLimit`、`transferYearlyInIncomePercent` 控制年度转出/接收额度；`transferTaxPercent` 控制转账手续费。
-10.2 `inactiveGrowthEnabled` 控制挂机压制开关；`activityProtectionYears`、`activityWindowYears`、`activityRequiredYears`、`activityIdleYears` 控制挂机判定；`inactiveGrowthMinPercent`、`inactiveGrowthStepPercent` 控制压制强度；`inactiveAffectsCultivator`、`inactiveAffectsAncient`、`inactiveAffectsBeast` 分别控制修士、古神、妖兽自然成长是否受影响。
+10.2 `inactiveGrowthEnabled` 控制挂机压制开关；挂机按层级累计，超过 `activityIdleYears` 年无有效互动增加 1 层，每层按 `inactiveGrowthStepPercent` 降低自然成长，最低不低于 `inactiveGrowthMinPercent`；有效互动只恢复 1 层，同一年多次互动只算一次。`activityProtectionYears` 控制绑定保护期，`activityCoverageYears` 控制一次互动覆盖的游戏年数，适合高倍速；`activityRequiredYears` 为旧窗口判定兼容项，层级模式不再使用。`inactiveAffectsCultivator`、`inactiveAffectsAncient`、`inactiveAffectsBeast` 分别控制修士、古神、妖兽自然成长是否受影响。
 11. 配置页的“玩家积分榜”只编辑 `autopan_scoreboard.json` 中的结盘积分记录，不会删除当前绑定国家、QQ 路由或世界存档。
 12. `aiDecisionIntensity` 控制 AI 决策强度，范围 1~5；`aiQqChatEnabled` 控制 AI 决策摘要和 AI 聊天回包是否发往 QQ 群。
 13. `我的国家` 和 `国家信息` 是同一个查询入口，都会显示国库、等级、军队、政策、战争中敌国和结盟国家。
-14. 网页端“政策配置”会单独显示“占领政策”模块；`occupationSubsidyMin` 与 `occupationSubsidyMax` 分别控制被占城随机奖励金币的最小值和最大值。`currentSituationCooldownSeconds` 控制 QQ 群“当前局势”冷却；`occupationPolicyChangeCost`、`nationalMilitiaCost`、`nationalMilitiaDurationYears` 控制国家政策和全民皆兵；`mobilizeCost` 与 `mobilizeOrderSeconds` 控制“动员”的成本和军令持续秒数；`allianceMaxKingdoms` 控制单个联盟国家上限。
+14. 网页端“政策配置”会单独显示“占领政策”模块，并提供搜索框按中文名、配置键和说明过滤配置项；`occupationSubsidyMin` 与 `occupationSubsidyMax` 分别控制被占城随机奖励金币的最小值和最大值。`currentSituationCooldownSeconds` 控制 QQ 群“当前局势”冷却；`occupationPolicyChangeCost`、`nationalMilitiaCost`、`nationalMilitiaDurationYears` 控制国家政策和全民皆兵；`mobilizeCost` 与 `mobilizeOrderSeconds` 控制“动员”的成本和军令持续秒数；`allianceMaxKingdoms` 控制单个联盟国家上限。
 
 十、QQ群接入
 1. 自动盘支持标准 OneBot 11 反向 WebSocket，兼容 NapCat、LLOneBot 等常见 QQ 协议端。

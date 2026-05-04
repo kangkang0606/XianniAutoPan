@@ -386,6 +386,7 @@ namespace XianniAutoPan.AI
             int duelCost = AutoPanConfigHooks.DuelRequestCost;
             int popCost = AutoPanConfigHooks.AddPopulationCostPerUnit;
             int sabotageMin = AutoPanConfigHooks.AuraSabotageMinCost;
+            int auraRandomCost = AutoPanConfigHooks.AuraRandomReduceCost;
             int assassinBase = AutoPanConfigHooks.AssassinateBaseCost;
             int curseBase = AutoPanConfigHooks.CurseBaseCost;
             int cursePer = AutoPanConfigHooks.CurseCostPerTarget;
@@ -403,7 +404,7 @@ namespace XianniAutoPan.AI
                    "你应该积极与其他国家互动（结盟、约斗、宣战、天运等），不要只做内政。AllKingdoms 中 IsPlayerOwned=true 的是玩家国家，也可以互动。" +
                    "约束：国库不足不选；目标不存在不选；同盟不宣战；CanDeclareWar=false 不宣战；宣战目标必须来自 CandidateKingdomNames；求和目标必须来自 EnemyKingdomNames。" +
                    "动作格式：升级国运、升级修真国、政策 开放占领、政策 坚守城池、国策 聚灵、全民皆兵、动员、动员 国家名 [kingdomId]、宣战 国家名 [kingdomId]、求和 国家名 [kingdomId]、结盟 国家名 [kingdomId]、退盟、约斗 国家名 [kingdomId]、增加人数 数字(1~10)、血脉创立、国家祝福 5、国家祝福 全员、削灵 国家名 [kingdomId] 数量、斩首 国家名 [kingdomId]、诅咒 国家名 [kingdomId] 人数、天运惩罚 国家名 [kingdomId]、天运赐福 国家名 [kingdomId]、扰动国家 国家名 [kingdomId]、降低国运 国家名 [kingdomId] 级数、修士 单位id 闭关、修士 单位id 升境、古神 单位id 炼体、古神 单位id 升星、妖兽 单位id 养成、妖兽 单位id 升阶。" +
-                   $"成本（金币）：升级国运={nationUpCost}×当前等级；升级修真国={xiuzhenUpCost}×下一级；政策变更={policyCost}；聚灵={gatherCost}；全民皆兵={militiaCost}；动员={mobilizeCost}；宣战={warCost}；求和={peaceCost}×2；结盟={allianceCost}；退盟={leaveAllianceCost}；约斗={duelCost}；增加人数={popCost}×人数；削灵≥{sabotageMin}；斩首={assassinBase}+层级加价；诅咒={curseBase}+{cursePer}×人数；天运惩罚={heavenPunish}；天运赐福={heavenBless}；扰动={disturbCost}(成功率{disturbRate}%)；降低国运={lowerCost}×级数；修士闭关={retreatCost}；古神炼体={ancientCost}；妖兽养成={beastCost}；血脉创立和国家祝福按目标计价。" +
+                   $"成本（金币）：升级国运={nationUpCost}×当前等级；升级修真国={xiuzhenUpCost}×下一级；政策变更={policyCost}；聚灵={gatherCost}；全民皆兵={militiaCost}；动员={mobilizeCost}；宣战={warCost}；求和={peaceCost}×2；结盟={allianceCost}；退盟={leaveAllianceCost}；约斗={duelCost}；增加人数={popCost}×人数；削灵≥{sabotageMin}；降低灵气={auraRandomCost}；斩首={assassinBase}+层级加价；诅咒={curseBase}+{cursePer}×人数；天运惩罚={heavenPunish}；天运赐福={heavenBless}；扰动={disturbCost}(成功率{disturbRate}%)；降低国运={lowerCost}×级数；修士闭关={retreatCost}；古神炼体={ancientCost}；妖兽养成={beastCost}；血脉创立和国家祝福按目标计价。" +
                    "返回严格 JSON：{\"analysis\":\"一句话国情分析\",\"chat\":\"一句话聊天，可挑衅可友好，不要编造\",\"actions\":[\"动作1\"]}。没有合适动作时 actions 返回空数组。";
         }
 
