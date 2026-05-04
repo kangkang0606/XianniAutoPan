@@ -9,6 +9,7 @@ namespace XianniAutoPan.Commands
     internal static class AutoPanCommandParser
     {
         private static readonly Regex HelpRegex = new Regex(@"^(帮助|指令|帮助指令)$", RegexOptions.Compiled);
+        private static readonly Regex TopicHelpRegex = new Regex(@"^(加入|查询|内政|外交|互动|修炼|城市军务|军务|城市|事件|管理员|管理)帮助$", RegexOptions.Compiled);
         private static readonly Regex JoinCivilizationUnitRegex = new Regex(@"^加入\s*(?:种族|文明单位)\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex JoinExistingKingdomRegex = new Regex(@"^加入\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex ScoreRankRegex = new Regex(@"^(玩家排名|积分排名|胜场排名)$", RegexOptions.Compiled);
@@ -95,6 +96,14 @@ namespace XianniAutoPan.Commands
             if (match.Success)
             {
                 command.CommandType = AutoPanCommandType.Help;
+                return command;
+            }
+
+            match = TopicHelpRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.Help;
+                command.TextArg = match.Groups[1].Value.Trim();
                 return command;
             }
 

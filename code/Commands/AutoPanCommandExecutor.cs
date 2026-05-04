@@ -134,7 +134,7 @@ namespace XianniAutoPan.Commands
             {
                 case AutoPanCommandType.Help:
                     result.Success = true;
-                    result.Text = BuildPlayerHelpText();
+                    result.Text = BuildPlayerHelpText(command.TextArg);
                     return result;
                 case AutoPanCommandType.ScoreRank:
                     result.Success = true;
@@ -304,7 +304,7 @@ namespace XianniAutoPan.Commands
             {
                 case AutoPanCommandType.Help:
                     result.Success = true;
-                    result.Text = BuildPlayerHelpText();
+                    result.Text = BuildPlayerHelpText(command.TextArg);
                     return result;
                 case AutoPanCommandType.MyKingdom:
                 case AutoPanCommandType.KingdomInfo:
@@ -1601,20 +1601,133 @@ namespace XianniAutoPan.Commands
             return result;
         }
 
-        private static string BuildPlayerHelpText()
+        private static string BuildPlayerHelpText(string topic = null)
+        {
+            string normalizedTopic = (topic ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedTopic))
+            {
+                return BuildTopicHelpText(normalizedTopic);
+            }
+
+            return BuildGeneralHelpText();
+        }
+
+        private static string BuildGeneralHelpText()
         {
             return string.Join("\n", new[]
             {
                 "玩家指令总览：",
-                "加入：加入人类/兽人/精灵/矮人/文明单位名，或 加入 国家名。",
+                "加入：加入人类/文明单位名，或 加入 国家名。",
                 "查询：我的国家、国家信息、当前局势、所有国家、玩家排名、城市列表/城市信息、天榜/战力榜、修士/古神/妖兽榜。",
                 "内政：国家改名、升级国运/修真国、政策、国策聚灵、全民皆兵、增加人数、放置遗迹。",
                 "外交：宣战/求和/动员/结盟 目标国家或@玩家，同意/拒绝结盟，退盟。",
                 "互动：约斗、转账 金币/全部、开启比武大会。",
                 "修炼：修士/古神/妖兽 单位id 养成；修士/古神/妖兽升级 单位id；修士/古神/妖兽降级 单位id [层数]。",
                 "城市军务：快速成年、征集军队、移交单位、移交城市、随机移交城市、军备。",
-                "事件：降低国运/灵气、血脉创立、斩首、诅咒、国家祝福、天运惩罚/赐福、扰动国家、陨石。"
+                "事件：降低国运/灵气、血脉创立、斩首、诅咒、国家祝福、天运惩罚/赐福、扰动国家、陨石。",
+                "PS：发送对应分类帮助查看详细教程例子：加入帮助、查询帮助、内政帮助、外交帮助、互动帮助、修炼帮助、城市军务帮助、事件帮助、管理员帮助。"
             });
+        }
+
+        private static string BuildTopicHelpText(string topic)
+        {
+            switch (topic)
+            {
+                case "加入":
+                    return string.Join("\n", new[]
+                    {
+                        "加入帮助：",
+                        "1. 新建国家：加入人类。也可以发送 加入精灵、加入兽人、加入矮人，或 加入 文明单位名。",
+                        "2. 绑定无主国：加入 国家名。例：加入 夏国；目标也可写 国家名 [kingdomId]。",
+                        "3. 已到宣战年份后是否还能绑定无主国，受前端“宣战后禁止加入无主国”开关控制。",
+                        "4. 加入成功会显示段位、入场前缀、人口、初始国库和国家等级。"
+                    });
+                case "查询":
+                    return string.Join("\n", new[]
+                    {
+                        "查询帮助：",
+                        "1. 自己国家：我的国家 或 国家信息。",
+                        "2. 世界概况：当前局势、所有国家、玩家排名。",
+                        "3. 城市查询：城市列表；城市信息 城市名 [cityId]。",
+                        "4. 榜单查询：天榜、战力榜、修士榜、古神榜、妖兽榜。",
+                        "5. 单位 id、城市 id、国家 id 都建议从这些查询回包里复制。"
+                    });
+                case "内政":
+                    return string.Join("\n", new[]
+                    {
+                        "内政帮助：",
+                        "1. 改名：国家改名 新名字。例：国家改名 大夏。",
+                        "2. 成长：升级国运、升级修真国。",
+                        "3. 政策：政策 开放占领；政策 坚守城池。",
+                        "4. 国策：国策 聚灵、全民皆兵。",
+                        "5. 发展：增加人数 10；放置遗迹 1。"
+                    });
+                case "外交":
+                    return string.Join("\n", new[]
+                    {
+                        "外交帮助：",
+                        "1. 宣战：宣战 目标国家 [kingdomId]，或 宣战@玩家。",
+                        "2. 求和：求和 目标国家 [kingdomId]，或 求和@玩家。",
+                        "3. 结盟：结盟 目标国家 [kingdomId]，或 结盟@玩家。",
+                        "4. 响应：同意结盟、拒绝结盟、退盟。",
+                        "5. 动员：动员，或 动员 目标国家 [kingdomId]/@玩家；指定目标时需要与目标交战。"
+                    });
+                case "互动":
+                    return string.Join("\n", new[]
+                    {
+                        "互动帮助：",
+                        "1. 约斗：约斗 目标国家 [kingdomId] 500；赌注可不写。",
+                        "2. 转账：转账 目标国家 [kingdomId] 1000；转账目标国家 全部。",
+                        "3. 比武：开启比武大会；比武进行中不能约斗，约斗进行中不能开启比武。",
+                        "4. 转账是否需要同盟/同战线、年度额度和税率都在前端配置。"
+                    });
+                case "修炼":
+                    return string.Join("\n", new[]
+                    {
+                        "修炼帮助：",
+                        "1. 先查 id：修士榜、古神榜、妖兽榜。",
+                        "2. 养成：修士 12345 养成；古神 12345 养成；妖兽 12345 养成。",
+                        "3. 升级：修士升级 12345；古神升级 12345；妖兽升级 12345。",
+                        "4. 降级：修士降级 12345 2；古神降级 12345 2；妖兽降级 12345 2。不写层数默认 1。",
+                        "5. 旧写法闭关/炼体/升境/升星/升阶/降境/降星/降阶仍兼容。"
+                    });
+                case "城市军务":
+                case "军务":
+                case "城市":
+                    return string.Join("\n", new[]
+                    {
+                        "城市军务帮助：",
+                        "1. 成年：快速成年 全城；快速成年 城市名 [cityId]。",
+                        "2. 征兵：征集军队；征集军队 城市名 [cityId] 全部；征集军队 城市名 [cityId] 20。",
+                        "3. 移交单位：移交单位 12345 目标国家 [kingdomId]，目标也可@玩家。",
+                        "4. 移交城市：移交城市 城市名 [cityId] 给 目标国家 [kingdomId]。",
+                        "5. 随机移交：移交 目标国家 [kingdomId]随机一座城市。",
+                        "6. 军备：军备 城市名 [cityId] 精金 全军；材料可用铜/青铜/白银/铁/钢/秘银/精金。"
+                    });
+                case "事件":
+                    return string.Join("\n", new[]
+                    {
+                        "事件帮助：",
+                        "1. 削弱：降低国运 目标国家 [kingdomId] 1；降低灵气 目标国家 [kingdomId]。",
+                        "2. 单位事件：血脉创立 单位id；斩首 目标国家；诅咒 目标国家 3。",
+                        "3. 增益：国家祝福 全员；国家祝福 5；天运赐福 目标国家。",
+                        "4. 干扰：天运惩罚 目标国家；扰动国家 目标国家。",
+                        "5. 陨石：陨石 目标国家 5；目标支持@玩家，需到可宣战年份后使用。"
+                    });
+                case "管理员":
+                case "管理":
+                    return string.Join("\n", new[]
+                    {
+                        "管理员帮助：",
+                        "1. 金币：#增加国家金币 目标国家 1000；#设置国家金币 目标国家 5000；#查看国家金币 目标国家。",
+                        "2. AI：#全局AI 开；#全局AI 关；#设置AI自动加入数 5。",
+                        "3. 年份：#设置AI开始决策年份 50；#设置玩家开始决策年份 30。",
+                        "4. 倍速：#2x；#设置倍速计划 10年2倍,50年5倍；#开启倍速计划；#关闭倍速计划。",
+                        "5. 结盘：#结盘；#结盘x；#生成 人类；#查看政策；#设置政策 配置键 数值。"
+                    });
+                default:
+                    return BuildGeneralHelpText();
+            }
         }
     }
 }
