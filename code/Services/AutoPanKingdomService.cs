@@ -304,7 +304,7 @@ namespace XianniAutoPan.Services
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, raceId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = FormatJoinSuccessMessage(rankBenefits, kingdom.getPopulationTotal(), $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。政策为开放占领");
+                    message = FormatJoinSuccessMessage(rankBenefits, playerName, $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，人口 {rankBenefits.InitialPopulation}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。政策为开放占领");
                     return true;
                 }
             }
@@ -361,7 +361,7 @@ namespace XianniAutoPan.Services
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, actorAssetId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = FormatJoinSuccessMessage(rankBenefits, kingdom.getPopulationTotal(), $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领");
+                    message = FormatJoinSuccessMessage(rankBenefits, playerName, $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，人口 {rankBenefits.InitialPopulation}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领");
                     return true;
                 }
             }
@@ -415,20 +415,20 @@ namespace XianniAutoPan.Services
             ClearSnapshotCache(target.getID());
             kingdom = target;
             XianniAutoPanApi.Broadcast($"{playerName} 加入了现有国家 {target.name}");
-            message = FormatJoinSuccessMessage(rankBenefits, target.getPopulationTotal(), $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。");
+            message = FormatJoinSuccessMessage(rankBenefits, playerName, $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前人口 {target.getPopulationTotal()}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。");
             return true;
         }
 
-        private static string FormatJoinSuccessMessage(AutoPanRankService.RankBenefits rankBenefits, int population, string message)
+        private static string FormatJoinSuccessMessage(AutoPanRankService.RankBenefits rankBenefits, string playerName, string message)
         {
             string rankName = string.IsNullOrWhiteSpace(rankBenefits?.RankName) ? "新人" : rankBenefits.RankName.Trim();
             string prefix = (rankBenefits?.EntryPrefix ?? string.Empty)
                 .Replace("(段位)", rankName)
                 .Replace("{段位}", rankName)
                 .Trim();
-            string prefixText = string.IsNullOrWhiteSpace(prefix) ? "无入场前缀" : prefix;
-            string header = string.IsNullOrWhiteSpace(prefix) ? "加入战场：" : $"{prefix}加入战场：";
-            return $"{header}\n段位：{rankName}（入场前缀：{prefixText}）\n人口 {Math.Max(0, population)}\n{message}";
+            string displayName = string.IsNullOrWhiteSpace(playerName) ? "玩家" : playerName.Trim();
+            string header = $"{prefix}{displayName}加入战场：";
+            return $"{header}\n段位：{rankName}\n{message}";
         }
 
         /// <summary>
