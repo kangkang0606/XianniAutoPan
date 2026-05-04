@@ -885,7 +885,7 @@ namespace XianniAutoPan.Services
         public static bool TryChangeOccupationPolicy(Kingdom kingdom, string rawPolicyText, out string message)
         {
             message = string.Empty;
-            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(kingdom))
             {
                 message = "当前国家状态无效。";
                 return false;
@@ -954,7 +954,7 @@ namespace XianniAutoPan.Services
         public static bool TryActivateNationalMilitia(Kingdom kingdom, out string message)
         {
             message = string.Empty;
-            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(kingdom))
             {
                 message = "当前国家状态无效。";
                 return false;
@@ -983,7 +983,7 @@ namespace XianniAutoPan.Services
         public static bool TryMobilizeForWar(Kingdom kingdom, out string message)
         {
             message = string.Empty;
-            if (kingdom == null || !kingdom.isAlive() || !kingdom.isCiv())
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(kingdom))
             {
                 message = "当前国家状态无效。";
                 return false;
@@ -996,6 +996,38 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            return TryMobilizeForEnemies(kingdom, enemies, "交战国", out message);
+        }
+
+        /// <summary>
+        /// 在战争状态下给本国城市军队下达进攻指定交战国的军令。
+        /// </summary>
+        public static bool TryMobilizeForWar(Kingdom kingdom, Kingdom target, out string message)
+        {
+            message = string.Empty;
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(kingdom))
+            {
+                message = "当前国家状态无效。";
+                return false;
+            }
+
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(target) || target == kingdom)
+            {
+                message = "动员目标国家无效。";
+                return false;
+            }
+
+            if (!TryFindWarWith(kingdom, target, out _))
+            {
+                message = $"当前未与 {FormatKingdomLabel(target)} 交战，无法指定动员。";
+                return false;
+            }
+
+            return TryMobilizeForEnemies(kingdom, new List<Kingdom> { target }, FormatKingdomLabel(target), out message);
+        }
+
+        private static bool TryMobilizeForEnemies(Kingdom kingdom, List<Kingdom> enemies, string targetText, out string message)
+        {
             int mobilizableCityCount = CountMobilizableArmyCities(kingdom);
             if (mobilizableCityCount <= 0)
             {
@@ -1018,7 +1050,7 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            message = $"{FormatKingdomLabel(kingdom)} 战争动员完成，{mobilized} 座城市军队已收到进攻交战国军令，持续 {AutoPanConfigHooks.MobilizeOrderSeconds} 秒，消耗 {cost} 金币。";
+            message = $"{FormatKingdomLabel(kingdom)} 战争动员完成，{mobilized} 座城市军队已收到进攻{targetText}的军令，持续 {AutoPanConfigHooks.MobilizeOrderSeconds} 秒，消耗 {cost} 金币。";
             return true;
         }
 
@@ -1541,8 +1573,9 @@ namespace XianniAutoPan.Services
                 string ownerText = !string.IsNullOrWhiteSpace(ownerName)
                     ? $"{ownerName}({(!string.IsNullOrWhiteSpace(ownerUserId) ? ownerUserId : "未知QQ")})"
                     : "AI/无人绑定";
+                string inactiveTag = AutoPanStateRepository.BuildInactiveGrowthTag(kingdom);
                 string aiShortcutText = aiShortcuts.TryGetValue(kingdom.getID(), out string shortcut) ? $"，AI快捷 {shortcut}/ai({shortcut.Substring(2)})" : string.Empty;
-                lines.Add($"{BuildKingdomInfoText(kingdom)}，拥有者 {ownerText}{aiShortcutText}。");
+                lines.Add($"{BuildKingdomInfoText(kingdom)}{inactiveTag}，拥有者 {ownerText}{aiShortcutText}。");
             }
 
             return string.Join("\n", lines);
@@ -2163,7 +2196,22 @@ namespace XianniAutoPan.Services
         /// </summary>
         public static bool TryCreateOrMergeAlliance(Kingdom source, Kingdom target)
         {
-            if (source == null || target == null || !source.isAlive() || !target.isAlive())
+            return TryCreateOrMergeAlliance(source, target, out _);
+        }
+
+        /// <summary>
+        /// 强制合并或创建联盟，并按配置限制联盟国家数量。
+        /// </summary>
+        public static bool TryCreateOrMergeAlliance(Kingdom source, Kingdom target, out string error)
+        {
+            error = string.Empty;
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(source) || !AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(target))
+            {
+                error = "结盟目标无效。";
+                return false;
+            }
+
+            if (!TryValidateAllianceCapacity(source, target, out error))
             {
                 return false;
             }
@@ -2214,6 +2262,64 @@ namespace XianniAutoPan.Services
                 }
 
                 return Alliance.isSame(source.getAlliance(), target.getAlliance());
+            }
+        }
+
+        /// <summary>
+        /// 检查两个国家结盟后是否会超过联盟国家数量上限。
+        /// </summary>
+        public static bool TryValidateAllianceCapacity(Kingdom source, Kingdom target, out string message)
+        {
+            message = string.Empty;
+            if (!AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(source) || !AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(target) || source == target)
+            {
+                message = "结盟目标无效。";
+                return false;
+            }
+
+            int limit = AutoPanConfigHooks.AllianceMaxKingdoms;
+            if (limit <= 1)
+            {
+                message = "当前配置不允许结盟。";
+                return false;
+            }
+
+            Alliance sourceAlliance = source.getAlliance();
+            Alliance targetAlliance = target.getAlliance();
+            AutoPanDiplomacyGuardService.SanitizeAlliance(sourceAlliance);
+            AutoPanDiplomacyGuardService.SanitizeAlliance(targetAlliance);
+            if (Alliance.isSame(sourceAlliance, targetAlliance))
+            {
+                return true;
+            }
+
+            HashSet<long> memberIds = new HashSet<long>();
+            AddAllianceMemberIds(sourceAlliance, memberIds);
+            AddAllianceMemberIds(targetAlliance, memberIds);
+            memberIds.Add(source.getID());
+            memberIds.Add(target.getID());
+            if (memberIds.Count > limit)
+            {
+                message = $"当前联盟国家上限为 {limit} 个，结盟后将达到 {memberIds.Count} 个，无法结盟。";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void AddAllianceMemberIds(Alliance alliance, HashSet<long> memberIds)
+        {
+            if (alliance?.kingdoms_hashset == null || memberIds == null)
+            {
+                return;
+            }
+
+            foreach (Kingdom member in alliance.kingdoms_hashset)
+            {
+                if (AutoPanDiplomacyGuardService.IsUsableDiplomacyKingdom(member))
+                {
+                    memberIds.Add(member.getID());
+                }
             }
         }
 
@@ -2340,6 +2446,77 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (!TryValidateTransferRelation(source, target, out string relationError))
+            {
+                message = relationError;
+                return false;
+            }
+
+            if (!TryGetTransferQuota(source, target, out int sourceRemaining, out int targetRemaining, out string quotaError))
+            {
+                message = quotaError;
+                return false;
+            }
+
+            if (amount > sourceRemaining)
+            {
+                message = $"{FormatKingdomLabel(source)} 本年剩余可转出额度 {sourceRemaining} 金币，不足以转出 {amount}。";
+                return false;
+            }
+
+            if (!TrySpendTreasury(source, amount, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            int taxAmount = ComputeTransferTax(amount);
+            int receivedAmount = amount - taxAmount;
+            if (receivedAmount <= 0)
+            {
+                AddTreasury(source, amount);
+                message = "当前转账手续费配置导致税后到账为 0，已取消转账。";
+                return false;
+            }
+
+            if (receivedAmount > targetRemaining)
+            {
+                AddTreasury(source, amount);
+                message = $"{FormatKingdomLabel(target)} 本年剩余可接收额度 {targetRemaining} 金币，不足以接收 {receivedAmount}。";
+                return false;
+            }
+
+            AddTreasury(target, receivedAmount);
+            AutoPanStateRepository.RecordTransfer(source.getID(), target.getID(), amount, receivedAmount, taxAmount);
+            string taxText = taxAmount > 0 ? $"，手续费 {taxAmount}，实际到账 {receivedAmount}" : string.Empty;
+            message = $"{FormatKingdomLabel(source)} 已向 {FormatKingdomLabel(target)} 转账 {amount} 金币{taxText}。";
+            return true;
+        }
+
+        /// <summary>
+        /// 执行系统结算转账，不套用玩家反小号关系、额度和手续费规则。
+        /// </summary>
+        public static bool TryTransferTreasurySystem(Kingdom source, Kingdom target, int amount, out string message)
+        {
+            message = string.Empty;
+            if (source == null || target == null || !source.isAlive() || !target.isAlive())
+            {
+                message = "转账目标无效。";
+                return false;
+            }
+
+            if (source == target)
+            {
+                message = "不能向自己的国家转账。";
+                return false;
+            }
+
+            if (amount <= 0)
+            {
+                message = "转账金额必须大于 0。";
+                return false;
+            }
+
             if (!TrySpendTreasury(source, amount, out string spendError))
             {
                 message = spendError;
@@ -2347,8 +2524,161 @@ namespace XianniAutoPan.Services
             }
 
             AddTreasury(target, amount);
-            message = $"{FormatKingdomLabel(source)} 已向 {FormatKingdomLabel(target)} 转账 {amount} 金币。";
+            message = $"{FormatKingdomLabel(source)} 已向 {FormatKingdomLabel(target)} 结算 {amount} 金币。";
             return true;
+        }
+
+        /// <summary>
+        /// 计算当前两国在转账全部时最多可转出的金币。
+        /// </summary>
+        public static bool TryGetMaxTransferableTreasury(Kingdom source, Kingdom target, out int amount, out string message)
+        {
+            amount = 0;
+            message = string.Empty;
+            if (source == null || target == null || !source.isAlive() || !target.isAlive())
+            {
+                message = "转账目标无效。";
+                return false;
+            }
+
+            if (source == target)
+            {
+                message = "不能向自己的国家转账。";
+                return false;
+            }
+
+            if (!TryValidateTransferRelation(source, target, out message))
+            {
+                return false;
+            }
+
+            if (!TryGetTransferQuota(source, target, out int sourceRemaining, out int targetRemaining, out message))
+            {
+                return false;
+            }
+
+            int treasury = GetTreasury(source);
+            int grossByTarget = ComputeGrossTransferLimitByTargetReceive(targetRemaining);
+            amount = Math.Max(0, Math.Min(treasury, Math.Min(sourceRemaining, grossByTarget)));
+            if (amount <= 0)
+            {
+                message = "当前国库或年度转账额度不足，无法转账。";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryValidateTransferRelation(Kingdom source, Kingdom target, out string message)
+        {
+            message = string.Empty;
+            if (AutoPanConfigHooks.TransferRequireRelation == 0)
+            {
+                return true;
+            }
+
+            if (AutoPanConfigHooks.TransferAllowAlliance != 0)
+            {
+                Alliance sourceAlliance = source?.getAlliance();
+                Alliance targetAlliance = target?.getAlliance();
+                AutoPanDiplomacyGuardService.SanitizeAlliance(sourceAlliance);
+                AutoPanDiplomacyGuardService.SanitizeAlliance(targetAlliance);
+                if (sourceAlliance != null && Alliance.isSame(sourceAlliance, targetAlliance))
+                {
+                    return true;
+                }
+            }
+
+            if (AutoPanConfigHooks.TransferAllowSameWarSide != 0 && IsSameWarSide(source, target))
+            {
+                return true;
+            }
+
+            message = "当前转账配置要求双方必须同联盟或处于同一场战争同侧。";
+            return false;
+        }
+
+        private static bool IsSameWarSide(Kingdom source, Kingdom target)
+        {
+            if (source == null || target == null)
+            {
+                return false;
+            }
+
+            foreach (War war in source.getWars())
+            {
+                if (war == null || war.hasEnded() || !war.hasKingdom(target))
+                {
+                    continue;
+                }
+
+                if (war.isAttacker(source) && war.isAttacker(target))
+                {
+                    return true;
+                }
+
+                if (war.isDefender(source) && war.isDefender(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetTransferQuota(Kingdom source, Kingdom target, out int sourceRemaining, out int targetRemaining, out string message)
+        {
+            message = string.Empty;
+            int sourceLimit = ComputeTransferYearlyLimit(source, AutoPanConfigHooks.TransferYearlyOutBaseLimit, AutoPanConfigHooks.TransferYearlyOutIncomePercent);
+            int targetLimit = ComputeTransferYearlyLimit(target, AutoPanConfigHooks.TransferYearlyInBaseLimit, AutoPanConfigHooks.TransferYearlyInIncomePercent);
+            int sourceUsed = AutoPanStateRepository.GetYearlyTransferOut(source.getID());
+            int targetUsed = AutoPanStateRepository.GetYearlyTransferIn(target.getID());
+            sourceRemaining = Math.Max(0, sourceLimit - sourceUsed);
+            targetRemaining = Math.Max(0, targetLimit - targetUsed);
+            if (sourceRemaining <= 0)
+            {
+                message = $"{FormatKingdomLabel(source)} 本年转出额度已用完。";
+                return false;
+            }
+
+            if (targetRemaining <= 0)
+            {
+                message = $"{FormatKingdomLabel(target)} 本年接收转账额度已用完。";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static int ComputeTransferYearlyLimit(Kingdom kingdom, int baseLimit, int incomePercent)
+        {
+            long incomePart = (long)Math.Max(0, ComputeYearlyIncome(kingdom)) * Math.Max(0, incomePercent) / 100L;
+            long total = (long)Math.Max(0, baseLimit) + incomePart;
+            return total > int.MaxValue ? int.MaxValue : (int)total;
+        }
+
+        private static int ComputeTransferTax(int amount)
+        {
+            long tax = (long)Math.Max(0, amount) * Math.Max(0, Math.Min(100, AutoPanConfigHooks.TransferTaxPercent)) / 100L;
+            return tax > int.MaxValue ? int.MaxValue : (int)Math.Min(tax, amount);
+        }
+
+        private static int ComputeGrossTransferLimitByTargetReceive(int targetRemaining)
+        {
+            int safeRemaining = Math.Max(0, targetRemaining);
+            int taxPercent = Math.Max(0, Math.Min(100, AutoPanConfigHooks.TransferTaxPercent));
+            if (taxPercent <= 0)
+            {
+                return safeRemaining;
+            }
+
+            if (taxPercent >= 100)
+            {
+                return 0;
+            }
+
+            long gross = (long)safeRemaining * 100L / Math.Max(1, 100 - taxPercent);
+            return gross > int.MaxValue ? int.MaxValue : (int)gross;
         }
 
         /// <summary>

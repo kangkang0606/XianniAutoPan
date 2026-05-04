@@ -162,6 +162,12 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
+            if (!AutoPanKingdomService.TryValidateAllianceCapacity(source, target, out string capacityError))
+            {
+                message = capacityError;
+                return false;
+            }
+
             if (FindDuplicate(source.getID(), target.getID(), AutoPanPendingRequestType.Alliance) != null)
             {
                 message = $"你已向 {AutoPanKingdomService.FormatKingdomLabel(target)} 发出结盟请求，请等待对方回应。";
@@ -296,10 +302,10 @@ namespace XianniAutoPan.Services
 
             if (type == AutoPanPendingRequestType.Alliance)
             {
-                if (!AutoPanKingdomService.TryCreateOrMergeAlliance(source, target))
+                if (!AutoPanKingdomService.TryCreateOrMergeAlliance(source, target, out string allianceError))
                 {
                     RefundRequest(source, request);
-                    message = $"与 {AutoPanKingdomService.FormatKingdomLabel(source)} 结盟失败，已退回请求花费。";
+                    message = $"{(string.IsNullOrWhiteSpace(allianceError) ? "结盟失败。" : allianceError)} 已退回请求花费。";
                     return false;
                 }
 

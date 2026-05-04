@@ -90,10 +90,15 @@ namespace XianniAutoPan.Commands
             AutoPanStateRepository.RefreshPlayerProfile(userId, playerName);
             AutoPanStateRepository.EnsureBindingValidForUser(userId);
             AutoPanParsedCommand command = AutoPanCommandParser.Parse(message.Text);
+            if (command.CommandType != AutoPanCommandType.Unknown && AutoPanStateRepository.TryGetLiveBinding(userId, out _, out _))
+            {
+                AutoPanStateRepository.RecordPlayerActivity(userId, playerName);
+            }
             if (command.CommandType == AutoPanCommandType.Unknown)
             {
                 if (!command.RawText.StartsWith("#", StringComparison.Ordinal) && TryGetPlayerKingdom(userId, out Kingdom chatKingdom, out _))
                 {
+                    AutoPanStateRepository.RecordPlayerActivity(userId, playerName);
                     AutoPanKingdomSpeechService.ShowSpeech(chatKingdom, playerName, command.RawText, isCommand: false);
                     AutoPanLogService.Info($"{playerName} 发送国家聊天：{chatKingdom.name} -> {command.RawText}");
                     result.Success = true;
@@ -146,6 +151,7 @@ namespace XianniAutoPan.Commands
                 case AutoPanCommandType.JoinDwarf:
                     result.Success = AutoPanKingdomService.TryCreatePlayerKingdom(userId, playerName, command.CommandType, out Kingdom joinedKingdom, out string joinText);
                     result.Text = joinText;
+                    MarkJoinEntryReply(result);
                     if (joinedKingdom != null && result.Success)
                     {
                         AutoPanKingdomSpeechService.ShowSpeech(joinedKingdom, playerName, command.RawText, isCommand: true);
@@ -161,6 +167,7 @@ namespace XianniAutoPan.Commands
                         result.Success = AutoPanKingdomService.TryCreatePlayerKingdomByCivilizationUnit(userId, playerName, command.TargetName, out existingKingdom, out existingJoinText);
                         result.Text = existingJoinText;
                     }
+                    MarkJoinEntryReply(result);
                     if (existingKingdom != null && result.Success)
                     {
                         AutoPanKingdomSpeechService.ShowSpeech(existingKingdom, playerName, command.RawText, isCommand: true);
@@ -171,6 +178,7 @@ namespace XianniAutoPan.Commands
                 case AutoPanCommandType.JoinCivilizationUnit:
                     result.Success = AutoPanKingdomService.TryCreatePlayerKingdomByCivilizationUnit(userId, playerName, command.TargetName, out Kingdom civilizationKingdom, out string civilizationJoinText);
                     result.Text = civilizationJoinText;
+                    MarkJoinEntryReply(result);
                     if (civilizationKingdom != null && result.Success)
                     {
                         AutoPanKingdomSpeechService.ShowSpeech(civilizationKingdom, playerName, command.RawText, isCommand: true);
@@ -326,7 +334,7 @@ namespace XianniAutoPan.Commands
                 case AutoPanCommandType.NationalMilitia:
                     return ExecuteNationalMilitia(kingdom, operatorName, isAi, result);
                 case AutoPanCommandType.Mobilize:
-                    return ExecuteMobilize(kingdom, operatorName, isAi, result);
+                    return ExecuteMobilize(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.AddPopulation:
                     return ExecuteAddPopulation(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.PlaceRuins:
@@ -363,6 +371,8 @@ namespace XianniAutoPan.Commands
                     return result;
                 case AutoPanCommandType.AuraSabotage:
                     return ExecuteAuraSabotage(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.AuraRandomReduce:
+                    return ExecuteAuraRandomReduce(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.AssassinateStrongest:
                     return ExecuteAssassinateStrongest(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.CurseEnemy:
@@ -496,10 +506,10 @@ namespace XianniAutoPan.Commands
                 return result;
             }
 
-            int transferAmount = command.NumericValue == -1 ? AutoPanKingdomService.GetTreasury(kingdom) : command.NumericValue;
-            if (command.NumericValue == -1 && transferAmount <= 0)
+            int transferAmount = command.NumericValue;
+            if (command.NumericValue == -1 && !AutoPanKingdomService.TryGetMaxTransferableTreasury(kingdom, target, out transferAmount, out string transferAllError))
             {
-                result.Text = "当前国库没有可转账金币。";
+                result.Text = transferAllError;
                 return result;
             }
 
@@ -703,14 +713,25 @@ namespace XianniAutoPan.Commands
             return result;
         }
 
-        private static AutoPanCommandResult ExecuteMobilize(Kingdom kingdom, string operatorName, bool isAi, AutoPanCommandResult result)
+        private static AutoPanCommandResult ExecuteMobilize(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
         {
-            result.Success = AutoPanKingdomService.TryMobilizeForWar(kingdom, out string message);
+            Kingdom target = null;
+            if (!string.IsNullOrWhiteSpace(command.TargetName) && !AutoPanKingdomService.TryResolveKingdom(command.TargetName, out target, out string resolveError))
+            {
+                result.Text = resolveError;
+                return result;
+            }
+
+            string message;
+            result.Success = target == null
+                ? AutoPanKingdomService.TryMobilizeForWar(kingdom, out message)
+                : AutoPanKingdomService.TryMobilizeForWar(kingdom, target, out message);
             result.Text = message;
             if (result.Success)
             {
-                XianniAutoPanApi.Broadcast($"{kingdom.name} 发起战争动员");
-                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 动员：{kingdom.name}");
+                string targetText = target == null ? string.Empty : $"，目标 {target.name}";
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发起战争动员{targetText}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 动员：{kingdom.name}{targetText}");
             }
             return result;
         }
@@ -928,6 +949,18 @@ namespace XianniAutoPan.Commands
             {
                 XianniAutoPanApi.Broadcast($"{kingdom.name} 发动削灵：{command.TargetName}");
                 AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 削灵：{kingdom.name} -> {command.TargetName} / {command.NumericValue}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteAuraRandomReduce(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanInteractionService.TryReduceEnemyAuraRandomly(kingdom, command.TargetName, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 发动降低灵气：{command.TargetName}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 降低灵气：{kingdom.name} -> {command.TargetName}");
             }
             return result;
         }
@@ -1365,6 +1398,14 @@ namespace XianniAutoPan.Commands
             }
         }
 
+        private static void MarkJoinEntryReply(AutoPanCommandResult result)
+        {
+            if (result != null && result.Success && (result.Text ?? string.Empty).Contains("加入战场："))
+            {
+                result.SkipQqAtSender = true;
+            }
+        }
+
         private static bool TryGetPlayerKingdom(string userId, out Kingdom kingdom, out string error)
         {
             error = string.Empty;
@@ -1565,12 +1606,14 @@ namespace XianniAutoPan.Commands
                 "转账 目标国家 [kingdomId] 1000 / 转账目标国家 全部",
                 "宣战 目标国家 [kingdomId] 或 宣战 @对方",
                 "求和 目标国家 [kingdomId] 或 求和 @对方",
+                "动员 目标国家 [kingdomId] 或 动员 @对方",
                 "结盟 目标国家 [kingdomId] 或 结盟 @对方",
                 "同意结盟 / 拒绝结盟 / 退盟",
                 "约斗 目标国家 [kingdomId] 500",
                 "血脉创立 单位id",
                 "天榜 / 战力榜",
                 "削灵 目标国家 [kingdomId] 500",
+                "降低灵气 目标国家 [kingdomId] 或 降低灵气 @对方",
                 "斩首 目标国家 [kingdomId]",
                 "诅咒 目标国家 [kingdomId] 3",
                 "国家祝福 全员 或 国家祝福 5",

@@ -27,14 +27,17 @@ namespace XianniAutoPan
                 return;
             }
 
-            foreach (AutoPanBindingRecord binding in AutoPanStateRepository.GetBindingsByKingdomId(pKingdom.getID()))
+            if (!AutoPanRoundService.IsRoundTransitioning)
             {
-                if (binding == null || string.IsNullOrWhiteSpace(binding.UserId))
+                foreach (AutoPanBindingRecord binding in AutoPanStateRepository.GetBindingsByKingdomId(pKingdom.getID()))
                 {
-                    continue;
-                }
+                    if (binding == null || string.IsNullOrWhiteSpace(binding.UserId))
+                    {
+                        continue;
+                    }
 
-                AutoPanNotificationService.NotifyKingdomDestroyed(binding, pKingdom);
+                    AutoPanNotificationService.NotifyKingdomDestroyed(binding, pKingdom);
+                }
             }
 
             AutoPanStateRepository.ClearBindingByKingdomId(pKingdom.getID());

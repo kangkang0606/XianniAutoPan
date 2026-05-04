@@ -25,6 +25,7 @@ namespace XianniAutoPan.Commands
         private static readonly Regex BloodlineCreateRegex = new Regex(@"^血脉创立(?:\s+(\d+))?$", RegexOptions.Compiled);
         private static readonly Regex LowerNationRegex = new Regex(@"^降低国运\s+(.+?)(?:\s+(\d+))?$", RegexOptions.Compiled);
         private static readonly Regex AuraSabotageRegex = new Regex(@"^削灵\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AuraRandomReduceRegex = new Regex(@"^降低灵气\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex AssassinateRegex = new Regex(@"^斩首\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex CurseEnemyRegex = new Regex(@"^诅咒\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex KingdomBlessingRegex = new Regex(@"^国家祝福\s+(全员|\d+)$", RegexOptions.Compiled);
@@ -36,6 +37,7 @@ namespace XianniAutoPan.Commands
         private static readonly Regex BeastSuppressActorRegex = new Regex(@"^妖兽降阶\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
         private static readonly Regex AddPopulationRegex = new Regex(@"^(增加人数|增加人口)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex KingdomPolicyRegex = new Regex(@"^(政策|国家政策)\s+(开放占领|坚守城池)$", RegexOptions.Compiled);
+        private static readonly Regex MobilizeRegex = new Regex(@"^(?:战争)?动员\s*(.+)$", RegexOptions.Compiled);
         private static readonly Regex PlaceRuinsRegex = new Regex(@"^放置遗迹(?:\s+([1-9]\d*))?$", RegexOptions.Compiled);
         private static readonly Regex TransferTreasuryRegex = new Regex(@"^转账\s*(.+?)\s+(全部|[1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
@@ -287,6 +289,14 @@ namespace XianniAutoPan.Commands
                 return command;
             }
 
+            match = AuraRandomReduceRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.AuraRandomReduce;
+                command.TargetName = match.Groups[1].Value.Trim();
+                return command;
+            }
+
             match = AssassinateRegex.Match(text);
             if (match.Success)
             {
@@ -375,6 +385,14 @@ namespace XianniAutoPan.Commands
             {
                 command.CommandType = AutoPanCommandType.ChangeKingdomPolicy;
                 command.TextArg = match.Groups[2].Value.Trim();
+                return command;
+            }
+
+            match = MobilizeRegex.Match(text);
+            if (match.Success)
+            {
+                command.CommandType = AutoPanCommandType.Mobilize;
+                command.TargetName = match.Groups[1].Value.Trim();
                 return command;
             }
 

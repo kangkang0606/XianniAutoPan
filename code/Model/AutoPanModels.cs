@@ -41,6 +41,7 @@ namespace XianniAutoPan.Model
         PowerBoard,
         CountryPowerBoard,
         AuraSabotage,
+        AuraRandomReduce,
         AssassinateStrongest,
         CurseEnemy,
         KingdomBlessing,
@@ -223,6 +224,109 @@ namespace XianniAutoPan.Model
         /// 最近前端会话信息。
         /// </summary>
         public List<AutoPanSessionInfo> RecentSessions { get; set; } = new List<AutoPanSessionInfo>();
+
+        /// <summary>
+        /// 本局已参与自动盘的玩家列表。
+        /// </summary>
+        public List<AutoPanRoundParticipantRecord> RoundParticipants { get; set; } = new List<AutoPanRoundParticipantRecord>();
+
+        /// <summary>
+        /// 本局玩家活动记录，用于计算挂机压制。
+        /// </summary>
+        public List<AutoPanPlayerActivityRecord> PlayerActivities { get; set; } = new List<AutoPanPlayerActivityRecord>();
+
+        /// <summary>
+        /// 本局国家转账流水，用于限制年度转出和接收额度。
+        /// </summary>
+        public List<AutoPanTransferLedgerRecord> TransferLedgers { get; set; } = new List<AutoPanTransferLedgerRecord>();
+    }
+
+    /// <summary>
+    /// 本局参与玩家记录。
+    /// </summary>
+    public sealed class AutoPanRoundParticipantRecord
+    {
+        /// <summary>
+        /// 玩家唯一标识。
+        /// </summary>
+        public string UserId { get; set; }
+
+        /// <summary>
+        /// 最近显示名。
+        /// </summary>
+        public string PlayerName { get; set; }
+    }
+
+    /// <summary>
+    /// 玩家本局活动记录。
+    /// </summary>
+    public sealed class AutoPanPlayerActivityRecord
+    {
+        /// <summary>
+        /// 玩家唯一标识。
+        /// </summary>
+        public string UserId { get; set; }
+
+        /// <summary>
+        /// 玩家最近显示名。
+        /// </summary>
+        public string PlayerName { get; set; }
+
+        /// <summary>
+        /// 绑定国家 ID。
+        /// </summary>
+        public long KingdomId { get; set; }
+
+        /// <summary>
+        /// 本局绑定年份。
+        /// </summary>
+        public int BoundYear { get; set; }
+
+        /// <summary>
+        /// 最近活动年份。
+        /// </summary>
+        public int LastActivityYear { get; set; }
+
+        /// <summary>
+        /// 本局发生过活动的年份集合。
+        /// </summary>
+        public List<int> ActivityYears { get; set; } = new List<int>();
+    }
+
+    /// <summary>
+    /// 国家转账流水记录。
+    /// </summary>
+    public sealed class AutoPanTransferLedgerRecord
+    {
+        /// <summary>
+        /// 转账发生年份。
+        /// </summary>
+        public int Year { get; set; }
+
+        /// <summary>
+        /// 来源国家 ID。
+        /// </summary>
+        public long SourceKingdomId { get; set; }
+
+        /// <summary>
+        /// 目标国家 ID。
+        /// </summary>
+        public long TargetKingdomId { get; set; }
+
+        /// <summary>
+        /// 来源国库扣除金额。
+        /// </summary>
+        public int Amount { get; set; }
+
+        /// <summary>
+        /// 目标国实际到账金额。
+        /// </summary>
+        public int ReceivedAmount { get; set; }
+
+        /// <summary>
+        /// 手续费金额。
+        /// </summary>
+        public int TaxAmount { get; set; }
     }
 
     /// <summary>
@@ -490,6 +594,11 @@ namespace XianniAutoPan.Model
         /// 是否抑制 QQ 群自动回包。
         /// </summary>
         public bool SuppressQqReply { get; set; }
+
+        /// <summary>
+        /// 是否跳过 QQ 群回包开头自动 @ 发送者。
+        /// </summary>
+        public bool SkipQqAtSender { get; set; }
     }
 
     /// <summary>

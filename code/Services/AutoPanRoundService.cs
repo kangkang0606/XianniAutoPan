@@ -71,6 +71,19 @@ namespace XianniAutoPan.Services
             public double Score;
         }
 
+        private sealed class RoundParticipant
+        {
+            /// <summary>
+            /// 玩家唯一标识。
+            /// </summary>
+            public string UserId;
+
+            /// <summary>
+            /// 玩家显示名。
+            /// </summary>
+            public string PlayerName;
+        }
+
         private const string GaiaLawId = "world_law_gaias_covenant";
         private const string HundredPopulationLawId = "world_law_civ_limit_population_100";
         private const string EvolutionEventsLawId = "world_law_evolution_events";
@@ -88,6 +101,11 @@ namespace XianniAutoPan.Services
         private static int _pendingAiSpawnDelayFrames;
         private static bool _diplomacyAutoOpenedForWorld;
         private static int _lastAutoRoundYear = -1;
+
+        /// <summary>
+        /// 当前是否处于结盘或新局生成流程。
+        /// </summary>
+        public static bool IsRoundTransitioning => _isEndingRound || _isGeneratingNewRound;
 
         /// <summary>
         /// 初始化结盘服务运行状态。
@@ -313,14 +331,21 @@ namespace XianniAutoPan.Services
         private static string BuildRoundResult(string reason, string operatorName, bool skipScore = false)
         {
             List<RoundCandidate> candidates = BuildRankedCandidates();
+            List<RoundParticipant> participants = BuildRoundParticipants(candidates);
             if (candidates.Count == 0)
             {
-                return $"本局结盘：{reason}。没有可结算国家，未增加积分。";
+                List<string> emptyLines = new List<string>
+                {
+                    $"本局结盘：{reason}。没有可结算国家。"
+                };
+                AppendParticipationAwardLines(emptyLines, participants, skipScore);
+                return string.Join("\n", emptyLines);
             }
 
             RoundCandidate winner = candidates.First();
             List<RoundCandidate> topThree = candidates.Take(3).ToList();
             List<string> awardLines = new List<string>();
+            Dictionary<string, int> participationTotals = AwardParticipationPoints(participants, skipScore);
             for (int index = 0; index < topThree.Count; index++)
             {
                 RoundCandidate candidate = topThree[index];
@@ -358,6 +383,7 @@ namespace XianniAutoPan.Services
                 string.Join("\n", awardLines)
             };
 
+            AppendParticipationAwardLines(lines, participants, skipScore, participationTotals);
             if (!string.IsNullOrWhiteSpace(operatorName))
             {
                 lines.Add($"结盘操作：{operatorName}。");
@@ -473,6 +499,105 @@ namespace XianniAutoPan.Services
             }
         }
 
+        private static List<RoundParticipant> BuildRoundParticipants(List<RoundCandidate> candidates)
+        {
+            Dictionary<string, RoundParticipant> participants = new Dictionary<string, RoundParticipant>(StringComparer.Ordinal);
+            foreach (AutoPanRoundParticipantRecord participant in AutoPanStateRepository.GetRoundParticipantsSnapshot())
+            {
+                AddRoundParticipant(participants, participant?.UserId, participant?.PlayerName);
+            }
+
+            foreach (RoundCandidate candidate in candidates ?? new List<RoundCandidate>())
+            {
+                if (candidate != null && !candidate.IsAi)
+                {
+                    AddRoundParticipant(participants, candidate.UserId, candidate.PlayerName);
+                }
+            }
+
+            return participants.Values
+                .OrderBy(item => item.PlayerName, StringComparer.Ordinal)
+                .ThenBy(item => item.UserId, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        private static void AddRoundParticipant(Dictionary<string, RoundParticipant> participants, string userId, string playerName)
+        {
+            string normalizedUserId = (userId ?? string.Empty).Trim();
+            if (participants == null || string.IsNullOrWhiteSpace(normalizedUserId) || string.Equals(normalizedUserId, AiScorePlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            string normalizedName = string.IsNullOrWhiteSpace(playerName) ? normalizedUserId : playerName.Trim();
+            if (!participants.TryGetValue(normalizedUserId, out RoundParticipant participant) || participant == null)
+            {
+                participants[normalizedUserId] = new RoundParticipant
+                {
+                    UserId = normalizedUserId,
+                    PlayerName = normalizedName
+                };
+                return;
+            }
+
+            participant.PlayerName = normalizedName;
+        }
+
+        private static Dictionary<string, int> AwardParticipationPoints(List<RoundParticipant> participants, bool skipScore)
+        {
+            Dictionary<string, int> totals = new Dictionary<string, int>(StringComparer.Ordinal);
+            int points = AutoPanConfigHooks.RoundParticipationPoints;
+            if (skipScore || points <= 0)
+            {
+                return totals;
+            }
+
+            foreach (RoundParticipant participant in participants ?? new List<RoundParticipant>())
+            {
+                totals[participant.UserId] = AutoPanScoreService.AddPoints(participant.UserId, participant.PlayerName, points);
+            }
+
+            return totals;
+        }
+
+        private static void AppendParticipationAwardLines(List<string> lines, List<RoundParticipant> participants, bool skipScore, Dictionary<string, int> awardedTotals = null)
+        {
+            if (lines == null)
+            {
+                return;
+            }
+
+            if (skipScore)
+            {
+                lines.Add("参与积分：本局不计积分。");
+                return;
+            }
+
+            int points = AutoPanConfigHooks.RoundParticipationPoints;
+            if (points <= 0)
+            {
+                lines.Add("参与积分：当前配置为 0，不发放。");
+                return;
+            }
+
+            if (participants == null || participants.Count == 0)
+            {
+                lines.Add("参与积分：无玩家参与记录。");
+                return;
+            }
+
+            Dictionary<string, int> totals = awardedTotals ?? AwardParticipationPoints(participants, skipScore: false);
+            List<string> participantLines = participants
+                .Select(item =>
+                {
+                    int total = totals.TryGetValue(item.UserId, out int value) ? value : AutoPanScoreService.GetPoints(item.UserId);
+                    return $"{item.PlayerName}：参与 +{points} 分，累计 {total} 分。";
+                })
+                .ToList();
+            lines.Add("参与积分：");
+            lines.Add(string.Join("\n", participantLines));
+        }
+
         private static string BuildCandidateOwnerText(RoundCandidate candidate)
         {
             if (candidate == null)
@@ -496,6 +621,7 @@ namespace XianniAutoPan.Services
             AutoPanTournamentService.Clear();
             AutoPanKingdomSpeechService.ClearAll();
             AutoPanScreenshotService.ClearRoundScreenshots();
+            AutoPanStateRepository.ClearRoundActivityAndTransferState();
             Config.customMapSize = "iceberg";
             Config.current_map_template = "box_world";
             AutoPanRoundUiService.RequestHideAfterNextWorldLoad();

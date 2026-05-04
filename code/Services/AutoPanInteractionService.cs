@@ -232,6 +232,30 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 按仙逆灵气笔刷减少模式，随机降低敌国一个城市的灵气。
+        /// </summary>
+        public static bool TryReduceEnemyAuraRandomly(Kingdom sourceKingdom, string rawTargetKingdomName, out string message)
+        {
+            message = string.Empty;
+            if (!TryResolveEnemyKingdom(sourceKingdom, rawTargetKingdomName, out Kingdom targetKingdom, out string targetError))
+            {
+                message = targetError;
+                return false;
+            }
+
+            if (!XianniAutoPanApi.TryReduceRandomCityAura(targetKingdom, out string cityName, out int actualReduced, out int currentAura, out int maxAura))
+            {
+                message = $"{AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 当前没有可降低的城市灵气。";
+                return false;
+            }
+
+            AutoPanKingdomService.ClearSnapshotCache(sourceKingdom.getID());
+            AutoPanKingdomService.ClearSnapshotCache(targetKingdom.getID());
+            message = $"{AutoPanKingdomService.FormatKingdomLabel(sourceKingdom)} 已对 {AutoPanKingdomService.FormatKingdomLabel(targetKingdom)} 的 {cityName} 随机降低灵气 {actualReduced}，当前 {currentAura}/{maxAura}。";
+            return true;
+        }
+
+        /// <summary>
         /// 对敌国执行斩首，击杀其最强单位。
         /// </summary>
         public static bool TryAssassinateStrongest(Kingdom sourceKingdom, string rawTargetKingdomName, out string message)

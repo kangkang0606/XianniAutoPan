@@ -331,6 +331,51 @@ namespace XianniAutoPan.Services
         public static int AllianceRequestCost { get; private set; } = 130;
 
         /// <summary>
+        /// 单个联盟允许容纳的国家数量上限，0 或 1 表示禁止结盟。
+        /// </summary>
+        public static int AllianceMaxKingdoms { get; private set; } = 2;
+
+        /// <summary>
+        /// 转账是否要求同盟或同战线关系。
+        /// </summary>
+        public static int TransferRequireRelation { get; private set; } = 1;
+
+        /// <summary>
+        /// 是否允许同联盟国家转账。
+        /// </summary>
+        public static int TransferAllowAlliance { get; private set; } = 1;
+
+        /// <summary>
+        /// 是否允许同一战争同侧国家转账。
+        /// </summary>
+        public static int TransferAllowSameWarSide { get; private set; } = 1;
+
+        /// <summary>
+        /// 年度转出基础额度。
+        /// </summary>
+        public static int TransferYearlyOutBaseLimit { get; private set; } = 300;
+
+        /// <summary>
+        /// 年度转出额度按年收入百分比增加。
+        /// </summary>
+        public static int TransferYearlyOutIncomePercent { get; private set; } = 50;
+
+        /// <summary>
+        /// 年度接收基础额度。
+        /// </summary>
+        public static int TransferYearlyInBaseLimit { get; private set; } = 500;
+
+        /// <summary>
+        /// 年度接收额度按年收入百分比增加。
+        /// </summary>
+        public static int TransferYearlyInIncomePercent { get; private set; } = 100;
+
+        /// <summary>
+        /// 转账手续费百分比。
+        /// </summary>
+        public static int TransferTaxPercent { get; private set; }
+
+        /// <summary>
         /// 退盟成本。
         /// </summary>
         public static int LeaveAllianceCost { get; private set; } = 90;
@@ -654,6 +699,61 @@ namespace XianniAutoPan.Services
         /// 结盘第 3 名获得的积分。
         /// </summary>
         public static int RoundThirdPlacePoints { get; private set; } = 1;
+
+        /// <summary>
+        /// 结盘时每名本局参与玩家获得的基础积分。
+        /// </summary>
+        public static int RoundParticipationPoints { get; private set; } = 1;
+
+        /// <summary>
+        /// 是否启用挂机自然成长压制。
+        /// </summary>
+        public static int InactiveGrowthEnabled { get; private set; } = 1;
+
+        /// <summary>
+        /// 玩家绑定后的挂机保护年份。
+        /// </summary>
+        public static int ActivityProtectionYears { get; private set; } = 20;
+
+        /// <summary>
+        /// 活动统计窗口年份。
+        /// </summary>
+        public static int ActivityWindowYears { get; private set; } = 30;
+
+        /// <summary>
+        /// 统计窗口内需要有活动的年份数量。
+        /// </summary>
+        public static int ActivityRequiredYears { get; private set; } = 3;
+
+        /// <summary>
+        /// 连续无活动多少年进入挂机风险。
+        /// </summary>
+        public static int ActivityIdleYears { get; private set; } = 10;
+
+        /// <summary>
+        /// 挂机自然成长最低百分比。
+        /// </summary>
+        public static int InactiveGrowthMinPercent { get; private set; } = 35;
+
+        /// <summary>
+        /// 每个挂机惩罚步长降低的自然成长百分比。
+        /// </summary>
+        public static int InactiveGrowthStepPercent { get; private set; } = 15;
+
+        /// <summary>
+        /// 挂机压制是否影响修士自然修为。
+        /// </summary>
+        public static int InactiveAffectsCultivator { get; private set; } = 1;
+
+        /// <summary>
+        /// 挂机压制是否影响古神自然成长。
+        /// </summary>
+        public static int InactiveAffectsAncient { get; private set; } = 1;
+
+        /// <summary>
+        /// 挂机压制是否影响妖兽自然成长。
+        /// </summary>
+        public static int InactiveAffectsBeast { get; private set; } = 1;
 
         /// <summary>
         /// 天运惩罚成本。
@@ -1475,14 +1575,34 @@ namespace XianniAutoPan.Services
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundFirstPlacePoints", "结盘第1名积分", "结盘排名第 1 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundFirstPlacePoints, value => RoundFirstPlacePoints = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundSecondPlacePoints", "结盘第2名积分", "结盘排名第 2 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundSecondPlacePoints, value => RoundSecondPlacePoints = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundThirdPlacePoints", "结盘第3名积分", "结盘排名第 3 的玩家国家累计积分；若该名次为 AI 国家则不发放且不顺延。", "分", 0, 1_000_000_000, () => RoundThirdPlacePoints, value => RoundThirdPlacePoints = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "roundParticipationPoints", "参与积分", "本局参与过自动盘的玩家在结盘时获得的基础积分；名次积分会在此基础上额外增加。", "分", 0, 1_000_000_000, () => RoundParticipationPoints, value => RoundParticipationPoints = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "currentSituationCooldownSeconds", "当前局势冷却", "QQ 群当前局势截图指令的同群冷却秒数；管理员#当前局势不受冷却限制。", "秒", 0, 3600, () => CurrentSituationCooldownSeconds, value => CurrentSituationCooldownSeconds = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthEnabled", "挂机压制开关", "开启后低活动玩家国家的自然修炼成长会按活动率降低；AI 国家不受影响。", "", 0, 1, () => InactiveGrowthEnabled, value => InactiveGrowthEnabled = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityProtectionYears", "挂机保护年数", "玩家绑定国家后多少年内不触发挂机压制。", "年", 0, 10000, () => ActivityProtectionYears, value => ActivityProtectionYears = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityWindowYears", "活动统计窗口", "挂机判定只统计最近多少年的活动年份。", "年", 1, 10000, () => ActivityWindowYears, value => ActivityWindowYears = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityRequiredYears", "所需活动年份", "统计窗口内至少多少个不同年份有活动才算正常运营。", "年", 0, 10000, () => ActivityRequiredYears, value => ActivityRequiredYears = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityIdleYears", "连续挂机年数", "连续多少年没有活动后进入挂机风险。", "年", 0, 10000, () => ActivityIdleYears, value => ActivityIdleYears = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthMinPercent", "挂机最低成长", "挂机压制后的自然成长最低百分比。", "%", 0, 100, () => InactiveGrowthMinPercent, value => InactiveGrowthMinPercent = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthStepPercent", "挂机每级降低", "每个挂机惩罚步长降低的自然成长百分比。", "%", 0, 100, () => InactiveGrowthStepPercent, value => InactiveGrowthStepPercent = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveAffectsCultivator", "压制修士成长", "挂机压制是否影响修士自然年度修为。", "", 0, 1, () => InactiveAffectsCultivator, value => InactiveAffectsCultivator = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveAffectsAncient", "压制古神成长", "挂机压制是否影响古神自然年度成长。", "", 0, 1, () => InactiveAffectsAncient, value => InactiveAffectsAncient = value);
+            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveAffectsBeast", "压制妖兽成长", "挂机压制是否影响妖兽自然年度成长。", "", 0, 1, () => InactiveAffectsBeast, value => InactiveAffectsBeast = value);
 
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "declareWarCost", "宣战成本", "执行宣战 国家名需要消耗的金币。", "金币", 0, 1_000_000_000, () => DeclareWarCost, value => DeclareWarCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "seekPeaceCost", "求和成本", "执行求和 国家名需要消耗的金币。", "金币", 0, 1_000_000_000, () => SeekPeaceCost, value => SeekPeaceCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "allianceRequestCost", "结盟成本", "发出结盟请求时预扣的金币。", "金币", 0, 1_000_000_000, () => AllianceRequestCost, value => AllianceRequestCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "allianceMaxKingdoms", "联盟国家上限", "单个联盟允许容纳的国家数量；0 或 1 表示禁止结盟，默认 2。", "国", 0, 100, () => AllianceMaxKingdoms, value => AllianceMaxKingdoms = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "leaveAllianceCost", "退盟成本", "主动退出联盟时消耗的金币。", "金币", 0, 1_000_000_000, () => LeaveAllianceCost, value => LeaveAllianceCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "duelRequestCost", "约斗成本", "发起约斗请求时预扣的金币；开战后双方各从国家战力前 5 随机出战。", "金币", 0, 1_000_000_000, () => DuelRequestCost, value => DuelRequestCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "requestTimeoutSeconds", "请求超时", "结盟和约斗请求等待对方同意或拒绝的秒数，默认 20 秒。", "秒", 3, 300, () => RequestTimeoutSeconds, value => RequestTimeoutSeconds = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferRequireRelation", "转账要求关系", "开启后转账必须满足同联盟或同一战争同侧关系。", "", 0, 1, () => TransferRequireRelation, value => TransferRequireRelation = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferAllowAlliance", "转账允许同盟", "开启后同一联盟国家可以互相转账。", "", 0, 1, () => TransferAllowAlliance, value => TransferAllowAlliance = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferAllowSameWarSide", "转账允许同战线", "开启后同一场战争同侧国家可以互相转账。", "", 0, 1, () => TransferAllowSameWarSide, value => TransferAllowSameWarSide = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferYearlyOutBaseLimit", "年度转出基础额度", "每个国家每年可转出的基础金币额度。", "金币", 0, 1_000_000_000, () => TransferYearlyOutBaseLimit, value => TransferYearlyOutBaseLimit = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferYearlyOutIncomePercent", "年度转出收入比例", "年度转出额度额外增加：国家年收入 × 该百分比。", "%", 0, 10000, () => TransferYearlyOutIncomePercent, value => TransferYearlyOutIncomePercent = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferYearlyInBaseLimit", "年度接收基础额度", "每个国家每年可接收转账的基础金币额度。", "金币", 0, 1_000_000_000, () => TransferYearlyInBaseLimit, value => TransferYearlyInBaseLimit = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferYearlyInIncomePercent", "年度接收收入比例", "年度接收额度额外增加：国家年收入 × 该百分比。", "%", 0, 10000, () => TransferYearlyInIncomePercent, value => TransferYearlyInIncomePercent = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "transferTaxPercent", "转账手续费", "转账时从转出金额中扣除的手续费百分比，目标国家只获得税后金额。", "%", 0, 100, () => TransferTaxPercent, value => TransferTaxPercent = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "lowerNationCostPerLevel", "降低国运成本", "每降低敌国 1 级国运时需要消耗的金币。", "金币", 0, 1_000_000_000, () => LowerNationCostPerLevel, value => LowerNationCostPerLevel = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "bloodlineCreateBaseCost", "血脉创立基础成本", "血脉创立成本 = 基础成本 + 单位层级 × 层级加价。", "金币", 0, 1_000_000_000, () => BloodlineCreateBaseCost, value => BloodlineCreateBaseCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "bloodlineCreateStageStepCost", "血脉创立层级加价", "血脉创立每提升一层战力阶段额外增加的金币。", "金币", 0, 1_000_000_000, () => BloodlineCreateStageStepCost, value => BloodlineCreateStageStepCost = value);
@@ -1596,6 +1716,7 @@ namespace XianniAutoPan.Services
         private static void ApplyRuntimeBindings()
         {
             XianniAutoPanApi.SetXiuzhenguoAuraCapOverrides(GetXiuzhenguoAuraCapsSnapshot());
+            XianniAutoPanApi.SetAutoPanGrowthMultiplierProvider((kingdom, category) => AutoPanStateRepository.GetGrowthMultiplierPercent(kingdom, category) / 100f);
         }
 
         private static void LoadBackendSettings()

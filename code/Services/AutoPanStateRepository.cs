@@ -11,6 +11,7 @@ namespace XianniAutoPan.Services
     /// </summary>
     internal static class AutoPanStateRepository
     {
+        private const int MinimumActivityYearsToKeep = 1000;
         private static readonly object Sync = new object();
         private static AutoPanWorldState _state = new AutoPanWorldState();
 
@@ -48,6 +49,19 @@ namespace XianniAutoPan.Services
                         {
                             _state.RecentSessions = new List<AutoPanSessionInfo>();
                         }
+                        if (_state.RoundParticipants == null)
+                        {
+                            _state.RoundParticipants = new List<AutoPanRoundParticipantRecord>();
+                        }
+                        if (_state.PlayerActivities == null)
+                        {
+                            _state.PlayerActivities = new List<AutoPanPlayerActivityRecord>();
+                        }
+                        if (_state.TransferLedgers == null)
+                        {
+                            _state.TransferLedgers = new List<AutoPanTransferLedgerRecord>();
+                        }
+                        TrimVolatileStateLocked();
                     }
                 }
                 catch (Exception ex)
@@ -71,6 +85,7 @@ namespace XianniAutoPan.Services
                 }
 
                 EnsureCustomDataReady();
+                TrimVolatileStateLocked();
                 World.world.map_stats.custom_data.set(AutoPanConstants.WorldStateKey, JsonConvert.SerializeObject(_state));
             }
         }
@@ -162,7 +177,10 @@ namespace XianniAutoPan.Services
 
             if (!TryGetLiveBinding(userId, out _, out _))
             {
-                AutoPanNotificationService.NotifyKingdomDestroyed(binding, null);
+                if (!AutoPanRoundService.IsRoundTransitioning)
+                {
+                    AutoPanNotificationService.NotifyKingdomDestroyed(binding, null);
+                }
                 ClearBinding(userId, saveImmediately: true);
             }
         }
@@ -179,7 +197,7 @@ namespace XianniAutoPan.Services
                 foreach (KeyValuePair<string, AutoPanBindingRecord> pair in _state.Bindings)
                 {
                     Kingdom kingdom = World.world?.kingdoms?.get(pair.Value.KingdomId);
-                    if (kingdom == null || !kingdom.isAlive())
+                    if (kingdom == null || kingdom.data == null || !kingdom.isAlive())
                     {
                         toRemove.Add(pair.Key);
                         deadBindings.Add(CloneBinding(pair.Value));
@@ -192,7 +210,16 @@ namespace XianniAutoPan.Services
                 }
             }
 
-            SaveToWorld();
+            if (AutoPanRoundService.IsRoundTransitioning)
+            {
+                return;
+            }
+
+            if (deadBindings.Count > 0)
+            {
+                SaveToWorld();
+            }
+
             foreach (AutoPanBindingRecord binding in deadBindings)
             {
                 AutoPanNotificationService.NotifyKingdomDestroyed(binding, null);
@@ -221,6 +248,8 @@ namespace XianniAutoPan.Services
             lock (Sync)
             {
                 _state.Bindings[userId] = record;
+                RecordRoundParticipantLocked(userId, playerName);
+                RecordPlayerActivityLocked(userId, playerName, kingdom.getID(), Date.getCurrentYear(), treatAsBinding: true);
             }
 
             kingdom.data.set(AutoPanConstants.KeyOwnerUserId, userId);
@@ -243,7 +272,7 @@ namespace XianniAutoPan.Services
                 _state.Bindings.Remove(userId);
             }
 
-            if (saveImmediately)
+            if (saveImmediately && !AutoPanRoundService.IsRoundTransitioning)
             {
                 SaveToWorld();
             }
@@ -271,7 +300,10 @@ namespace XianniAutoPan.Services
                 }
             }
 
-            SaveToWorld();
+            if (!AutoPanRoundService.IsRoundTransitioning)
+            {
+                SaveToWorld();
+            }
         }
 
         /// <summary>
@@ -281,6 +313,11 @@ namespace XianniAutoPan.Services
         {
             lock (Sync)
             {
+                if (_state.RecentSessions == null)
+                {
+                    _state.RecentSessions = new List<AutoPanSessionInfo>();
+                }
+
                 _state.RecentSessions.RemoveAll(item => item.SessionId == sessionId);
                 _state.RecentSessions.Add(new AutoPanSessionInfo
                 {
@@ -320,6 +357,20 @@ namespace XianniAutoPan.Services
                     binding.PlayerName = playerName;
                     changed = true;
                 }
+
+                AutoPanRoundParticipantRecord participant = _state.RoundParticipants.FirstOrDefault(item => item != null && string.Equals(item.UserId, userId, StringComparison.Ordinal));
+                if (participant != null && !string.Equals(participant.PlayerName, playerName, StringComparison.Ordinal))
+                {
+                    participant.PlayerName = playerName;
+                    changed = true;
+                }
+
+                AutoPanPlayerActivityRecord activity = _state.PlayerActivities.FirstOrDefault(item => item != null && string.Equals(item.UserId, userId, StringComparison.Ordinal));
+                if (activity != null && !string.Equals(activity.PlayerName, playerName, StringComparison.Ordinal))
+                {
+                    activity.PlayerName = playerName;
+                    changed = true;
+                }
             }
 
             if (!changed)
@@ -348,6 +399,207 @@ namespace XianniAutoPan.Services
                     .Select(CloneBinding)
                     .Where(item => item != null)
                     .ToList();
+            }
+        }
+
+        /// <summary>
+        /// 获取本局所有参与玩家快照。
+        /// </summary>
+        public static List<AutoPanRoundParticipantRecord> GetRoundParticipantsSnapshot()
+        {
+            lock (Sync)
+            {
+                return _state.RoundParticipants
+                    .Where(item => item != null && !string.IsNullOrWhiteSpace(item.UserId))
+                    .Select(CloneParticipant)
+                    .ToList();
+            }
+        }
+
+        /// <summary>
+        /// 清理本局参与玩家记录，用于进入新局前重置参与积分依据。
+        /// </summary>
+        public static void ClearRoundParticipants()
+        {
+            lock (Sync)
+            {
+                _state.RoundParticipants.Clear();
+            }
+
+            SaveToWorld();
+        }
+
+        /// <summary>
+        /// 清理本局活动与转账限制状态，用于进入新局前重置。
+        /// </summary>
+        public static void ClearRoundActivityAndTransferState()
+        {
+            lock (Sync)
+            {
+                (_state.RoundParticipants ?? (_state.RoundParticipants = new List<AutoPanRoundParticipantRecord>())).Clear();
+                (_state.PlayerActivities ?? (_state.PlayerActivities = new List<AutoPanPlayerActivityRecord>())).Clear();
+                (_state.TransferLedgers ?? (_state.TransferLedgers = new List<AutoPanTransferLedgerRecord>())).Clear();
+            }
+
+            SaveToWorld();
+        }
+
+        /// <summary>
+        /// 记录玩家本年的一次自动盘活动，同年多次活动只保留一个年份。
+        /// </summary>
+        public static void RecordPlayerActivity(string userId, string playerName)
+        {
+            if (!TryGetLiveBinding(userId, out AutoPanBindingRecord binding, out Kingdom kingdom))
+            {
+                return;
+            }
+
+            bool changed;
+            lock (Sync)
+            {
+                changed = RecordPlayerActivityLocked(userId, string.IsNullOrWhiteSpace(playerName) ? binding.PlayerName : playerName, kingdom.getID(), Date.getCurrentYear(), treatAsBinding: false);
+            }
+
+            if (changed)
+            {
+                SaveToWorld();
+            }
+        }
+
+        /// <summary>
+        /// 获取指定国家当前自然成长倍率百分比。
+        /// </summary>
+        public static int GetGrowthMultiplierPercent(Kingdom kingdom, string category)
+        {
+            if (kingdom == null || !kingdom.isAlive() || AutoPanConfigHooks.InactiveGrowthEnabled == 0)
+            {
+                return 100;
+            }
+
+            if (!IsCategoryAffected(category))
+            {
+                return 100;
+            }
+
+            kingdom.data.get(AutoPanConstants.KeyOwnerUserId, out string ownerUserId, string.Empty);
+            if (string.IsNullOrWhiteSpace(ownerUserId))
+            {
+                return 100;
+            }
+
+            AutoPanPlayerActivityRecord activity;
+            lock (Sync)
+            {
+                activity = CloneActivity(_state.PlayerActivities.FirstOrDefault(item => item != null && string.Equals(item.UserId, ownerUserId, StringComparison.Ordinal)));
+            }
+
+            if (activity == null)
+            {
+                return 100;
+            }
+
+            int currentYear = Date.getCurrentYear();
+            int boundYear = activity.BoundYear <= 0 ? currentYear : activity.BoundYear;
+            int protectionYears = Math.Max(0, AutoPanConfigHooks.ActivityProtectionYears);
+            if (protectionYears > 0 && currentYear - boundYear < protectionYears)
+            {
+                return 100;
+            }
+
+            int windowYears = Math.Max(1, AutoPanConfigHooks.ActivityWindowYears);
+            int requiredYears = Math.Max(0, AutoPanConfigHooks.ActivityRequiredYears);
+            int windowStart = currentYear - windowYears + 1;
+            int activeYears = (activity.ActivityYears ?? new List<int>())
+                .Where(year => year >= windowStart && year <= currentYear)
+                .Distinct()
+                .Count();
+            int missingSteps = Math.Max(0, requiredYears - activeYears);
+
+            int idleSteps = 0;
+            int idleYears = Math.Max(0, AutoPanConfigHooks.ActivityIdleYears);
+            if (idleYears > 0)
+            {
+                int lastActivityYear = activity.LastActivityYear <= 0 ? boundYear : activity.LastActivityYear;
+                int idleDuration = Math.Max(0, currentYear - lastActivityYear);
+                if (idleDuration >= idleYears)
+                {
+                    idleSteps = Math.Max(1, idleDuration / idleYears);
+                }
+            }
+
+            int penaltySteps = Math.Max(missingSteps, idleSteps);
+            if (penaltySteps <= 0)
+            {
+                return 100;
+            }
+
+            int minPercent = Math.Max(0, Math.Min(100, AutoPanConfigHooks.InactiveGrowthMinPercent));
+            int stepPercent = Math.Max(0, AutoPanConfigHooks.InactiveGrowthStepPercent);
+            int percent = 100 - penaltySteps * stepPercent;
+            return Math.Max(minPercent, Math.Min(100, percent));
+        }
+
+        /// <summary>
+        /// 构建所有国家回包里的挂机压制标注。
+        /// </summary>
+        public static string BuildInactiveGrowthTag(Kingdom kingdom)
+        {
+            int percent = new[] { "cultivator", "ancient", "beast" }
+                .Select(category => GetGrowthMultiplierPercent(kingdom, category))
+                .Min();
+            return percent >= 100 ? string.Empty : $"（挂机压制 {percent}%）";
+        }
+
+        /// <summary>
+        /// 记录国家转账流水。
+        /// </summary>
+        public static void RecordTransfer(long sourceKingdomId, long targetKingdomId, int amount, int receivedAmount, int taxAmount)
+        {
+            int year = Date.getCurrentYear();
+            lock (Sync)
+            {
+                RemoveTransferLedgersOutsideYearLocked(year);
+                _state.TransferLedgers.Add(new AutoPanTransferLedgerRecord
+                {
+                    Year = year,
+                    SourceKingdomId = sourceKingdomId,
+                    TargetKingdomId = targetKingdomId,
+                    Amount = Math.Max(0, amount),
+                    ReceivedAmount = Math.Max(0, receivedAmount),
+                    TaxAmount = Math.Max(0, taxAmount)
+                });
+            }
+
+            SaveToWorld();
+        }
+
+        /// <summary>
+        /// 获取国家本年已转出的金币总额。
+        /// </summary>
+        public static int GetYearlyTransferOut(long kingdomId)
+        {
+            int year = Date.getCurrentYear();
+            lock (Sync)
+            {
+                RemoveTransferLedgersOutsideYearLocked(year);
+                return _state.TransferLedgers
+                    .Where(item => item != null && item.Year == year && item.SourceKingdomId == kingdomId)
+                    .Sum(item => Math.Max(0, item.Amount));
+            }
+        }
+
+        /// <summary>
+        /// 获取国家本年已接收的金币总额。
+        /// </summary>
+        public static int GetYearlyTransferIn(long kingdomId)
+        {
+            int year = Date.getCurrentYear();
+            lock (Sync)
+            {
+                RemoveTransferLedgersOutsideYearLocked(year);
+                return _state.TransferLedgers
+                    .Where(item => item != null && item.Year == year && item.TargetKingdomId == kingdomId)
+                    .Sum(item => Math.Max(0, item.ReceivedAmount));
             }
         }
 
@@ -416,7 +668,6 @@ namespace XianniAutoPan.Services
             lock (Sync)
             {
                 _state.MessageSequence++;
-                SaveToWorld();
                 return _state.MessageSequence;
             }
         }
@@ -484,6 +735,91 @@ namespace XianniAutoPan.Services
             }
         }
 
+        private static void TrimVolatileStateLocked()
+        {
+            EnsureStateCollectionsLocked();
+            _state.RecentSessions.RemoveAll(item => item == null || string.IsNullOrWhiteSpace(item.SessionId));
+            if (_state.RecentSessions.Count > AutoPanConstants.SessionCapacity)
+            {
+                _state.RecentSessions = _state.RecentSessions
+                    .OrderByDescending(item => item.LastSeenUtc, StringComparer.Ordinal)
+                    .Take(AutoPanConstants.SessionCapacity)
+                    .OrderBy(item => item.LastSeenUtc, StringComparer.Ordinal)
+                    .ToList();
+            }
+
+            _state.RoundParticipants = _state.RoundParticipants
+                .Where(item => item != null && !string.IsNullOrWhiteSpace(item.UserId))
+                .GroupBy(item => item.UserId.Trim(), StringComparer.Ordinal)
+                .Select(group => group.Last())
+                .ToList();
+
+            HashSet<string> boundUserIds = new HashSet<string>(_state.Bindings.Keys.Where(item => !string.IsNullOrWhiteSpace(item)), StringComparer.Ordinal);
+            int currentYear = Math.Max(1, Date.getCurrentYear());
+            int keepYears = Math.Max(
+                MinimumActivityYearsToKeep,
+                Math.Max(1, AutoPanConfigHooks.ActivityWindowYears)
+                    + Math.Max(0, AutoPanConfigHooks.ActivityProtectionYears)
+                    + Math.Max(0, AutoPanConfigHooks.ActivityIdleYears)
+                    + 30);
+            int minActivityYear = currentYear - keepYears + 1;
+            _state.PlayerActivities = _state.PlayerActivities
+                .Where(item =>
+                {
+                    string userId = item?.UserId?.Trim();
+                    return !string.IsNullOrWhiteSpace(userId) && boundUserIds.Contains(userId);
+                })
+                .GroupBy(item => item.UserId.Trim(), StringComparer.Ordinal)
+                .Select(group => NormalizeActivityForSave(group.Last(), minActivityYear, currentYear))
+                .Where(item => item != null)
+                .ToList();
+
+            RemoveTransferLedgersOutsideYearLocked(currentYear);
+        }
+
+        private static void EnsureStateCollectionsLocked()
+        {
+            if (_state.Bindings == null)
+            {
+                _state.Bindings = new Dictionary<string, AutoPanBindingRecord>();
+            }
+            if (_state.RecentSessions == null)
+            {
+                _state.RecentSessions = new List<AutoPanSessionInfo>();
+            }
+            if (_state.RoundParticipants == null)
+            {
+                _state.RoundParticipants = new List<AutoPanRoundParticipantRecord>();
+            }
+            if (_state.PlayerActivities == null)
+            {
+                _state.PlayerActivities = new List<AutoPanPlayerActivityRecord>();
+            }
+            if (_state.TransferLedgers == null)
+            {
+                _state.TransferLedgers = new List<AutoPanTransferLedgerRecord>();
+            }
+        }
+
+        private static AutoPanPlayerActivityRecord NormalizeActivityForSave(AutoPanPlayerActivityRecord activity, int minActivityYear, int currentYear)
+        {
+            if (activity == null)
+            {
+                return null;
+            }
+
+            activity.UserId = activity.UserId?.Trim();
+            activity.PlayerName = string.IsNullOrWhiteSpace(activity.PlayerName) ? activity.UserId : activity.PlayerName.Trim();
+            activity.BoundYear = activity.BoundYear <= 0 ? currentYear : activity.BoundYear;
+            activity.LastActivityYear = activity.LastActivityYear <= 0 ? activity.BoundYear : activity.LastActivityYear;
+            activity.ActivityYears = (activity.ActivityYears ?? new List<int>())
+                .Where(year => year >= minActivityYear && year <= currentYear)
+                .Distinct()
+                .OrderBy(year => year)
+                .ToList();
+            return activity;
+        }
+
         private static AutoPanBindingRecord CloneBinding(AutoPanBindingRecord binding)
         {
             if (binding == null)
@@ -498,6 +834,161 @@ namespace XianniAutoPan.Services
                 KingdomId = binding.KingdomId,
                 KingdomName = binding.KingdomName,
                 RaceId = binding.RaceId
+            };
+        }
+
+        private static void RecordRoundParticipantLocked(string userId, string playerName)
+        {
+            string normalizedUserId = (userId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedUserId))
+            {
+                return;
+            }
+
+            AutoPanRoundParticipantRecord existing = _state.RoundParticipants.FirstOrDefault(item => item != null && string.Equals(item.UserId, normalizedUserId, StringComparison.Ordinal));
+            if (existing == null)
+            {
+                _state.RoundParticipants.Add(new AutoPanRoundParticipantRecord
+                {
+                    UserId = normalizedUserId,
+                    PlayerName = string.IsNullOrWhiteSpace(playerName) ? normalizedUserId : playerName.Trim()
+                });
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(playerName))
+            {
+                existing.PlayerName = playerName.Trim();
+            }
+        }
+
+        private static bool RecordPlayerActivityLocked(string userId, string playerName, long kingdomId, int year, bool treatAsBinding)
+        {
+            string normalizedUserId = (userId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedUserId) || kingdomId <= 0 || year <= 0)
+            {
+                return false;
+            }
+
+            if (_state.PlayerActivities == null)
+            {
+                _state.PlayerActivities = new List<AutoPanPlayerActivityRecord>();
+            }
+
+            bool changed = false;
+            string normalizedName = string.IsNullOrWhiteSpace(playerName) ? normalizedUserId : playerName.Trim();
+            AutoPanPlayerActivityRecord existing = _state.PlayerActivities.FirstOrDefault(item => item != null && string.Equals(item.UserId, normalizedUserId, StringComparison.Ordinal));
+            if (existing == null)
+            {
+                existing = new AutoPanPlayerActivityRecord
+                {
+                    UserId = normalizedUserId,
+                    PlayerName = normalizedName,
+                    KingdomId = kingdomId,
+                    BoundYear = year,
+                    LastActivityYear = year,
+                    ActivityYears = new List<int>()
+                };
+                _state.PlayerActivities.Add(existing);
+                changed = true;
+            }
+
+            if (!string.Equals(existing.PlayerName, normalizedName, StringComparison.Ordinal))
+            {
+                existing.PlayerName = normalizedName;
+                changed = true;
+            }
+            if (existing.KingdomId != kingdomId)
+            {
+                existing.KingdomId = kingdomId;
+                changed = true;
+            }
+            if (treatAsBinding || existing.BoundYear <= 0)
+            {
+                if (existing.BoundYear != year)
+                {
+                    existing.BoundYear = year;
+                    changed = true;
+                }
+            }
+            if (existing.ActivityYears == null)
+            {
+                existing.ActivityYears = new List<int>();
+                changed = true;
+            }
+            if (!existing.ActivityYears.Contains(year))
+            {
+                existing.ActivityYears.Add(year);
+                existing.ActivityYears.Sort();
+                changed = true;
+            }
+
+            int nextLastActivityYear = Math.Max(existing.LastActivityYear, year);
+            if (existing.LastActivityYear != nextLastActivityYear)
+            {
+                existing.LastActivityYear = nextLastActivityYear;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool IsCategoryAffected(string category)
+        {
+            string normalized = (category ?? string.Empty).Trim().ToLowerInvariant();
+            if (normalized == "ancient")
+            {
+                return AutoPanConfigHooks.InactiveAffectsAncient != 0;
+            }
+
+            if (normalized == "beast")
+            {
+                return AutoPanConfigHooks.InactiveAffectsBeast != 0;
+            }
+
+            return AutoPanConfigHooks.InactiveAffectsCultivator != 0;
+        }
+
+        private static void RemoveTransferLedgersOutsideYearLocked(int year)
+        {
+            if (_state.TransferLedgers == null)
+            {
+                _state.TransferLedgers = new List<AutoPanTransferLedgerRecord>();
+                return;
+            }
+
+            _state.TransferLedgers.RemoveAll(item => item == null || item.Year != year);
+        }
+
+        private static AutoPanPlayerActivityRecord CloneActivity(AutoPanPlayerActivityRecord activity)
+        {
+            if (activity == null)
+            {
+                return null;
+            }
+
+            return new AutoPanPlayerActivityRecord
+            {
+                UserId = activity.UserId,
+                PlayerName = activity.PlayerName,
+                KingdomId = activity.KingdomId,
+                BoundYear = activity.BoundYear,
+                LastActivityYear = activity.LastActivityYear,
+                ActivityYears = new List<int>(activity.ActivityYears ?? new List<int>())
+            };
+        }
+
+        private static AutoPanRoundParticipantRecord CloneParticipant(AutoPanRoundParticipantRecord participant)
+        {
+            if (participant == null)
+            {
+                return null;
+            }
+
+            return new AutoPanRoundParticipantRecord
+            {
+                UserId = participant.UserId,
+                PlayerName = participant.PlayerName
             };
         }
 

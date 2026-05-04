@@ -254,7 +254,7 @@ namespace XianniAutoPan.Services
                 return false;
             }
 
-            messageChunks = SplitMessage(BuildReplyText(result.UserId, result.Text), MaxReplyChunkLength);
+            messageChunks = SplitMessage(BuildReplyText(result.UserId, result.Text, result.SkipQqAtSender), MaxReplyChunkLength);
             return messageChunks.Count > 0;
         }
 
@@ -355,15 +355,21 @@ namespace XianniAutoPan.Services
             }
         }
 
-        private static string BuildReplyText(string userId, string text)
+        private static string BuildReplyText(string userId, string text, bool skipAtSender)
         {
             string body = (text ?? string.Empty).Trim();
-            if (!AutoPanConfigHooks.QqReplyAtSender || string.IsNullOrWhiteSpace(userId))
+            if (skipAtSender || !AutoPanConfigHooks.QqReplyAtSender || string.IsNullOrWhiteSpace(userId))
             {
                 return body;
             }
 
-            return $"[CQ:at,qq={NormalizeDigits(userId)}] {body}";
+            string normalizedUserId = NormalizeDigits(userId);
+            if (string.IsNullOrWhiteSpace(normalizedUserId))
+            {
+                return body;
+            }
+
+            return $"[CQ:at,qq={normalizedUserId}] {body}";
         }
 
         private static List<string> SplitMessage(string text, int maxLength)

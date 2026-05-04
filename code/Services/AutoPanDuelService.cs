@@ -390,7 +390,7 @@ namespace XianniAutoPan.Services
                     payable = Math.Min(duel.BetAmount, AutoPanKingdomService.GetTreasury(loserKingdom));
                     if (payable > 0)
                     {
-                        AutoPanKingdomService.TryTransferTreasury(loserKingdom, winnerKingdom, payable, out _);
+                        AutoPanKingdomService.TryTransferTreasurySystem(loserKingdom, winnerKingdom, payable, out _);
                     }
                 }
 
