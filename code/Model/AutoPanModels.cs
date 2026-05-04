@@ -53,6 +53,7 @@ namespace XianniAutoPan.Model
         CityInfo,
         FastAdult,
         ConscriptArmy,
+        TransferUnit,
         TransferCity,
         RandomTransferCity,
         EquipArmy,

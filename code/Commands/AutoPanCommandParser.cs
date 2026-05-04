@@ -29,12 +29,12 @@ namespace XianniAutoPan.Commands
         private static readonly Regex AssassinateRegex = new Regex(@"^斩首\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex CurseEnemyRegex = new Regex(@"^诅咒\s+(.+?)\s+(\d+)$", RegexOptions.Compiled);
         private static readonly Regex KingdomBlessingRegex = new Regex(@"^国家祝福\s+(全员|\d+)$", RegexOptions.Compiled);
-        private static readonly Regex CultivatorSuppressRegex = new Regex(@"^修士降境\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
-        private static readonly Regex AncientSuppressRegex = new Regex(@"^古神降星\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
-        private static readonly Regex BeastSuppressRegex = new Regex(@"^妖兽降阶\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
-        private static readonly Regex CultivatorSuppressActorRegex = new Regex(@"^修士降境\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
-        private static readonly Regex AncientSuppressActorRegex = new Regex(@"^古神降星\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
-        private static readonly Regex BeastSuppressActorRegex = new Regex(@"^妖兽降阶\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex CultivatorSuppressRegex = new Regex(@"^修士(?:降境|降级)\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex AncientSuppressRegex = new Regex(@"^古神(?:降星|降级)\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex BeastSuppressRegex = new Regex(@"^妖兽(?:降阶|降级)\s+(.+?)\s+(\d+)\s+(\d+)$", RegexOptions.Compiled);
+        private static readonly Regex CultivatorSuppressActorRegex = new Regex(@"^修士(?:降境|降级)\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex AncientSuppressActorRegex = new Regex(@"^古神(?:降星|降级)\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex BeastSuppressActorRegex = new Regex(@"^妖兽(?:降阶|降级)\s+(\d+)(?:\s+(\d+))?$", RegexOptions.Compiled);
         private static readonly Regex AddPopulationRegex = new Regex(@"^(增加人数|增加人口)\s+([1-9]\d*)$", RegexOptions.Compiled);
         private static readonly Regex KingdomPolicyRegex = new Regex(@"^(政策|国家政策)\s+(开放占领|坚守城池)$", RegexOptions.Compiled);
         private static readonly Regex MobilizeRegex = new Regex(@"^(?:战争)?动员\s*(.+)$", RegexOptions.Compiled);
@@ -43,15 +43,16 @@ namespace XianniAutoPan.Commands
         private static readonly Regex CityInfoRegex = new Regex(@"^城市信息\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex FastAdultRegex = new Regex(@"^快速成年\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex ConscriptArmyRegex = new Regex(@"^征集军队(?:\s+(.+?)\s+(全部|\d+)|\s+(全部|\d+))?$", RegexOptions.Compiled);
+        private static readonly Regex TransferUnitRegex = new Regex(@"^移交单位\s+(\d+)\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex TransferCityRegex = new Regex(@"^移交城市\s+(.+?)\s+给\s+(.+)$", RegexOptions.Compiled);
         private static readonly Regex RandomTransferCityRegex = new Regex(@"^移交\s+(.+?)\s*随机一座城市$", RegexOptions.Compiled);
         private static readonly Regex EquipArmyRegex = new Regex(@"^军备\s+(.+?)\s+(铜|青铜|白银|铁|钢|秘银|精金)\s+(全军|\d+)$", RegexOptions.Compiled);
-        private static readonly Regex CultivatorActionRegex = new Regex(@"^修士\s+(\d+)\s+闭关$", RegexOptions.Compiled);
-        private static readonly Regex CultivatorRealmUpRegex = new Regex(@"^修士(?:\s+(?<id>\d+)\s+(?:升境|提升境界)|\s*(?:升境|提升境界)\s+(?<id>\d+))$", RegexOptions.Compiled);
-        private static readonly Regex AncientActionRegex = new Regex(@"^古神\s+(\d+)\s+炼体$", RegexOptions.Compiled);
-        private static readonly Regex AncientStarUpRegex = new Regex(@"^古神(?:\s+(?<id>\d+)\s+(?:升星|提升一星|提升星级)|\s*(?:升星|提升一星|提升星级)\s+(?<id>\d+))$", RegexOptions.Compiled);
+        private static readonly Regex CultivatorActionRegex = new Regex(@"^修士\s+(\d+)\s+(?:养成|闭关)$", RegexOptions.Compiled);
+        private static readonly Regex CultivatorRealmUpRegex = new Regex(@"^修士(?:\s+(?<id>\d+)\s+(?:升级|升境|提升境界)|\s*(?:升级|升境|提升境界)\s+(?<id>\d+))$", RegexOptions.Compiled);
+        private static readonly Regex AncientActionRegex = new Regex(@"^古神\s+(\d+)\s+(?:养成|炼体)$", RegexOptions.Compiled);
+        private static readonly Regex AncientStarUpRegex = new Regex(@"^古神(?:\s+(?<id>\d+)\s+(?:升级|升星|提升一星|提升星级)|\s*(?:升级|升星|提升一星|提升星级)\s+(?<id>\d+))$", RegexOptions.Compiled);
         private static readonly Regex BeastActionRegex = new Regex(@"^妖兽\s+(\d+)\s+养成$", RegexOptions.Compiled);
-        private static readonly Regex BeastStageUpRegex = new Regex(@"^妖兽(?:\s+(?<id>\d+)\s+(?:升阶|提升一阶|提升阶级)|\s*(?:升阶|提升一阶|提升阶级)\s+(?<id>\d+))$", RegexOptions.Compiled);
+        private static readonly Regex BeastStageUpRegex = new Regex(@"^妖兽(?:\s+(?<id>\d+)\s+(?:升级|升阶|提升一阶|提升阶级)|\s*(?:升级|升阶|提升一阶|提升阶级)\s+(?<id>\d+))$", RegexOptions.Compiled);
         private static readonly Regex AdminAddGoldRegex = new Regex(@"^#增加国家金币\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminSetGoldRegex = new Regex(@"^#设置国家金币\s+(.+?)\s+(-?\d+)$", RegexOptions.Compiled);
         private static readonly Regex AdminViewGoldRegex = new Regex(@"^#查看国家金币\s+(.+)$", RegexOptions.Compiled);
@@ -420,6 +421,15 @@ namespace XianniAutoPan.Commands
                 string countText = !string.IsNullOrWhiteSpace(match.Groups[2].Value) ? match.Groups[2].Value.Trim() : match.Groups[3].Value.Trim();
                 command.TextArg = string.IsNullOrWhiteSpace(countText) ? "全部" : countText;
                 command.NumericValue = command.TextArg == "全部" ? -1 : int.Parse(command.TextArg);
+                return command;
+            }
+
+            match = TransferUnitRegex.Match(text);
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long transferUnitId))
+            {
+                command.CommandType = AutoPanCommandType.TransferUnit;
+                command.ObjectIdArg = transferUnitId;
+                command.TargetName = match.Groups[2].Value.Trim();
                 return command;
             }
 

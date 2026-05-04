@@ -451,6 +451,11 @@ namespace XianniAutoPan.Services
         public static int TransferCityCost { get; private set; } = 180;
 
         /// <summary>
+        /// 移交单位成本。
+        /// </summary>
+        public static int TransferUnitCost { get; private set; } = 180;
+
+        /// <summary>
         /// 国家改名成本。
         /// </summary>
         public static int RenameKingdomCost { get; private set; } = 120;
@@ -491,42 +496,42 @@ namespace XianniAutoPan.Services
         public static int EquipAdamantineCostPerUnit { get; private set; } = 240;
 
         /// <summary>
-        /// 修士闭关成本。
+        /// 修士养成成本。
         /// </summary>
         public static int CultivatorRetreatCost { get; private set; } = 80;
 
         /// <summary>
-        /// 修士闭关增加修为。
+        /// 修士养成增加修为。
         /// </summary>
         public static int ClosedDoorXiuweiGain { get; private set; } = 10000;
 
         /// <summary>
-        /// 修士直接升境基础成本。
+        /// 修士直接升级基础成本。
         /// </summary>
         public static int CultivatorRealmUpBaseCost { get; private set; } = 180;
 
         /// <summary>
-        /// 修士直接升境每层递增成本。
+        /// 修士直接升级每层递增成本。
         /// </summary>
         public static int CultivatorRealmUpStepCost { get; private set; } = 90;
 
         /// <summary>
-        /// 古神炼体成本。
+        /// 古神养成成本。
         /// </summary>
         public static int AncientTrainCost { get; private set; } = 100;
 
         /// <summary>
-        /// 古神炼体增加古神之力。
+        /// 古神养成增加古神之力。
         /// </summary>
         public static int AncientTrainingGain { get; private set; } = 15000;
 
         /// <summary>
-        /// 古神升星基础成本。
+        /// 古神升级基础成本。
         /// </summary>
         public static int AncientStageUpBaseCost { get; private set; } = 170;
 
         /// <summary>
-        /// 古神升星每星递增成本。
+        /// 古神升级每星递增成本。
         /// </summary>
         public static int AncientStageUpStepCost { get; private set; } = 110;
 
@@ -541,12 +546,12 @@ namespace XianniAutoPan.Services
         public static int BeastTrainingGain { get; private set; } = 15000;
 
         /// <summary>
-        /// 妖兽升阶基础成本。
+        /// 妖兽升级基础成本。
         /// </summary>
         public static int BeastStageUpBaseCost { get; private set; } = 160;
 
         /// <summary>
-        /// 妖兽升阶每阶递增成本。
+        /// 妖兽升级每阶递增成本。
         /// </summary>
         public static int BeastStageUpStepCost { get; private set; } = 100;
 
@@ -606,32 +611,32 @@ namespace XianniAutoPan.Services
         public static int BlessCostPerTarget { get; private set; } = 50;
 
         /// <summary>
-        /// 修士降境基础成本。
+        /// 修士降级基础成本。
         /// </summary>
         public static int CultivatorSuppressBaseCost { get; private set; } = 90;
 
         /// <summary>
-        /// 修士降境按层级与压制层数递增成本。
+        /// 修士降级按层级与压制层数递增成本。
         /// </summary>
         public static int CultivatorSuppressStageStepCost { get; private set; } = 35;
 
         /// <summary>
-        /// 古神降星基础成本。
+        /// 古神降级基础成本。
         /// </summary>
         public static int AncientSuppressBaseCost { get; private set; } = 90;
 
         /// <summary>
-        /// 古神降星按星级与下降层数递增成本。
+        /// 古神降级按星级与下降层数递增成本。
         /// </summary>
         public static int AncientSuppressStageStepCost { get; private set; } = 35;
 
         /// <summary>
-        /// 妖兽降阶基础成本。
+        /// 妖兽降级基础成本。
         /// </summary>
         public static int BeastSuppressBaseCost { get; private set; } = 90;
 
         /// <summary>
-        /// 妖兽降阶按阶级与下降层数递增成本。
+        /// 妖兽降级按阶级与下降层数递增成本。
         /// </summary>
         public static int BeastSuppressStageStepCost { get; private set; } = 35;
 
@@ -724,11 +729,6 @@ namespace XianniAutoPan.Services
         /// 活动统计窗口年份。
         /// </summary>
         public static int ActivityWindowYears { get; private set; } = 30;
-
-        /// <summary>
-        /// 统计窗口内需要有活动的年份数量。
-        /// </summary>
-        public static int ActivityRequiredYears { get; private set; } = 3;
 
         /// <summary>
         /// 单次有效互动覆盖的游戏年份数量。
@@ -1590,7 +1590,6 @@ namespace XianniAutoPan.Services
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthEnabled", "挂机压制开关", "开启后低活动玩家国家的自然修炼成长会按活动率降低；AI 国家不受影响。", "", 0, 1, () => InactiveGrowthEnabled, value => InactiveGrowthEnabled = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityProtectionYears", "挂机保护年数", "玩家绑定国家后多少年内不触发挂机压制。", "年", 0, 10000, () => ActivityProtectionYears, value => ActivityProtectionYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityWindowYears", "活动统计窗口", "挂机判定只统计最近多少年的活动年份。", "年", 1, 10000, () => ActivityWindowYears, value => ActivityWindowYears = value);
-            RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityRequiredYears", "所需活动年份", "旧窗口判定兼容项；当前层级压制模式不再使用此值。", "年", 0, 10000, () => ActivityRequiredYears, value => ActivityRequiredYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityCoverageYears", "单次互动覆盖年数", "一次有效互动可覆盖多少个游戏年，适合高倍速时避免玩家难以连续踩年份；默认 3。", "年", 1, 10000, () => ActivityCoverageYears, value => ActivityCoverageYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "activityIdleYears", "连续挂机年数", "连续多少年没有活动后进入挂机风险。", "年", 0, 10000, () => ActivityIdleYears, value => ActivityIdleYears = value);
             RegisterPolicy("round", "结盘积分", "结盘年份、玩家积分累计与新局启动相关配置。", "inactiveGrowthMinPercent", "挂机最低成长", "挂机压制后的自然成长最低百分比。", "%", 0, 100, () => InactiveGrowthMinPercent, value => InactiveGrowthMinPercent = value);
@@ -1626,41 +1625,42 @@ namespace XianniAutoPan.Services
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "curseCostPerTarget", "诅咒单人加价", "每多诅咒 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => CurseCostPerTarget, value => CurseCostPerTarget = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "blessBaseCost", "祝福基础成本", "祝福成本 = 基础成本 + 目标人数 × 单人加价。", "金币", 0, 1_000_000_000, () => BlessBaseCost, value => BlessBaseCost = value);
             RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "blessCostPerTarget", "祝福单人加价", "每多祝福 1 人额外增加的金币。", "金币", 0, 1_000_000_000, () => BlessCostPerTarget, value => BlessCostPerTarget = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "cultivatorSuppressBaseCost", "修士降境基础成本", "修士降境成本 = 基础成本 + (目标境界层级 × 压制层数 × 阶梯值)。", "金币", 0, 1_000_000_000, () => CultivatorSuppressBaseCost, value => CultivatorSuppressBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "cultivatorSuppressStageStepCost", "修士降境阶梯值", "修士降境每提升一层单位阶段和压制层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorSuppressStageStepCost, value => CultivatorSuppressStageStepCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "ancientSuppressBaseCost", "古神降星基础成本", "古神降星成本 = 基础成本 + 当前星级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => AncientSuppressBaseCost, value => AncientSuppressBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "ancientSuppressStageStepCost", "古神降星阶梯值", "古神每高一星和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => AncientSuppressStageStepCost, value => AncientSuppressStageStepCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressBaseCost", "妖兽降阶基础成本", "妖兽降阶成本 = 基础成本 + 当前阶级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => BeastSuppressBaseCost, value => BeastSuppressBaseCost = value);
-            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressStageStepCost", "妖兽降阶阶梯值", "妖兽每高一阶和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => BeastSuppressStageStepCost, value => BeastSuppressStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "cultivatorSuppressBaseCost", "修士降级基础成本", "修士降级成本 = 基础成本 + (目标境界层级 × 压制层数 × 阶梯值)。", "金币", 0, 1_000_000_000, () => CultivatorSuppressBaseCost, value => CultivatorSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "cultivatorSuppressStageStepCost", "修士降级阶梯值", "修士降级每提升一层单位阶段和压制层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorSuppressStageStepCost, value => CultivatorSuppressStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "ancientSuppressBaseCost", "古神降级基础成本", "古神降级成本 = 基础成本 + 当前星级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => AncientSuppressBaseCost, value => AncientSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "ancientSuppressStageStepCost", "古神降级阶梯值", "古神每高一星和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => AncientSuppressStageStepCost, value => AncientSuppressStageStepCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressBaseCost", "妖兽降级基础成本", "妖兽降级成本 = 基础成本 + 当前阶级 × 下降层数 × 阶梯值。", "金币", 0, 1_000_000_000, () => BeastSuppressBaseCost, value => BeastSuppressBaseCost = value);
+            RegisterPolicy("diplomacy", "外交互动", "战争、联盟、约斗以及高互动国策的前端数值。", "beastSuppressStageStepCost", "妖兽降级阶梯值", "妖兽每高一阶和下降层数叠乘增加的金币。", "金币", 0, 1_000_000_000, () => BeastSuppressStageStepCost, value => BeastSuppressStageStepCost = value);
 
             RegisterPolicy("join", "加入规则", "玩家加入国家的种族限制与初始参数。", "allowSubspeciesJoin", "允许亚种加入", "1=允许玩家用加入种族指令选择含高级脑的亚种建国；0=只允许人类/兽人/精灵/矮人四个原始种族。无论此开关，无高级脑的亚种始终禁止加入。", "", 0, 1, () => AllowSubspeciesJoin ? 1 : 0, value => AllowSubspeciesJoin = value != 0);
             RegisterPolicy("join", "加入规则", "玩家加入国家的种族限制与初始参数。", "blockUnboundJoinBeforeWarYear", "宣战后禁止加入无主国", "1=到达玩家宣战开始年份后禁止加入国家名绑定现有无主国家；0=允许随时绑定。已绑定玩家不受影响。", "", 0, 1, () => BlockUnboundJoinBeforeWarYear ? 1 : 0, value => BlockUnboundJoinBeforeWarYear = value != 0);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "增加人数每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "放置遗迹每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "快速成年每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "conscriptCostPerUnit", "征兵成本", "征集军队每名平民转为士兵需要消耗的金币。", "金币", 0, 1_000_000_000, () => ConscriptCostPerUnit, value => ConscriptCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "transferCityCost", "移交城市成本", "移交城市每次成功转交分城需要消耗的金币。", "金币", 0, 1_000_000_000, () => TransferCityCost, value => TransferCityCost = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "renameKingdomCost", "国家改名成本", "执行国家改名 新名字时需要消耗的金币。若重名会自动追加后缀。", "金币", 0, 1_000_000_000, () => RenameKingdomCost, value => RenameKingdomCost = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipCopperCostPerUnit", "铜制军备单价", "给军队发 1 套铜制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipCopperCostPerUnit, value => EquipCopperCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipBronzeCostPerUnit", "青铜军备单价", "给军队发 1 套青铜装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipBronzeCostPerUnit, value => EquipBronzeCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipSilverCostPerUnit", "白银军备单价", "给军队发 1 套白银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSilverCostPerUnit, value => EquipSilverCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipIronCostPerUnit", "铁制军备单价", "给军队发 1 套铁制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipIronCostPerUnit, value => EquipIronCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipSteelCostPerUnit", "钢制军备单价", "给军队发 1 套钢制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSteelCostPerUnit, value => EquipSteelCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipMythrilCostPerUnit", "秘银军备单价", "给军队发 1 套秘银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipMythrilCostPerUnit, value => EquipMythrilCostPerUnit = value);
-            RegisterPolicy("city", "城市军务", "人口、征兵、城市移交和整套军备发放的成本配置。", "equipAdamantineCostPerUnit", "精金军备单价", "给军队发 1 套精金装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipAdamantineCostPerUnit, value => EquipAdamantineCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "addPopulationCostPerUnit", "增员成本", "增加人数每生成 1 名成年同种族人口需要消耗的金币。", "金币", 0, 1_000_000_000, () => AddPopulationCostPerUnit, value => AddPopulationCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "placeRuinCost", "遗迹成本", "放置遗迹每座遗迹需要消耗的金币。", "金币", 0, 1_000_000_000, () => PlaceRuinCost, value => PlaceRuinCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "fastAdultCostPerUnit", "成年成本", "快速成年每名目标单位需要消耗的金币。", "金币", 0, 1_000_000_000, () => FastAdultCostPerUnit, value => FastAdultCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "conscriptCostPerUnit", "征兵成本", "征集军队每名平民转为士兵需要消耗的金币。", "金币", 0, 1_000_000_000, () => ConscriptCostPerUnit, value => ConscriptCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "transferCityCost", "移交城市成本", "移交城市每次成功转交分城需要消耗的金币。", "金币", 0, 1_000_000_000, () => TransferCityCost, value => TransferCityCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "transferUnitCost", "移交单位成本", "执行移交单位 id 目标国家时需要消耗的金币。", "金币", 0, 1_000_000_000, () => TransferUnitCost, value => TransferUnitCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "renameKingdomCost", "国家改名成本", "执行国家改名 新名字时需要消耗的金币。若重名会自动追加后缀。", "金币", 0, 1_000_000_000, () => RenameKingdomCost, value => RenameKingdomCost = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipCopperCostPerUnit", "铜制军备单价", "给军队发 1 套铜制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipCopperCostPerUnit, value => EquipCopperCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipBronzeCostPerUnit", "青铜军备单价", "给军队发 1 套青铜装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipBronzeCostPerUnit, value => EquipBronzeCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipSilverCostPerUnit", "白银军备单价", "给军队发 1 套白银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSilverCostPerUnit, value => EquipSilverCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipIronCostPerUnit", "铁制军备单价", "给军队发 1 套铁制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipIronCostPerUnit, value => EquipIronCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipSteelCostPerUnit", "钢制军备单价", "给军队发 1 套钢制装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipSteelCostPerUnit, value => EquipSteelCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipMythrilCostPerUnit", "秘银军备单价", "给军队发 1 套秘银装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipMythrilCostPerUnit, value => EquipMythrilCostPerUnit = value);
+            RegisterPolicy("city", "城市军务", "人口、征兵、城市/单位移交和整套军备发放的成本配置。", "equipAdamantineCostPerUnit", "精金军备单价", "给军队发 1 套精金装备需要消耗的金币。", "金币", 0, 1_000_000_000, () => EquipAdamantineCostPerUnit, value => EquipAdamantineCostPerUnit = value);
 
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRetreatCost", "修士闭关成本", "执行修士 序号 闭关时消耗的金币。", "金币", 0, 1_000_000_000, () => CultivatorRetreatCost, value => CultivatorRetreatCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "closedDoorXiuweiGain", "修士闭关修为", "每次修士闭关直接增加的修为。", "修为", 0, int.MaxValue, () => ClosedDoorXiuweiGain, value => ClosedDoorXiuweiGain = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpBaseCost", "修士升境基础成本", "修士升境成本 = 基础成本 + 当前境界层数 × 递增值。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpBaseCost, value => CultivatorRealmUpBaseCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpStepCost", "修士升境递增值", "修士每高一层境界，直接升境额外增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpStepCost, value => CultivatorRealmUpStepCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainCost", "古神炼体成本", "执行古神 序号 炼体时消耗的金币。", "金币", 0, 1_000_000_000, () => AncientTrainCost, value => AncientTrainCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainingGain", "古神炼体成长", "每次古神炼体直接增加的古神之力。", "古神之力", 0, int.MaxValue, () => AncientTrainingGain, value => AncientTrainingGain = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpBaseCost", "古神升星基础成本", "古神升星成本 = 基础成本 + 当前星级 × 递增值。", "金币", 0, 1_000_000_000, () => AncientStageUpBaseCost, value => AncientStageUpBaseCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpStepCost", "古神升星递增值", "古神每高一星，直接升星额外增加的金币。", "金币", 0, 1_000_000_000, () => AncientStageUpStepCost, value => AncientStageUpStepCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRetreatCost", "修士养成成本", "执行修士 id 养成时消耗的金币。旧指令“闭关”兼容。", "金币", 0, 1_000_000_000, () => CultivatorRetreatCost, value => CultivatorRetreatCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "closedDoorXiuweiGain", "修士养成修为", "每次修士养成直接增加的修为。", "修为", 0, int.MaxValue, () => ClosedDoorXiuweiGain, value => ClosedDoorXiuweiGain = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpBaseCost", "修士升级基础成本", "修士升级成本 = 基础成本 + 当前境界层数 × 递增值。旧指令“升境”兼容。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpBaseCost, value => CultivatorRealmUpBaseCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "cultivatorRealmUpStepCost", "修士升级递增值", "修士每高一层境界，直接升级额外增加的金币。", "金币", 0, 1_000_000_000, () => CultivatorRealmUpStepCost, value => CultivatorRealmUpStepCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainCost", "古神养成成本", "执行古神 id 养成时消耗的金币。旧指令“炼体”兼容。", "金币", 0, 1_000_000_000, () => AncientTrainCost, value => AncientTrainCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientTrainingGain", "古神养成成长", "每次古神养成直接增加的古神之力。", "古神之力", 0, int.MaxValue, () => AncientTrainingGain, value => AncientTrainingGain = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpBaseCost", "古神升级基础成本", "古神升级成本 = 基础成本 + 当前星级 × 递增值。旧指令“升星”兼容。", "金币", 0, 1_000_000_000, () => AncientStageUpBaseCost, value => AncientStageUpBaseCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "ancientStageUpStepCost", "古神升级递增值", "古神每高一星，直接升级额外增加的金币。", "金币", 0, 1_000_000_000, () => AncientStageUpStepCost, value => AncientStageUpStepCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainCost", "妖兽养成成本", "执行妖兽 序号 养成时消耗的金币。", "金币", 0, 1_000_000_000, () => BeastTrainCost, value => BeastTrainCost = value);
             RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastTrainingGain", "妖兽养成成长", "每次妖兽养成直接增加的妖力。", "妖力", 0, int.MaxValue, () => BeastTrainingGain, value => BeastTrainingGain = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpBaseCost", "妖兽升阶基础成本", "妖兽升阶成本 = 基础成本 + 当前阶级 × 递增值。", "金币", 0, 1_000_000_000, () => BeastStageUpBaseCost, value => BeastStageUpBaseCost = value);
-            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升阶递增值", "妖兽每高一阶，直接升阶额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpBaseCost", "妖兽升级基础成本", "妖兽升级成本 = 基础成本 + 当前阶级 × 递增值。旧指令“升阶”兼容。", "金币", 0, 1_000_000_000, () => BeastStageUpBaseCost, value => BeastStageUpBaseCost = value);
+            RegisterPolicy("cultivation", "修炼培养", "修士、古神、妖兽培养相关的成长数值与直接提升价格。", "beastStageUpStepCost", "妖兽升级递增值", "妖兽每高一阶，直接升级额外增加的金币。", "金币", 0, 1_000_000_000, () => BeastStageUpStepCost, value => BeastStageUpStepCost = value);
 
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiDecisionStartYear", "AI开始决策年份", "世界年份达到该值后，未绑定玩家的国家才允许开始自动决策。", "年", 1, 100000, () => AiDecisionStartYear, value => AiDecisionStartYear = value);
             RegisterPolicy("ai", "AI 调度", "自动盘 LLM AI 与新盘自动生成国家的调度控制。", "aiDecisionIntensity", "AI决策强度", "范围 1~5；强度越高，每次最多执行更多动作，每轮调度更多国家。", "档", 1, 5, () => AiDecisionIntensity, value => AiDecisionIntensity = value);

@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 using XianniAutoPan.Model;
 using xn.api;
+using xn.tournament;
 
 namespace XianniAutoPan.Services
 {
@@ -303,7 +304,7 @@ namespace XianniAutoPan.Services
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, raceId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = FormatJoinSuccessMessage(rankBenefits, $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。政策为开放占领");
+                    message = FormatJoinSuccessMessage(rankBenefits, kingdom.getPopulationTotal(), $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。政策为开放占领");
                     return true;
                 }
             }
@@ -360,7 +361,7 @@ namespace XianniAutoPan.Services
                     AutoPanStateRepository.BindPlayerToKingdom(userId, playerName, actorAssetId, kingdom);
                     ClearSnapshotCache(kingdom.getID());
                     XianniAutoPanApi.Broadcast($"{playerName} 以{raceText}建立了新的国家 {kingdom.name}");
-                    message = FormatJoinSuccessMessage(rankBenefits, $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领");
+                    message = FormatJoinSuccessMessage(rankBenefits, kingdom.getPopulationTotal(), $"加入成功：已为你创建 {raceText}国家 {kingdom.name}，初始国库 {rankBenefits.InitialTreasury}，国家等级 {AutoPanConfigHooks.InitialLevel}。开局政策为开放占领");
                     return true;
                 }
             }
@@ -414,22 +415,20 @@ namespace XianniAutoPan.Services
             ClearSnapshotCache(target.getID());
             kingdom = target;
             XianniAutoPanApi.Broadcast($"{playerName} 加入了现有国家 {target.name}");
-            message = FormatJoinSuccessMessage(rankBenefits, $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。");
+            message = FormatJoinSuccessMessage(rankBenefits, target.getPopulationTotal(), $"加入成功：你已绑定现有国家 {FormatKingdomLabel(target)}，当前国库 {GetTreasury(target)}，国家等级 {GetLevel(target)}。");
             return true;
         }
 
-        private static string FormatJoinSuccessMessage(AutoPanRankService.RankBenefits rankBenefits, string message)
+        private static string FormatJoinSuccessMessage(AutoPanRankService.RankBenefits rankBenefits, int population, string message)
         {
-            if (rankBenefits == null || string.IsNullOrWhiteSpace(rankBenefits.EntryPrefix))
-            {
-                return message;
-            }
-
-            string rankName = string.IsNullOrWhiteSpace(rankBenefits.RankName) ? "新人" : rankBenefits.RankName.Trim();
-            string prefix = rankBenefits.EntryPrefix
+            string rankName = string.IsNullOrWhiteSpace(rankBenefits?.RankName) ? "新人" : rankBenefits.RankName.Trim();
+            string prefix = (rankBenefits?.EntryPrefix ?? string.Empty)
                 .Replace("(段位)", rankName)
-                .Replace("{段位}", rankName);
-            return string.IsNullOrWhiteSpace(prefix) ? message : $"{prefix}加入战场：\n{message}";
+                .Replace("{段位}", rankName)
+                .Trim();
+            string prefixText = string.IsNullOrWhiteSpace(prefix) ? "无入场前缀" : prefix;
+            string header = string.IsNullOrWhiteSpace(prefix) ? "加入战场：" : $"{prefix}加入战场：";
+            return $"{header}\n段位：{rankName}（入场前缀：{prefixText}）\n人口 {Math.Max(0, population)}\n{message}";
         }
 
         /// <summary>
@@ -2423,6 +2422,171 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
+        /// 将本国普通单位移交给另一个国家。
+        /// </summary>
+        public static bool TryTransferOwnedUnit(Kingdom source, long actorId, string rawTargetKingdomName, out string message)
+        {
+            message = string.Empty;
+            if (source == null || !source.isAlive() || !source.isCiv())
+            {
+                message = "当前国家状态无效。";
+                return false;
+            }
+
+            if (AutoPanDuelService.IsRunning)
+            {
+                message = "约斗进行中不能移交单位。";
+                return false;
+            }
+
+            if (TournamentManager.IsRunning)
+            {
+                message = "仙逆比武大会进行中不能移交单位。";
+                return false;
+            }
+
+            if (actorId <= 0)
+            {
+                message = "单位 id 必须大于 0。";
+                return false;
+            }
+
+            Actor actor = World.world?.units?.get(actorId);
+            if (actor == null || !actor.isAlive())
+            {
+                message = $"找不到存活单位 id={actorId}。";
+                return false;
+            }
+
+            if (actor.kingdom != source)
+            {
+                string ownerText = actor.kingdom != null && actor.kingdom.isAlive() ? FormatKingdomLabel(actor.kingdom) : "无所属国家";
+                message = $"{actor.getName()} [id={actorId}] 当前属于 {ownerText}，不能由 {FormatKingdomLabel(source)} 移交。";
+                return false;
+            }
+
+            if (actor.asset == null || actor.asset.is_boat)
+            {
+                message = "船只或无效单位不能移交。";
+                return false;
+            }
+
+            if (actor.isKing())
+            {
+                message = "国王不能移交，避免触发王位继承和王国引用异常。";
+                return false;
+            }
+
+            if (actor.isCityLeader())
+            {
+                message = "城主不能移交，避免触发城市领袖引用异常。";
+                return false;
+            }
+
+            if (!TryResolveKingdom(rawTargetKingdomName, out Kingdom target, out string targetError))
+            {
+                message = targetError;
+                return false;
+            }
+
+            if (target == source)
+            {
+                message = "不能把单位移交给自己的国家。";
+                return false;
+            }
+
+            City targetCity = (target.capital != null && target.capital.isAlive())
+                ? target.capital
+                : target.getCities().FirstOrDefault(city => city != null && city.isAlive());
+            if (targetCity == null)
+            {
+                message = $"{FormatKingdomLabel(target)} 当前没有存活城市，无法接收单位。";
+                return false;
+            }
+
+            int cost = AutoPanConfigHooks.TransferUnitCost;
+            if (!TrySpendTreasury(source, cost, out string spendError))
+            {
+                message = spendError;
+                return false;
+            }
+
+            City originalCity = actor.city;
+            WorldTile originalTile = actor.current_tile;
+            try
+            {
+                actor.cancelAllBeh();
+                actor.clearAttackTarget();
+                actor.removeFromArmy();
+                actor.joinCity(targetCity);
+                actor.setMetasFromCity(targetCity);
+                WorldTile spawnTile = targetCity.getTile();
+                if (spawnTile == null && targetCity.zones != null)
+                {
+                    spawnTile = targetCity.zones.Select(zone => zone?.centerTile).FirstOrDefault(tile => tile != null);
+                }
+                if (spawnTile != null)
+                {
+                    actor.spawnOn(spawnTile);
+                }
+            }
+            catch (Exception ex)
+            {
+                TryRestoreTransferredUnit(actor, source, originalCity, originalTile);
+                AddTreasury(source, cost);
+                AutoPanLogService.Error($"移交单位失败：{ex.Message}");
+                message = "移交单位失败，已退回金币。";
+                return false;
+            }
+
+            if (actor.kingdom != target)
+            {
+                TryRestoreTransferredUnit(actor, source, originalCity, originalTile);
+                AddTreasury(source, cost);
+                message = "移交单位失败，目标单位未能加入接收国家，已退回金币。";
+                return false;
+            }
+
+            ClearSnapshotCache(source.getID());
+            ClearSnapshotCache(target.getID());
+            message = $"{actor.getName()} [id={actor.getID()}] 已移交给 {FormatKingdomLabel(target)}，消耗 {cost} 金币。";
+            return true;
+        }
+
+        /// <summary>
+        /// 移交单位失败时尽量恢复原国家、原城市和原位置。
+        /// </summary>
+        private static void TryRestoreTransferredUnit(Actor actor, Kingdom source, City originalCity, WorldTile originalTile)
+        {
+            try
+            {
+                if (actor == null || !actor.isAlive())
+                {
+                    return;
+                }
+
+                if (originalCity != null && originalCity.isAlive())
+                {
+                    actor.joinCity(originalCity);
+                    actor.setMetasFromCity(originalCity);
+                }
+                else if (source != null && source.isAlive())
+                {
+                    actor.joinKingdom(source);
+                }
+
+                if (originalTile != null)
+                {
+                    actor.spawnOn(originalTile);
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoPanLogService.Error($"移交单位回滚失败：{ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 向目标国家转账国家金币。
         /// </summary>
         public static bool TryTransferTreasury(Kingdom source, Kingdom target, int amount, out string message)
@@ -3249,9 +3413,9 @@ namespace XianniAutoPan.Services
                 });
             }
 
-            context.CultivatorChoices = snapshot.Cultivators.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / 境界索引{item.StageIndex} / 修为{item.PowerValue} / 可用：修士 {item.ActorId} 闭关、修士 {item.ActorId} 升境").ToList();
-            context.AncientChoices = snapshot.Ancients.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / {item.StageValue}星 / 古神之力{item.PowerValue} / 可用：古神 {item.ActorId} 炼体、古神 {item.ActorId} 升星").ToList();
-            context.BeastChoices = snapshot.Beasts.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / {item.StageValue}阶 / 妖力{item.PowerValue} / 可用：妖兽 {item.ActorId} 养成、妖兽 {item.ActorId} 升阶").ToList();
+            context.CultivatorChoices = snapshot.Cultivators.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / 境界索引{item.StageIndex} / 修为{item.PowerValue} / 可用：修士 {item.ActorId} 养成、修士 {item.ActorId} 升级").ToList();
+            context.AncientChoices = snapshot.Ancients.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / {item.StageValue}星 / 古神之力{item.PowerValue} / 可用：古神 {item.ActorId} 养成、古神 {item.ActorId} 升级").ToList();
+            context.BeastChoices = snapshot.Beasts.Select((item, index) => $"{index + 1}. {item.ActorName} [id={item.ActorId}] / {item.StageValue}阶 / 妖力{item.PowerValue} / 可用：妖兽 {item.ActorId} 养成、妖兽 {item.ActorId} 升级").ToList();
             context.AllKingdoms = context.AllKingdoms
                 .OrderByDescending(item => item.IsSelf)
                 .ThenByDescending(item => item.CityCount)

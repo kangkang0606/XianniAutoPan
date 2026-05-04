@@ -1225,7 +1225,7 @@ function renderKingdoms(kingdoms) {
     actions.appendChild(createMiniButton("削灵500", "mini-btn-danger", () => sendCommand(`削灵 ${kingdomLabel} 500`), isCurrent));
     actions.appendChild(createMiniButton("斩首", "mini-btn-danger", () => sendCommand(`斩首 ${kingdomLabel}`), isCurrent));
     actions.appendChild(createMiniButton("诅咒3人", "mini-btn-danger", () => sendCommand(`诅咒 ${kingdomLabel} 3`), isCurrent));
-    actions.appendChild(createMiniButton("修士-1境", "mini-btn-neutral", () => sendCommand(`修士降境 ${kingdomLabel} 2 1`), isCurrent));
+    actions.appendChild(createMiniButton("修士降级", "mini-btn-neutral", () => sendCommand(`修士降级 ${kingdomLabel} 2 1`), isCurrent));
     actions.appendChild(createMiniButton("降低国运1", "mini-btn-neutral", () => sendCommand(`降低国运 ${kingdomLabel} 1`), isCurrent));
 
     actionCell.appendChild(actions);
@@ -1846,8 +1846,12 @@ async function importConfig() {
     let count = 0;
     const errors = [];
 
+    const obsoletePolicyKeys = new Set(["activityRequiredYears"]);
     if (data.policy && typeof data.policy === "object") {
       for (const [key, value] of Object.entries(data.policy)) {
+        if (obsoletePolicyKeys.has(key)) {
+          continue;
+        }
         try {
           if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "randomEnabled")) {
             if (value.randomEnabled) {

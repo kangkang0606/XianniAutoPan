@@ -91,12 +91,12 @@ namespace XianniAutoPan.Model
         public const int GatherSpiritAuraBonusPerCity = 500;
 
         /// <summary>
-        /// 修士闭关获得的修为。
+        /// 修士养成获得的修为。
         /// </summary>
         public const long ClosedDoorXiuweiGain = 10000L;
 
         /// <summary>
-        /// 古神炼体获得的古神之力。
+        /// 古神养成获得的古神之力。
         /// </summary>
         public const int AncientTrainingGain = 15000;
 
@@ -136,12 +136,12 @@ namespace XianniAutoPan.Model
         public const int BreakAllianceCost = 90;
 
         /// <summary>
-        /// 修士闭关价格。
+        /// 修士养成价格。
         /// </summary>
         public const int CultivatorRetreatCost = 80;
 
         /// <summary>
-        /// 古神炼体价格。
+        /// 古神养成价格。
         /// </summary>
         public const int AncientTrainCost = 100;
 
@@ -151,17 +151,17 @@ namespace XianniAutoPan.Model
         public const int BeastTrainCost = 90;
 
         /// <summary>
-        /// 修士直接升境价格。
+        /// 修士直接升级价格。
         /// </summary>
         public const int CultivatorRealmUpCost = 220;
 
         /// <summary>
-        /// 古神直接升星价格。
+        /// 古神直接升级价格。
         /// </summary>
         public const int AncientStarUpCost = 180;
 
         /// <summary>
-        /// 妖兽直接升阶价格。
+        /// 妖兽直接升级价格。
         /// </summary>
         public const int BeastStageUpCost = 160;
 

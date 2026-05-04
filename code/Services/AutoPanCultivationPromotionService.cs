@@ -3,7 +3,7 @@ using System;
 namespace XianniAutoPan.Services
 {
     /// <summary>
-    /// 自动盘内部的升境兼容服务。
+    /// 自动盘内部的升级兼容服务。
     /// 为避免自动盘编译时强依赖“已重编译的 xianni 公共 API”，这里内置一份稳定的 trait/阈值表。
     /// </summary>
     internal static class AutoPanCultivationPromotionService

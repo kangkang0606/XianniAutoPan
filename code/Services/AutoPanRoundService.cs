@@ -137,12 +137,9 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 结算当前局并启动新一局。
-        /// </summary>
-        /// <summary>
         /// 管理员结盘，所有国家不计入积分。
         /// </summary>
-        public static string EndRoundNoScore(string reason, string operatorName)
+        public static string EndRoundNoScore(string reason, string operatorName, bool notifyQq = true)
         {
             if (_isEndingRound || _isGeneratingNewRound)
             {
@@ -154,7 +151,10 @@ namespace XianniAutoPan.Services
             {
                 string resultText = BuildRoundResult(reason, operatorName, skipScore: true);
                 XianniAutoPanApi.Broadcast(resultText);
-                AutoPanNotificationService.BroadcastToKnownGroups(resultText, ExtractWinnerUserIds());
+                if (notifyQq)
+                {
+                    AutoPanNotificationService.BroadcastToKnownGroups(resultText, ExtractWinnerUserIds());
+                }
                 AutoPanLogService.Info(resultText.Replace("\n", " "));
                 bool started = StartNewRound();
                 return resultText + (started ? "\n新一局正在生成。" : "\n新一局生成未启动：当前世界仍在加载或 MapBox 未就绪。");
@@ -165,7 +165,10 @@ namespace XianniAutoPan.Services
             }
         }
 
-        public static string EndRound(string reason, string operatorName)
+        /// <summary>
+        /// 结算当前局并启动新一局。
+        /// </summary>
+        public static string EndRound(string reason, string operatorName, bool notifyQq = true)
         {
             if (_isEndingRound || _isGeneratingNewRound)
             {
@@ -177,7 +180,10 @@ namespace XianniAutoPan.Services
             {
                 string resultText = BuildRoundResult(reason, operatorName, skipScore: false);
                 XianniAutoPanApi.Broadcast(resultText);
-                AutoPanNotificationService.BroadcastToKnownGroups(resultText, ExtractWinnerUserIds());
+                if (notifyQq)
+                {
+                    AutoPanNotificationService.BroadcastToKnownGroups(resultText, ExtractWinnerUserIds());
+                }
                 AutoPanLogService.Info(resultText.Replace("\n", " "));
                 bool started = StartNewRound();
                 return resultText + (started ? "\n新一局正在生成。" : "\n新一局生成未启动：当前世界仍在加载或 MapBox 未就绪。");

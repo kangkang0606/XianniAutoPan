@@ -11,7 +11,7 @@ namespace XianniAutoPan.Services
     internal static class AutoPanCostService
     {
         /// <summary>
-        /// 获取修士直接升境成本，随当前境界递增。
+        /// 获取修士直接升级成本，随当前境界递增。
         /// </summary>
         public static int GetCultivatorRealmUpCost(Actor actor)
         {
@@ -20,7 +20,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 获取古神直接升星成本，随当前星级递增。
+        /// 获取古神直接升级成本，随当前星级递增。
         /// </summary>
         public static int GetAncientStageUpCost(Actor actor)
         {
@@ -29,7 +29,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 获取妖兽直接升阶成本，随当前阶级递增。
+        /// 获取妖兽直接升级成本，随当前阶级递增。
         /// </summary>
         public static int GetBeastStageUpCost(Actor actor)
         {
@@ -79,7 +79,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 获取修士压境成本，按实际目标与下降境界递增。
+        /// 获取修士降级成本，按实际目标与下降境界递增。
         /// </summary>
         public static int GetCultivatorSuppressCost(IEnumerable<Actor> actors, int levels)
         {
@@ -109,7 +109,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 获取古神降星成本，使用独立的古神降星基础与阶梯配置。
+        /// 获取古神降级成本，使用独立的古神降级基础与阶梯配置。
         /// </summary>
         public static int GetAncientSuppressUnitCost(Actor actor, int levels)
         {
@@ -119,7 +119,7 @@ namespace XianniAutoPan.Services
         }
 
         /// <summary>
-        /// 获取妖兽降阶成本，使用独立的妖兽降阶基础与阶梯配置。
+        /// 获取妖兽降级成本，使用独立的妖兽降级基础与阶梯配置。
         /// </summary>
         public static int GetBeastSuppressUnitCost(Actor actor, int levels)
         {

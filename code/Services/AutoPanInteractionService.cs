@@ -462,7 +462,7 @@ namespace XianniAutoPan.Services
             if (affectedCount == 0)
             {
                 AutoPanKingdomService.AddTreasury(sourceKingdom, expectedCost);
-                message = "修士压境失败，目标修士没有实际下降境界。";
+                message = "修士降级失败，目标修士没有实际下降境界。";
                 return false;
             }
 
@@ -493,7 +493,7 @@ namespace XianniAutoPan.Services
             int currentRealm = XianniAutoPanApi.GetCultivatorRealmIndex(actor);
             if (currentRealm < 0)
             {
-                message = $"{actor.getName()} [id={actor.getID()}] 不是可降境修士。";
+                message = $"{actor.getName()} [id={actor.getID()}] 不是可降级修士。";
                 return false;
             }
 
@@ -514,7 +514,7 @@ namespace XianniAutoPan.Services
             if (!XianniAutoPanApi.TryLowerCultivatorRealm(actor, requestedLevels, out int actualLowered))
             {
                 AutoPanKingdomService.AddTreasury(sourceKingdom, cost);
-                message = "修士降境失败，目标修士没有实际下降境界。";
+                message = "修士降级失败，目标修士没有实际下降境界。";
                 return false;
             }
 

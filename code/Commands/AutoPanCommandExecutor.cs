@@ -216,11 +216,11 @@ namespace XianniAutoPan.Commands
                     return ExecuteAdminSpawnKingdom(command, playerName, result);
                 case AutoPanCommandType.AdminEndRound:
                     result.Success = true;
-                    result.Text = AutoPanRoundService.EndRound("管理员手动结盘", playerName);
+                    result.Text = AutoPanRoundService.EndRound("管理员手动结盘", playerName, notifyQq: false);
                     return result;
                 case AutoPanCommandType.AdminEndRoundNoScore:
                     result.Success = true;
-                    result.Text = AutoPanRoundService.EndRoundNoScore("管理员手动结盘（不计积分）", playerName);
+                    result.Text = AutoPanRoundService.EndRoundNoScore("管理员手动结盘（不计积分）", playerName, notifyQq: false);
                     return result;
                 case AutoPanCommandType.AdminCurrentSituationScreenshot:
                     result.Success = AutoPanScreenshotService.TrySendCurrentSituation(message, bypassCooldown: true, out string adminScreenshotText);
@@ -411,6 +411,8 @@ namespace XianniAutoPan.Commands
                     return ExecuteFastAdult(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.ConscriptArmy:
                     return ExecuteConscriptArmy(kingdom, command, operatorName, isAi, result);
+                case AutoPanCommandType.TransferUnit:
+                    return ExecuteTransferUnit(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.TransferCity:
                     return ExecuteTransferCity(kingdom, command, operatorName, isAi, result);
                 case AutoPanCommandType.RandomTransferCity:
@@ -553,6 +555,18 @@ namespace XianniAutoPan.Commands
             if (result.Success)
             {
                 AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 征集军队：{kingdom.name} / {command.TargetName} / {command.TextArg}");
+            }
+            return result;
+        }
+
+        private static AutoPanCommandResult ExecuteTransferUnit(Kingdom kingdom, AutoPanParsedCommand command, string operatorName, bool isAi, AutoPanCommandResult result)
+        {
+            result.Success = AutoPanKingdomService.TryTransferOwnedUnit(kingdom, command.ObjectIdArg, command.TargetName, out string message);
+            result.Text = message;
+            if (result.Success)
+            {
+                XianniAutoPanApi.Broadcast($"{kingdom.name} 移交单位 {command.ObjectIdArg} 给 {command.TargetName}");
+                AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 移交单位：{kingdom.name} / {command.ObjectIdArg} -> {command.TargetName}");
             }
             return result;
         }
@@ -1105,14 +1119,14 @@ namespace XianniAutoPan.Commands
             if (!XianniAutoPanApi.TryAddXiuwei(actor, AutoPanConfigHooks.ClosedDoorXiuweiGain))
             {
                 AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.CultivatorRetreatCost);
-                result.Text = "闭关失败，未能为修士增加修为。";
+                result.Text = "养成失败，未能为修士增加修为。";
                 return result;
             }
             XianniAutoPanApi.TryTriggerBreakthrough(actor);
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 闭关成功，获得 {AutoPanConfigHooks.ClosedDoorXiuweiGain} 修为。";
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士闭关：{kingdom.name} / {actor.getName()}");
+            result.Text = $"{actor.getName()} 养成成功，获得 {AutoPanConfigHooks.ClosedDoorXiuweiGain} 修为。";
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士养成：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
@@ -1132,15 +1146,15 @@ namespace XianniAutoPan.Commands
             if (!AutoPanCultivationPromotionService.TryPromoteCultivatorRealm(actor))
             {
                 AutoPanKingdomService.AddTreasury(kingdom, cost);
-                result.Text = "升境失败，该修士可能已到最高境界或不满足条件。";
+                result.Text = "升级失败，该修士可能已到最高境界或不满足条件。";
                 return result;
             }
 
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 已直接提升一个境界，消耗 {cost} 金币。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 的修士 {actor.getName()} 直接提升了一个境界");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士升境：{kingdom.name} / {actor.getName()}");
+            result.Text = $"{actor.getName()} 已升级一个境界，消耗 {cost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 的修士 {actor.getName()} 升级了一个境界");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 修士升级：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
@@ -1159,13 +1173,13 @@ namespace XianniAutoPan.Commands
             if (!XianniAutoPanApi.TryAddAncientPower(actor, AutoPanConfigHooks.AncientTrainingGain))
             {
                 AutoPanKingdomService.AddTreasury(kingdom, AutoPanConfigHooks.AncientTrainCost);
-                result.Text = "炼体失败，未能增加古神之力。";
+                result.Text = "养成失败，未能增加古神之力。";
                 return result;
             }
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 炼体成功，获得 {AutoPanConfigHooks.AncientTrainingGain} 古神之力。";
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神炼体：{kingdom.name} / {actor.getName()}");
+            result.Text = $"{actor.getName()} 养成成功，获得 {AutoPanConfigHooks.AncientTrainingGain} 古神之力。";
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神养成：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
@@ -1185,15 +1199,15 @@ namespace XianniAutoPan.Commands
             if (!AutoPanCultivationPromotionService.TryPromoteAncientStage(actor))
             {
                 AutoPanKingdomService.AddTreasury(kingdom, cost);
-                result.Text = "升星失败，该古神可能已到最高星级或不满足条件。";
+                result.Text = "升级失败，该古神可能已到最高星级或不满足条件。";
                 return result;
             }
 
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 已直接提升一星，消耗 {cost} 金币。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 的古神 {actor.getName()} 直接提升了一星");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神升星：{kingdom.name} / {actor.getName()}");
+            result.Text = $"{actor.getName()} 已升级一星，消耗 {cost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 的古神 {actor.getName()} 升级了一星");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 古神升级：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
@@ -1238,15 +1252,15 @@ namespace XianniAutoPan.Commands
             if (!AutoPanCultivationPromotionService.TryPromoteBeastStage(actor))
             {
                 AutoPanKingdomService.AddTreasury(kingdom, cost);
-                result.Text = "升阶失败，该妖兽可能已到最高阶或不满足条件。";
+                result.Text = "升级失败，该妖兽可能已到最高阶或不满足条件。";
                 return result;
             }
 
             AutoPanKingdomService.ClearSnapshotCache(kingdom.getID());
             result.Success = true;
-            result.Text = $"{actor.getName()} 已直接提升一阶，消耗 {cost} 金币。";
-            XianniAutoPanApi.Broadcast($"{kingdom.name} 的妖兽 {actor.getName()} 直接提升了一阶");
-            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 妖兽升阶：{kingdom.name} / {actor.getName()}");
+            result.Text = $"{actor.getName()} 已升级一阶，消耗 {cost} 金币。";
+            XianniAutoPanApi.Broadcast($"{kingdom.name} 的妖兽 {actor.getName()} 升级了一阶");
+            AutoPanLogService.Info($"{operatorName}{(isAi ? "(AI)" : string.Empty)} 妖兽升级：{kingdom.name} / {actor.getName()}");
             return result;
         }
 
@@ -1592,47 +1606,14 @@ namespace XianniAutoPan.Commands
             return string.Join("\n", new[]
             {
                 "玩家指令总览：",
-                "加入人类 / 加入兽人 / 加入精灵 / 加入矮人(其它文明种族)",
-                "加入 国家名（绑定现有无主国）",
-                "我的国家 / 国家信息",
-                "当前局势 / 所有国家 / 玩家排名",
-                "国家改名 新名字",
-                "城市列表 / 城市信息",
-                "升级国运 / 升级修真国",
-                "降低国运 目标国家 [kingdomId] 1",
-                "政策 开放占领 / 政策 坚守城池",
-                "国策 聚灵 / 全民皆兵 / 动员",
-                "增加人数 10 / 放置遗迹 1",
-                "转账 目标国家 [kingdomId] 1000 / 转账目标国家 全部",
-                "宣战 目标国家 [kingdomId] 或 宣战 @对方",
-                "求和 目标国家 [kingdomId] 或 求和 @对方",
-                "动员 目标国家 [kingdomId] 或 动员 @对方",
-                "结盟 目标国家 [kingdomId] 或 结盟 @对方",
-                "同意结盟 / 拒绝结盟 / 退盟",
-                "约斗 目标国家 [kingdomId] 500",
-                "血脉创立 单位id",
-                "天榜 / 战力榜",
-                "削灵 目标国家 [kingdomId] 500",
-                "降低灵气 目标国家 [kingdomId] 或 降低灵气 @对方",
-                "斩首 目标国家 [kingdomId]",
-                "诅咒 目标国家 [kingdomId] 3",
-                "国家祝福 全员 或 国家祝福 5",
-                "修士降境 单位id 层级",
-                "古神降星 单位id 层级",
-                "妖兽降阶 单位id 层级",
-                "修士榜 / 古神榜 / 妖兽榜",
-                "修士 单位id 闭关 / 修士升境 单位id",
-                "古神 单位id 炼体 / 古神升星 单位id",
-                "妖兽 单位id 养成 / 妖兽升阶 单位id",
-                "快速成年 全城 或 快速成年 城市名 [cityId]",
-                "征集军队 城市名 [cityId] 全部/ 征集军队",
-                "移交城市 城市名 [cityId] 给 目标国家 [kingdomId]",
-                "移交 目标国家 [kingdomId]随机一座城市",
-                "军备 城市名 [cityId] 精金 全军",
-                "天运惩罚(赐福) 目标国家（可@）",
-                "扰动国家 目标国家（可@）",
-                "陨石 目标国家（可@） 数量",
-                "开启比武大会"
+                "加入：加入人类/兽人/精灵/矮人/文明单位名，或 加入 国家名。",
+                "查询：我的国家、国家信息、当前局势、所有国家、玩家排名、城市列表/城市信息、天榜/战力榜、修士/古神/妖兽榜。",
+                "内政：国家改名、升级国运/修真国、政策、国策聚灵、全民皆兵、增加人数、放置遗迹。",
+                "外交：宣战/求和/动员/结盟 目标国家或@玩家，同意/拒绝结盟，退盟。",
+                "互动：约斗、转账 金币/全部、开启比武大会。",
+                "修炼：修士/古神/妖兽 单位id 养成；修士/古神/妖兽升级 单位id；修士/古神/妖兽降级 单位id [层数]。",
+                "城市军务：快速成年、征集军队、移交单位、移交城市、随机移交城市、军备。",
+                "事件：降低国运/灵气、血脉创立、斩首、诅咒、国家祝福、天运惩罚/赐福、扰动国家、陨石。"
             });
         }
     }
